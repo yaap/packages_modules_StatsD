@@ -92,6 +92,9 @@ void writePullerStatsToStream(const std::pair<int, StatsdStats::PulledAtomStats>
 void writeAtomMetricStatsToStream(const std::pair<int64_t, StatsdStats::AtomMetricStats> &pair,
                                   ProtoOutputStream *protoOutput);
 
+void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorruptedReason,
+                               bool hasQueueOverflow, bool hasSocketLoss);
+
 template<class T>
 bool parseProtoOutputStream(ProtoOutputStream& protoOutput, T* message) {
     std::string pbBytes;

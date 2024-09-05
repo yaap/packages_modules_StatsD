@@ -16,12 +16,11 @@
 package android.cts.statsd.subscriber;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.truth.Truth.assertWithMessage;
 
 import com.android.compatibility.common.util.CpuFeatures;
 import com.android.internal.os.StatsdConfigProto;
+import com.android.os.AtomsProto;
 import com.android.os.AtomsProto.Atom;
-import com.android.os.AtomsProto.SystemUptime;
 import com.android.os.ShellConfig;
 import com.android.os.statsd.ShellDataProto;
 import com.android.tradefed.device.CollectingByteOutputReceiver;
@@ -29,6 +28,8 @@ import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.device.ITestDevice;
 import com.android.tradefed.log.LogUtil;
 import com.android.tradefed.testtype.DeviceTestCase;
+import com.android.tradefed.util.RunUtil;
+
 import com.google.common.io.Files;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -37,18 +38,20 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
-import android.cts.statsd.atom.AtomTestCase;
+
+import android.cts.statsdatom.lib.AtomTestUtils;
 
 /**
  * Statsd shell data subscription test.
  */
-public class ShellSubscriberTest extends AtomTestCase {
+public class ShellSubscriberTest extends DeviceTestCase {
     private int sizetBytes;
 
     public class ShellSubscriptionThread extends Thread {
         String cmd;
         CollectingByteOutputReceiver receiver;
         int maxTimeoutForCommandSec;
+
         public ShellSubscriptionThread(
                 String cmd,
                 CollectingByteOutputReceiver receiver,
@@ -57,7 +60,8 @@ public class ShellSubscriberTest extends AtomTestCase {
             this.receiver = receiver;
             this.maxTimeoutForCommandSec = maxTimeoutForCommandSec;
         }
-        public void run () {
+
+        public void run() {
             try {
                 getDevice().executeShellCommand(cmd, receiver, maxTimeoutForCommandSec,
                         /*maxTimeToOutputShellResponse=*/maxTimeoutForCommandSec, TimeUnit.SECONDS,
@@ -124,27 +128,28 @@ public class ShellSubscriberTest extends AtomTestCase {
 
             String cmd = "cat " + remotePath + " |  cmd stats data-subscribe " + timeout;
             String firstSubCmd =
-                        "cat " + remotePath + " |  cmd stats data-subscribe " + firstSubTimeout;
+                    "cat " + remotePath + " |  cmd stats data-subscribe " + firstSubTimeout;
 
             for (int i = 0; i < maxSubs; i++) {
                 // Run data-subscribe on a thread
                 receivers[i] = new CollectingByteOutputReceiver();
                 if (i == 0) {
                     shellThreads[i] =
-                        new ShellSubscriptionThread(firstSubCmd, receivers[i], firstSubTimeout);
+                            new ShellSubscriptionThread(firstSubCmd, receivers[i], firstSubTimeout);
                 } else {
                     shellThreads[i] =
-                        new ShellSubscriptionThread(cmd, receivers[i], timeout);
+                            new ShellSubscriptionThread(cmd, receivers[i], timeout);
                 }
                 shellThreads[i].start();
                 LogUtil.CLog.d("Starting new shell subscription.");
             }
             // Sleep 2 seconds to make sure all subscription clients are initialized before
             // first pushed event
-            Thread.sleep(2000);
+            RunUtil.getDefault().sleep(2000);
 
             // Pushed event. arbitrary label = 1
-            doAppBreadcrumbReported(1);
+            AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                    AtomsProto.AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 1);
 
             // Make sure the last 19 threads die before moving to the next step.
             // First subscription is still active due to its longer timeout that is used keep
@@ -163,26 +168,27 @@ public class ShellSubscriberTest extends AtomTestCase {
                 // Run data-subscribe on a thread
                 receivers[i] = new CollectingByteOutputReceiver();
                 shellThreads[i] =
-                    new ShellSubscriptionThread(cmd, receivers[i], timeout);
+                        new ShellSubscriptionThread(cmd, receivers[i], timeout);
                 shellThreads[i].start();
                 LogUtil.CLog.d("Starting new shell subscription.");
             }
             // Sleep 2 seconds to make sure all subscription clients are initialized before
             // pushed event
-            Thread.sleep(2000);
+            RunUtil.getDefault().sleep(2000);
 
             // ShellSubscriber only allows 20 subscriptions at a time. This is the 21st which will
             // be ignored
             receivers[maxSubs] = new CollectingByteOutputReceiver();
             shellThreads[maxSubs] =
-                new ShellSubscriptionThread(cmd, receivers[maxSubs], timeout);
+                    new ShellSubscriptionThread(cmd, receivers[maxSubs], timeout);
             shellThreads[maxSubs].start();
 
             // Sleep 1 seconds to ensure that the 21st subscription is rejected
-            Thread.sleep(1000);
+            RunUtil.getDefault().sleep(1000);
 
             // Pushed event. arbitrary label = 1
-            doAppBreadcrumbReported(1);
+            AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                    AtomsProto.AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 1);
 
             // Make sure all the threads die before moving to the next step
             for (int i = 0; i <= maxSubs; i++) {
@@ -219,7 +225,7 @@ public class ShellSubscriberTest extends AtomTestCase {
     private ShellConfig.ShellSubscription createConfig() {
         return ShellConfig.ShellSubscription.newBuilder()
                 .addPushed((StatsdConfigProto.SimpleAtomMatcher.newBuilder()
-                                .setAtomId(Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER))
+                        .setAtomId(Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER))
                         .build()).build();
     }
 
@@ -260,15 +266,16 @@ public class ShellSubscriberTest extends AtomTestCase {
             String cmd = "cat " + remotePath + " |  cmd stats data-subscribe " + timeout;
             // Run data-subscribe on a thread
             ShellSubscriptionThread shellThread =
-                                    new ShellSubscriptionThread(cmd, receiver, timeout);
+                    new ShellSubscriptionThread(cmd, receiver, timeout);
             shellThread.start();
             LogUtil.CLog.d("Starting new shell subscription.");
 
             // Sleep a second to make sure subscription is initiated
-            Thread.sleep(1000);
+            RunUtil.getDefault().sleep(1000);
 
             // Pushed event. arbitrary label = 1
-            doAppBreadcrumbReported(1);
+            AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                    AtomsProto.AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 1);
             // Wait for thread to die before returning
             shellThread.join();
             // Remove config from device if not already deleted
@@ -319,7 +326,7 @@ public class ShellSubscriberTest extends AtomTestCase {
             assertThat(data.getAtom(0).hasAppBreadcrumbReported()).isTrue();
             assertThat(data.getAtom(0).getAppBreadcrumbReported().getLabel()).isEqualTo(1);
             assertThat(data.getAtom(0).getAppBreadcrumbReported().getState().getNumber())
-                       .isEqualTo(1);
+                    .isEqualTo(1);
             atomCount++;
             startIndex += sizetBytes + dataLength;
         }

@@ -91,6 +91,8 @@ struct ConfigStats {
     int32_t db_deletion_too_old = 0;
     int32_t db_deletion_config_removed = 0;
     int32_t db_deletion_config_updated = 0;
+    // Stores the number of ConfigMetadataProvider promotion failures
+    int32_t config_metadata_provider_promote_failure = 0;
 
     // Stores reasons for why config is valid or not
     std::optional<InvalidConfigReason> reason;
@@ -180,8 +182,8 @@ public:
     const static int kMaxConfigCountPerUid = 20;
     const static int kMaxAlertCountPerConfig = 200;
     const static int kMaxConditionCountPerConfig = 500;
-    const static int kMaxMetricCountPerConfig = 2000;
-    const static int kMaxMatcherCountPerConfig = 2500;
+    const static int kMaxMetricCountPerConfig = 3000;
+    const static int kMaxMatcherCountPerConfig = 3500;
 
     // The max number of old config stats we keep.
     const static int kMaxIceBoxSize = 20;
@@ -234,7 +236,11 @@ public:
     static const int64_t kMinBroadcastPeriodNs = 60 * NS_PER_SEC;
 
     /* Min period between two checks of byte size per config key in nanoseconds. */
-    static const int64_t kMinByteSizeCheckPeriodNs = 60 * NS_PER_SEC;
+    static const int64_t kMinByteSizeCheckPeriodNs = 1 * 60 * NS_PER_SEC;
+
+    // Min period between two checks of byte size per config key in nanoseconds for V2 memory
+    // calculations.
+    static const int64_t kMinByteSizeV2CheckPeriodNs = 5 * 60 * NS_PER_SEC;
 
     /* Min period between two checks of restricted metrics TTLs. */
     static const int64_t kMinTtlCheckPeriodNs = 60 * 60 * NS_PER_SEC;
@@ -277,7 +283,7 @@ public:
 
     // Maximum atom id value that we consider a platform pushed atom.
     // This should be updated once highest pushed atom id in atoms.proto approaches this value.
-    static const int kMaxPushedAtomId = 900;
+    static const int kMaxPushedAtomId = 1500;
 
     // Atom id that is the start of the pulled atoms.
     static const int kPullAtomStartTag = 10000;
@@ -300,6 +306,11 @@ public:
     static const int64_t kInt64Max = 0x7fffffffffffffffLL;
 
     static const int32_t kMaxLoggedBucketDropEvents = 10;
+
+    static const int32_t kNumBinsInSocketBatchReadHistogram = 30;
+    static const int32_t kLargeBatchReadThreshold = 1000;
+    static const int32_t kMaxLargeBatchReadSize = 20;
+    static const int32_t kMaxLargeBatchReadAtomThreshold = 50;
 
     /**
      * Report a new config has been received and report the static stats about the config.
@@ -384,6 +395,11 @@ public:
      * Report db was deleted due to config update.
      */
     void noteDbDeletionConfigUpdated(const ConfigKey& key);
+
+    /**
+     * Reports that the promotion for ConfigMetadataProvider failed.
+     */
+    void noteConfigMetadataProviderPromotionFailed(const ConfigKey& key);
 
     /**
      * Report the size of output tuple of a condition.
@@ -706,6 +722,10 @@ public:
      */
     void noteSubscriptionPullThreadWakeup();
 
+    void noteBatchSocketRead(int32_t size, int64_t lastReadTimeNs, int64_t currReadTimeNs,
+                             int64_t minAtomReadTimeNs, int64_t maxAtomReadTimeNs,
+                             const std::unordered_map<int32_t, int32_t>& atomCounts);
+
     /**
      * Reset the historical stats. Including all stats in icebox, and the tracked stats about
      * metrics, matchers, and atoms. The active configs will be kept and StatsdStats will continue
@@ -752,6 +772,9 @@ public:
      * Returns true if there is recorded event queue overflow
      */
     bool hasEventQueueOverflow() const;
+
+    typedef std::vector<std::pair<int32_t, int32_t>> QueueOverflowAtomsStats;
+    QueueOverflowAtomsStats getQueueOverflowAtomsStats() const;
 
     /**
      * Returns true if there is recorded socket loss
@@ -936,6 +959,34 @@ private:
 
     std::list<int32_t> mSystemServerRestartSec;
 
+    std::vector<int64_t> mSocketBatchReadHistogram;
+
+    // Stores stats about large socket batch reads
+    struct LargeBatchSocketReadStats {
+        LargeBatchSocketReadStats(int32_t size, int64_t lastReadTimeNs, int64_t currReadTimeNs,
+                                  int64_t minAtomReadTimeNs, int64_t maxAtomReadTimeNs,
+                                  const std::unordered_map<int32_t, int32_t>& atomCounts)
+            : mSize(size),
+              mLastReadTimeNs(lastReadTimeNs),
+              mCurrReadTimeNs(currReadTimeNs),
+              mMinAtomReadTimeNs(minAtomReadTimeNs),
+              mMaxAtomReadTimeNs(maxAtomReadTimeNs),
+              mCommonAtomCounts(atomCounts) {
+        }
+
+        int32_t mSize;
+        // The elapsed time of the previous and current read times.
+        int64_t mLastReadTimeNs;
+        int64_t mCurrReadTimeNs;
+        // The min and max times of the LogEvents processed in the batch
+        int64_t mMinAtomReadTimeNs;
+        int64_t mMaxAtomReadTimeNs;
+        // Map of atom id to count for atoms logged more than kMaxLargeBatchReadAtomThreshold times.
+        std::unordered_map<int32_t, int32_t> mCommonAtomCounts;
+    };
+    // The max size of this list is kMaxSocketLossStatsSize.
+    std::list<LargeBatchSocketReadStats> mLargeBatchSocketReadStats;
+
     struct RestrictedMetricQueryStats {
         RestrictedMetricQueryStats(int32_t callingUid, int64_t configId,
                                    const string& configPackage, std::optional<int32_t> configUid,
@@ -1030,6 +1081,7 @@ private:
     FRIEND_TEST(StatsdStatsTest, TestAtomLoggedAndDroppedStats);
     FRIEND_TEST(StatsdStatsTest, TestAtomMetricsStats);
     FRIEND_TEST(StatsdStatsTest, TestAtomSkippedStats);
+    FRIEND_TEST(StatsdStatsTest, TestConfigMetadataProviderPromotionFailed);
     FRIEND_TEST(StatsdStatsTest, TestConfigRemove);
     FRIEND_TEST(StatsdStatsTest, TestHasHitDimensionGuardrail);
     FRIEND_TEST(StatsdStatsTest, TestInvalidConfigAdd);
@@ -1054,6 +1106,7 @@ private:
     FRIEND_TEST(StatsdStatsTest, TestSystemServerCrash);
     FRIEND_TEST(StatsdStatsTest, TestTimestampThreshold);
     FRIEND_TEST(StatsdStatsTest, TestValidConfigAdd);
+    FRIEND_TEST(StatsdStatsTest, TestSocketBatchReadStats);
 };
 
 InvalidConfigReason createInvalidConfigReasonWithMatcher(const InvalidConfigReasonEnum reason,

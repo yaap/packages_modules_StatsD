@@ -88,6 +88,7 @@ public:
         const sp<EventMatcherWizard>& matcherWizard;
         const FieldMatcher& dimensionsInWhat;
         const vector<Matcher>& fieldMatchers;
+        const vector<ValueMetric::AggregationType> aggregationTypes;
     };
 
     struct ConditionOptions {
@@ -138,7 +139,8 @@ protected:
                         const WhatOptions& whatOptions, const ConditionOptions& conditionOptions,
                         const StateOptions& stateOptions,
                         const ActivationOptions& activationOptions,
-                        const GuardrailOptions& guardrailOptions);
+                        const GuardrailOptions& guardrailOptions,
+                        const wp<ConfigMetadataProvider> configMetadataProvider);
 
     void onMatchedLogEventInternalLocked(
             const size_t matcherIndex, const MetricDimensionKey& eventKey,
@@ -229,6 +231,12 @@ protected:
             std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
             std::vector<int>& metricsWithActivation) override;
+
+    size_t computeValueBucketSizeLocked(const bool isFullBucket, const MetricDimensionKey& dimKey,
+                                        const bool isFirstBucket,
+                                        const PastBucket<AggregatedValue>& bucket) const;
+
+    virtual size_t getAggregatedValueSize(const AggregatedValue& value) const = 0;
 
     virtual optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
                                                       const int configIndex) const = 0;

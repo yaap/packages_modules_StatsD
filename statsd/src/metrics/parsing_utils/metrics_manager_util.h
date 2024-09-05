@@ -22,6 +22,7 @@
 
 #include "anomaly/AlarmTracker.h"
 #include "condition/ConditionTracker.h"
+#include "config/ConfigMetadataProvider.h"
 #include "external/StatsPullerManager.h"
 #include "matchers/AtomMatchingTracker.h"
 #include "metrics/MetricProducer.h"
@@ -111,8 +112,8 @@ optional<sp<MetricProducer>> createCountMetricProducerAndUpdateMetadata(
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation,
-        optional<InvalidConfigReason>& invalidConfigReason);
+        std::vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates a DurationMetricProducer and updates the vectors/maps used by MetricsManager with
 // the appropriate indices. Returns an sp to the producer, or nullopt if there was an error.
@@ -131,8 +132,8 @@ optional<sp<MetricProducer>> createDurationMetricProducerAndUpdateMetadata(
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation,
-        optional<InvalidConfigReason>& invalidConfigReason);
+        std::vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates an EventMetricProducer and updates the vectors/maps used by MetricsManager with
 // the appropriate indices. Returns an sp to the producer, or nullopt if there was an error.
@@ -149,8 +150,8 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation,
-        optional<InvalidConfigReason>& invalidConfigReason);
+        std::vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates a NumericValueMetricProducer and updates the vectors/maps used by MetricsManager with
 // the appropriate indices. Returns an sp to the producer, or nullopt if there was an error.
@@ -171,8 +172,8 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation,
-        optional<InvalidConfigReason>& invalidConfigReason);
+        std::vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates a GaugeMetricProducer and updates the vectors/maps used by MetricsManager with
 // the appropriate indices. Returns an sp to the producer, or nullopt if there was an error.
@@ -191,8 +192,8 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation,
-        optional<InvalidConfigReason>& invalidConfigReason);
+        std::vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates a KllMetricProducer and updates the vectors/maps used by MetricsManager with
 // the appropriate indices. Returns an sp to the producer, or nullopt if there was an error.
@@ -213,7 +214,8 @@ optional<sp<MetricProducer>> createKllMetricProducerAndUpdateMetadata(
         unordered_map<int, vector<int>>& conditionToMetricMap,
         unordered_map<int, vector<int>>& activationAtomTrackerToMetricMap,
         unordered_map<int, vector<int>>& deactivationAtomTrackerToMetricMap,
-        vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason);
+        vector<int>& metricsWithActivation, optional<InvalidConfigReason>& invalidConfigReason,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Creates an AnomalyTracker and adds it to the appropriate metric.
 // Returns an sp to the AnomalyTracker, or nullopt if there was an error.
@@ -353,7 +355,8 @@ optional<InvalidConfigReason> initMetrics(
         std::set<int64_t>& noReportMetricIds,
         std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
         std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
-        std::vector<int>& metricsWithActivation);
+        std::vector<int>& metricsWithActivation,
+        const wp<ConfigMetadataProvider> configMetadataProvider);
 
 // Initialize alarms
 // Is called both on initialize new configs and config updates since alarms do not have any state.
@@ -368,7 +371,7 @@ optional<InvalidConfigReason> initStatsdConfig(
         const ConfigKey& key, const StatsdConfig& config, const sp<UidMap>& uidMap,
         const sp<StatsPullerManager>& pullerManager, const sp<AlarmMonitor>& anomalyAlarmMonitor,
         const sp<AlarmMonitor>& periodicAlarmMonitor, int64_t timeBaseNs,
-        const int64_t currentTimeNs,
+        const int64_t currentTimeNs, const wp<ConfigMetadataProvider> configMetadataProvider,
         std::unordered_map<int, std::vector<int>>& allTagIdsToMatchersMap,
         std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
         std::unordered_map<int64_t, int>& atomMatchingTrackerMap,

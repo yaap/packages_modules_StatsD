@@ -100,7 +100,7 @@ public:
     }
 
 private:
-    std::atomic_bool mLogsFilteringEnabled = true;
+    std::atomic_bool mLogsFilteringEnabled = false;
     std::atomic_int mSetUpdateCounter;
     mutable int mLocalSetUpdateCounter;
 

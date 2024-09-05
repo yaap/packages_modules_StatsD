@@ -75,6 +75,7 @@ cc_defaults {
         "src/external/StatsPuller.cpp",
         "src/external/StatsPullerManager.cpp",
         "src/external/TrainInfoPuller.cpp",
+        "src/external/Uprobestats.cpp",
         "src/FieldValue.cpp",
         "src/flags/FlagProvider.cpp",
         "src/guardrail/StatsdStats.cpp",
@@ -149,6 +150,7 @@ cc_defaults {
         "libbinder_ndk",
         "libincident",
         "liblog",
+        "libstatssocket",
     ],
     header_libs: [
         "libgtest_prod_headers",
@@ -262,10 +264,6 @@ cc_binary {
     },
     stl: "libc++_static",
 
-    shared_libs: [
-        "libstatssocket",
-    ],
-
     apex_available: [
         "com.android.os.statsd",
         "test_com.android.os.statsd",
@@ -297,7 +295,6 @@ cc_defaults {
     static_libs: [
         "libgmock",
         "libstatslog_statsdtest",
-        "libstatssocket_private",
     ],
     proto: {
         type: "lite",
@@ -313,6 +310,7 @@ cc_library_static {
     name: "libstats_test_utils",
     defaults: ["statsd_test_defaults"],
     srcs: [
+        "tests/metrics/metrics_test_helper.cpp",
         "tests/statsd_test_util.cpp",
     ],
     tidy_timeout_srcs: [
@@ -431,13 +429,13 @@ cc_test {
         "tests/metrics/GaugeMetricProducer_test.cpp",
         "tests/metrics/KllMetricProducer_test.cpp",
         "tests/metrics/MaxDurationTracker_test.cpp",
-        "tests/metrics/metrics_test_helper.cpp",
         "tests/metrics/OringDurationTracker_test.cpp",
         "tests/metrics/NumericValueMetricProducer_test.cpp",
         "tests/metrics/RestrictedEventMetricProducer_test.cpp",
         "tests/metrics/parsing_utils/config_update_utils_test.cpp",
         "tests/metrics/parsing_utils/metrics_manager_util_test.cpp",
         "tests/subscriber/SubscriberReporter_test.cpp",
+        "tests/DataCorruptionReason_test.cpp",
         "tests/LogEventFilter_test.cpp",
         "tests/MetricsManager_test.cpp",
         "tests/shell/ShellSubscriber_test.cpp",
@@ -458,6 +456,7 @@ cc_test {
     ],
 
     min_sdk_version: "30",
+    test_for: ["com.android.os.statsd"],
 }
 
 //#############################
@@ -482,6 +481,7 @@ cc_benchmark {
         "benchmark/stats_write_benchmark.cpp",
         "benchmark/loss_info_container_benchmark.cpp",
         "benchmark/string_transform_benchmark.cpp",
+        "benchmark/value_metric_benchmark.cpp",
     ],
 
     cflags: [
@@ -493,6 +493,8 @@ cc_benchmark {
         "libgtest",
         "libstats_test_utils",
     ],
+
+    test_for: ["com.android.os.statsd"],
 }
 
 // ====  java proto device library (for test only)  ==============================
@@ -606,6 +608,35 @@ cc_fuzz {
     ],
     fuzz_config: {
         triage_assignee: "waghpawan@google.com",
+        cc: [
+            "singhtejinder@google.com",
+            "sharaienko@google.com",
+        ],
+    },
+    proto: {
+        type: "lite",
+        static: true,
+    },
+}
+
+cc_fuzz {
+    name: "statsd_fuzzer",
+    defaults: [
+        "statsd_defaults",
+    ],
+    srcs: [
+        "fuzzers/statsd_socket_data_fuzzer.cpp",
+    ],
+    shared_libs: [
+        "libstatssocket",
+    ],
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-parameter",
+    ],
+    fuzz_config: {
         cc: [
             "singhtejinder@google.com",
             "sharaienko@google.com",

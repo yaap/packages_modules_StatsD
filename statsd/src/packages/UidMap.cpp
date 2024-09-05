@@ -16,12 +16,14 @@
 #define STATSD_DEBUG false  // STOPSHIP if true
 #include "Log.h"
 
-#include "hash.h"
-#include "stats_log_util.h"
-#include "guardrail/StatsdStats.h"
 #include "packages/UidMap.h"
 
 #include <inttypes.h>
+#include <private/android_filesystem_config.h>
+
+#include "guardrail/StatsdStats.h"
+#include "hash.h"
+#include "stats_log_util.h"
 
 using namespace android;
 
@@ -40,6 +42,8 @@ using android::util::ProtoOutputStream;
 namespace android {
 namespace os {
 namespace statsd {
+
+namespace {
 
 const int FIELD_ID_SNAPSHOT_PACKAGE_NAME = 1;
 const int FIELD_ID_SNAPSHOT_PACKAGE_VERSION = 2;
@@ -69,6 +73,14 @@ const int FIELD_ID_CHANGE_NEW_VERSION_STRING = 8;
 const int FIELD_ID_CHANGE_PREV_VERSION_STRING = 9;
 const int FIELD_ID_CHANGE_NEW_VERSION_STRING_HASH = 10;
 const int FIELD_ID_CHANGE_PREV_VERSION_STRING_HASH = 11;
+
+inline bool omitUid(int32_t uid, bool omitSystemUids) {
+    // If omitSystemUids is true, uids for which (uid % AID_USER_OFFSET) is in [0, AID_APP_START)
+    // should be excluded.
+    return omitSystemUids && uid >= 0 && uid % AID_USER_OFFSET < AID_APP_START;
+}
+
+}  // namespace
 
 UidMap::UidMap() : mBytesUsed(0) {
 }
@@ -315,19 +327,20 @@ size_t UidMap::getBytesUsed() const {
 
 void UidMap::writeUidMapSnapshot(int64_t timestamp, bool includeVersionStrings,
                                  bool includeInstaller, const uint8_t truncatedCertificateHashSize,
-                                 const std::set<int32_t>& interestingUids,
+                                 bool omitSystemUids, const std::set<int32_t>& interestingUids,
                                  map<string, int>* installerIndices, std::set<string>* str_set,
                                  ProtoOutputStream* proto) const {
     lock_guard<mutex> lock(mMutex);
 
     writeUidMapSnapshotLocked(timestamp, includeVersionStrings, includeInstaller,
-                              truncatedCertificateHashSize, interestingUids, installerIndices,
-                              str_set, proto);
+                              truncatedCertificateHashSize, omitSystemUids, interestingUids,
+                              installerIndices, str_set, proto);
 }
 
 void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const bool includeVersionStrings,
                                        const bool includeInstaller,
                                        const uint8_t truncatedCertificateHashSize,
+                                       const bool omitSystemUids,
                                        const std::set<int32_t>& interestingUids,
                                        map<string, int>* installerIndices,
                                        std::set<string>* str_set, ProtoOutputStream* proto) const {
@@ -336,7 +349,8 @@ void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const bool inclu
     proto->write(FIELD_TYPE_INT64 | FIELD_ID_SNAPSHOT_TIMESTAMP, (long long)timestamp);
     for (const auto& [keyPair, appData] : mMap) {
         const auto& [uid, packageName] = keyPair;
-        if (!interestingUids.empty() && interestingUids.find(uid) == interestingUids.end()) {
+        if (omitUid(uid, omitSystemUids) ||
+            (!interestingUids.empty() && interestingUids.find(uid) == interestingUids.end())) {
             continue;
         }
         uint64_t token = proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
@@ -410,45 +424,47 @@ void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const bool inclu
 
 void UidMap::appendUidMap(const int64_t timestamp, const ConfigKey& key,
                           const bool includeVersionStrings, const bool includeInstaller,
-                          const uint8_t truncatedCertificateHashSize, std::set<string>* str_set,
-                          ProtoOutputStream* proto) {
+                          const uint8_t truncatedCertificateHashSize, const bool omitSystemUids,
+                          std::set<string>* str_set, ProtoOutputStream* proto) {
     lock_guard<mutex> lock(mMutex);  // Lock for updates
 
     for (const ChangeRecord& record : mChanges) {
-        if (record.timestampNs > mLastUpdatePerConfigKey[key]) {
-            uint64_t changesToken =
-                    proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_CHANGES);
-            proto->write(FIELD_TYPE_BOOL | FIELD_ID_CHANGE_DELETION, (bool)record.deletion);
-            proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_TIMESTAMP,
-                         (long long)record.timestampNs);
-            if (str_set != nullptr) {
-                str_set->insert(record.package);
-                proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_PACKAGE_HASH,
-                             (long long)Hash64(record.package));
-                if (includeVersionStrings) {
-                    str_set->insert(record.versionString);
-                    proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_NEW_VERSION_STRING_HASH,
-                                 (long long)Hash64(record.versionString));
-                    str_set->insert(record.prevVersionString);
-                    proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_PREV_VERSION_STRING_HASH,
-                                 (long long)Hash64(record.prevVersionString));
-                }
-            } else {
-                proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_PACKAGE, record.package);
-                if (includeVersionStrings) {
-                    proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_NEW_VERSION_STRING,
-                                 record.versionString);
-                    proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_PREV_VERSION_STRING,
-                                 record.prevVersionString);
-                }
-            }
-
-            proto->write(FIELD_TYPE_INT32 | FIELD_ID_CHANGE_UID, (int)record.uid);
-            proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_NEW_VERSION, (long long)record.version);
-            proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_PREV_VERSION,
-                         (long long)record.prevVersion);
-            proto->end(changesToken);
+        if (omitUid(record.uid, omitSystemUids) ||
+            record.timestampNs <= mLastUpdatePerConfigKey[key]) {
+            continue;
         }
+
+        uint64_t changesToken =
+                proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_CHANGES);
+        proto->write(FIELD_TYPE_BOOL | FIELD_ID_CHANGE_DELETION, (bool)record.deletion);
+        proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_TIMESTAMP, (long long)record.timestampNs);
+        if (str_set != nullptr) {
+            str_set->insert(record.package);
+            proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_PACKAGE_HASH,
+                         (long long)Hash64(record.package));
+            if (includeVersionStrings) {
+                str_set->insert(record.versionString);
+                proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_NEW_VERSION_STRING_HASH,
+                             (long long)Hash64(record.versionString));
+                str_set->insert(record.prevVersionString);
+                proto->write(FIELD_TYPE_UINT64 | FIELD_ID_CHANGE_PREV_VERSION_STRING_HASH,
+                             (long long)Hash64(record.prevVersionString));
+            }
+        } else {
+            proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_PACKAGE, record.package);
+            if (includeVersionStrings) {
+                proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_NEW_VERSION_STRING,
+                             record.versionString);
+                proto->write(FIELD_TYPE_STRING | FIELD_ID_CHANGE_PREV_VERSION_STRING,
+                             record.prevVersionString);
+            }
+        }
+
+        proto->write(FIELD_TYPE_INT32 | FIELD_ID_CHANGE_UID, (int)record.uid);
+        proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_NEW_VERSION, (long long)record.version);
+        proto->write(FIELD_TYPE_INT64 | FIELD_ID_CHANGE_PREV_VERSION,
+                     (long long)record.prevVersion);
+        proto->end(changesToken);
     }
 
     map<string, int> installerIndices;
@@ -457,7 +473,7 @@ void UidMap::appendUidMap(const int64_t timestamp, const ConfigKey& key,
     uint64_t snapshotsToken =
             proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_SNAPSHOTS);
     writeUidMapSnapshotLocked(timestamp, includeVersionStrings, includeInstaller,
-                              truncatedCertificateHashSize,
+                              truncatedCertificateHashSize, omitSystemUids,
                               std::set<int32_t>() /*empty uid set means including every uid*/,
                               &installerIndices, str_set, proto);
     proto->end(snapshotsToken);
@@ -638,6 +654,7 @@ const std::map<string, uint32_t> UidMap::sAidToUidMapping = {{"AID_ROOT", 0},
                                                              {"AID_SDK_SANDBOX", 1090},
                                                              {"AID_SECURITY_LOG_WRITER", 1091},
                                                              {"AID_PRNG_SEEDER", 1092},
+                                                             {"AID_UPROBESTATS", 1093},
                                                              {"AID_SHELL", 2000},
                                                              {"AID_CACHE", 2001},
                                                              {"AID_DIAG", 2002},

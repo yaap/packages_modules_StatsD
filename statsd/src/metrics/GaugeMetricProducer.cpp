@@ -50,6 +50,7 @@ const int FIELD_ID_BUCKET_SIZE = 10;
 const int FIELD_ID_DIMENSION_PATH_IN_WHAT = 11;
 const int FIELD_ID_IS_ACTIVE = 14;
 const int FIELD_ID_DIMENSION_GUARDRAIL_HIT = 17;
+const int FIELD_ID_ESTIMATED_MEMORY_BYTES = 18;
 // for GaugeMetricDataWrapper
 const int FIELD_ID_DATA = 1;
 const int FIELD_ID_SKIPPED = 2;
@@ -80,12 +81,14 @@ GaugeMetricProducer::GaugeMetricProducer(
         const sp<EventMatcherWizard>& matcherWizard, const int pullTagId, const int triggerAtomId,
         const int atomId, const int64_t timeBaseNs, const int64_t startTimeNs,
         const sp<StatsPullerManager>& pullerManager,
+        const wp<ConfigMetadataProvider> configMetadataProvider,
         const unordered_map<int, shared_ptr<Activation>>& eventActivationMap,
         const unordered_map<int, vector<shared_ptr<Activation>>>& eventDeactivationMap,
         const size_t dimensionSoftLimit, const size_t dimensionHardLimit)
     : MetricProducer(metric.id(), key, timeBaseNs, conditionIndex, initialConditionCache, wizard,
                      protoHash, eventActivationMap, eventDeactivationMap, /*slicedStateAtoms=*/{},
-                     /*stateGroupMap=*/{}, getAppUpgradeBucketSplit(metric)),
+                     /*stateGroupMap=*/{}, getAppUpgradeBucketSplit(metric),
+                     configMetadataProvider),
       mWhatMatcherIndex(whatMatcherIndex),
       mEventMatcherWizard(matcherWizard),
       mPullerManager(pullerManager),
@@ -101,7 +104,8 @@ GaugeMetricProducer::GaugeMetricProducer(
       mDimensionHardLimit(dimensionHardLimit),
       mGaugeAtomsPerDimensionLimit(metric.max_num_gauge_atoms_per_bucket()),
       mDimensionGuardrailHit(false),
-      mSamplingPercentage(metric.sampling_percentage()) {
+      mSamplingPercentage(metric.sampling_percentage()),
+      mPullProbability(metric.pull_probability()) {
     mCurrentSlicedBucket = std::make_shared<DimToGaugeAtomsMap>();
     mCurrentSlicedBucketForAnomaly = std::make_shared<DimToValMap>();
     int64_t bucketSizeMills = 0;
@@ -240,6 +244,7 @@ void GaugeMetricProducer::clearPastBucketsLocked(const int64_t dumpTimeNs) {
     flushIfNeededLocked(dumpTimeNs);
     mPastBuckets.clear();
     mSkippedBuckets.clear();
+    mTotalDataSize = 0;
 }
 
 void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
@@ -261,6 +266,9 @@ void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
     if (mPastBuckets.empty() && mSkippedBuckets.empty()) {
         return;
     }
+
+    protoOutput->write(FIELD_TYPE_INT64 | FIELD_ID_ESTIMATED_MEMORY_BYTES,
+                       (long long)byteSizeLocked());
 
     if (mDimensionGuardrailHit) {
         protoOutput->write(FIELD_TYPE_BOOL | FIELD_ID_DIMENSION_GUARDRAIL_HIT,
@@ -367,6 +375,7 @@ void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
         mPastBuckets.clear();
         mSkippedBuckets.clear();
         mDimensionGuardrailHit = false;
+        mTotalDataSize = 0;
     }
 }
 
@@ -394,7 +403,7 @@ void GaugeMetricProducer::pullAndMatchEventsLocked(const int64_t timestampNs) {
         default:
             break;
     }
-    if (!triggerPuller) {
+    if (!triggerPuller || !shouldKeepRandomSample(mPullProbability)) {
         return;
     }
     vector<std::shared_ptr<LogEvent>> allData;
@@ -620,6 +629,7 @@ void GaugeMetricProducer::dropDataLocked(const int64_t dropTimeNs) {
     flushIfNeededLocked(dropTimeNs);
     StatsdStats::getInstance().noteBucketDropped(mMetricId);
     mPastBuckets.clear();
+    mTotalDataSize = 0;
 }
 
 // When a new matched event comes in, we check if event falls into the current
@@ -667,7 +677,11 @@ void GaugeMetricProducer::flushCurrentBucketLocked(const int64_t eventTimeNs,
                 elapsedTimestampsNs.push_back(atom.mElapsedTimestampNs);
             }
             auto& bucketList = mPastBuckets[slice.first];
+            const bool isFirstBucket = bucketList.empty();
             bucketList.push_back(info);
+            mTotalDataSize += computeGaugeBucketSizeLocked(eventTimeNs >= fullBucketEndTimeNs,
+                                                           /*dimKey=*/slice.first, isFirstBucket,
+                                                           info.mAggregatedAtoms);
             VLOG("Gauge gauge metric %lld, dump key value: %s", (long long)mMetricId,
                  slice.first.toString().c_str());
         }
@@ -679,6 +693,7 @@ void GaugeMetricProducer::flushCurrentBucketLocked(const int64_t eventTimeNs,
                     buildDropEvent(eventTimeNs, BucketDropReason::BUCKET_TOO_SMALL));
         }
         mSkippedBuckets.emplace_back(mCurrentSkippedBucket);
+        mTotalDataSize += computeSkippedBucketSizeLocked(mCurrentSkippedBucket);
     }
 
     // If we have anomaly trackers, we need to update the partial bucket values.
@@ -702,7 +717,29 @@ void GaugeMetricProducer::flushCurrentBucketLocked(const int64_t eventTimeNs,
     mHasHitGuardrail = false;
 }
 
+// Estimate for the size of a GaugeBucket.
+size_t GaugeMetricProducer::computeGaugeBucketSizeLocked(
+        const bool isFullBucket, const MetricDimensionKey& dimKey, const bool isFirstBucket,
+        const std::unordered_map<AtomDimensionKey, std::vector<int64_t>>& aggregatedAtoms) const {
+    size_t bucketSize =
+            MetricProducer::computeBucketSizeLocked(isFullBucket, dimKey, isFirstBucket);
+
+    // Gauge Atoms and timestamps
+    for (const auto& pair : aggregatedAtoms) {
+        bucketSize += getFieldValuesSizeV2(pair.first.getAtomFieldValues().getValues());
+        bucketSize += sizeof(int64_t) * pair.second.size();
+    }
+
+    return bucketSize;
+}
+
 size_t GaugeMetricProducer::byteSizeLocked() const {
+    sp<ConfigMetadataProvider> configMetadataProvider = getConfigMetadataProvider();
+    if (configMetadataProvider != nullptr && configMetadataProvider->useV2SoftMemoryCalculation()) {
+        return computeOverheadSizeLocked(!mPastBuckets.empty() || !mSkippedBuckets.empty(),
+                                         mDimensionGuardrailHit) +
+               mTotalDataSize;
+    }
     size_t totalSize = 0;
     for (const auto& pair : mPastBuckets) {
         for (const auto& bucket : pair.second) {

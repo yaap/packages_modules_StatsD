@@ -77,20 +77,6 @@ cc_library_headers {
     export_include_dirs: ["include"],
 }
 
-// ONLY USE IN TESTS.
-cc_library_static {
-    name: "libstatspull_private",
-    defaults: [
-        "libstatspull_defaults",
-    ],
-    cflags: [
-        "-DLIB_STATS_PULL_TESTS_FLAG",
-    ],
-    visibility: [
-        "//packages/modules/StatsD/apex/tests/libstatspull",
-    ],
-}
-
 // Note: These unit tests only test PullAtomMetadata and subscriptions
 // For full E2E tests of pullers, use LibStatsPullTests
 cc_test {
@@ -152,4 +138,5 @@ cc_test {
     ],
     require_root: true,
     min_sdk_version: "30",
+    test_for: ["com.android.os.statsd"],
 }

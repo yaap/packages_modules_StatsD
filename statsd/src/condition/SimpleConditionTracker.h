@@ -81,9 +81,13 @@ public:
         return &mSlicedConditionState;
     }
 
-    bool IsChangedDimensionTrackable() const  override { return true; }
+    bool IsChangedDimensionTrackable() const override {
+        return true;
+    }
 
-    bool IsSimpleCondition() const  override { return true; }
+    bool IsSimpleCondition() const override {
+        return true;
+    }
 
     bool equalOutputDimensions(
         const std::vector<sp<ConditionTracker>>& allConditions,

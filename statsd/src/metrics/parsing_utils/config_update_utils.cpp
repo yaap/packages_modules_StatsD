@@ -730,6 +730,7 @@ optional<InvalidConfigReason> updateMetrics(
         const unordered_map<int64_t, unordered_map<int, int64_t>>& allStateGroupMaps,
         const set<int64_t>& replacedStates, const unordered_map<int64_t, int>& oldMetricProducerMap,
         const vector<sp<MetricProducer>>& oldMetricProducers,
+        const wp<ConfigMetadataProvider> configMetadataProvider,
         unordered_map<int64_t, int>& newMetricProducerMap,
         vector<sp<MetricProducer>>& newMetricProducers,
         unordered_map<int, vector<int>>& conditionToMetricMap,
@@ -802,7 +803,7 @@ optional<InvalidConfigReason> updateMetrics(
                         allStateGroupMaps, metricToActivationMap, trackerToMetricMap,
                         conditionToMetricMap, activationAtomTrackerToMetricMap,
                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                        invalidConfigReason);
+                        invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -844,7 +845,7 @@ optional<InvalidConfigReason> updateMetrics(
                         allStateGroupMaps, metricToActivationMap, trackerToMetricMap,
                         conditionToMetricMap, activationAtomTrackerToMetricMap,
                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                        invalidConfigReason);
+                        invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -885,7 +886,7 @@ optional<InvalidConfigReason> updateMetrics(
                         initialConditionCache, wizard, metricToActivationMap, trackerToMetricMap,
                         conditionToMetricMap, activationAtomTrackerToMetricMap,
                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                        invalidConfigReason);
+                        invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -928,7 +929,7 @@ optional<InvalidConfigReason> updateMetrics(
                         stateAtomIdMap, allStateGroupMaps, metricToActivationMap,
                         trackerToMetricMap, conditionToMetricMap, activationAtomTrackerToMetricMap,
                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                        invalidConfigReason);
+                        invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -970,7 +971,7 @@ optional<InvalidConfigReason> updateMetrics(
                         conditionTrackerMap, initialConditionCache, wizard, matcherWizard,
                         metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
                         activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
-                        metricsWithActivation, invalidConfigReason);
+                        metricsWithActivation, invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -1014,7 +1015,7 @@ optional<InvalidConfigReason> updateMetrics(
                         stateAtomIdMap, allStateGroupMaps, metricToActivationMap,
                         trackerToMetricMap, conditionToMetricMap, activationAtomTrackerToMetricMap,
                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                        invalidConfigReason);
+                        invalidConfigReason, configMetadataProvider);
                 break;
             }
             default: {
@@ -1207,6 +1208,7 @@ optional<InvalidConfigReason> updateStatsdConfig(
         const vector<sp<AnomalyTracker>>& oldAnomalyTrackers,
         const unordered_map<int64_t, int>& oldAlertTrackerMap,
         const map<int64_t, uint64_t>& oldStateProtoHashes,
+        const wp<ConfigMetadataProvider> configMetadataProvider,
         std::unordered_map<int, std::vector<int>>& allTagIdsToMatchersMap,
         vector<sp<AtomMatchingTracker>>& newAtomMatchingTrackers,
         unordered_map<int64_t, int>& newAtomMatchingTrackerMap,
@@ -1268,9 +1270,10 @@ optional<InvalidConfigReason> updateStatsdConfig(
             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
             newConditionTrackerMap, replacedConditions, newConditionTrackers, conditionCache,
             stateAtomIdMap, allStateGroupMaps, replacedStates, oldMetricProducerMap,
-            oldMetricProducers, newMetricProducerMap, newMetricProducers, conditionToMetricMap,
-            trackerToMetricMap, noReportMetricIds, activationTrackerToMetricMap,
-            deactivationTrackerToMetricMap, metricsWithActivation, replacedMetrics);
+            oldMetricProducers, configMetadataProvider, newMetricProducerMap, newMetricProducers,
+            conditionToMetricMap, trackerToMetricMap, noReportMetricIds,
+            activationTrackerToMetricMap, deactivationTrackerToMetricMap, metricsWithActivation,
+            replacedMetrics);
     if (invalidConfigReason.has_value()) {
         ALOGE("updateMetrics failed");
         return invalidConfigReason;

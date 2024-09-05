@@ -28,6 +28,7 @@
 #include "utils.h"
 
 BufferWriterQueue::BufferWriterQueue() : mWorkThread(&BufferWriterQueue::processCommands, this) {
+    pthread_setname_np(mWorkThread.native_handle(), "socket_writer_queue");
 }
 
 BufferWriterQueue::~BufferWriterQueue() {

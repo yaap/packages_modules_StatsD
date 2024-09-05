@@ -327,7 +327,7 @@ TEST_F(DbUtilsTest, TestInsertStringIntegrityCheckFails) {
     string err;
     EXPECT_TRUE(insert(key, metricId, events, err));
 
-    vector<string> randomData{"1232hasha14125ashfas21512sh31321"};
+    string randomData("1232hasha14125ashfas21512sh31321");
     string fileName = StringPrintf("%s/%d_%lld.db", STATS_RESTRICTED_DATA_DIR, key.GetUid(),
                                    (long long)key.GetId());
     StorageManager::writeFile(fileName.c_str(), randomData.data(), randomData.size());

@@ -41,7 +41,7 @@ const set<HashableDimensionKey>* ConditionWizard::getChangedToFalseDimensions(
     return mAllConditions[index]->getChangedToFalseDimensions(mAllConditions);
 }
 
-bool ConditionWizard::IsChangedDimensionTrackable(const int index) {
+bool ConditionWizard::IsChangedDimensionTrackable(const int index) const {
     if (index >= 0 && index < (int)mAllConditions.size()) {
         return mAllConditions[index]->IsChangedDimensionTrackable();
     } else {
@@ -49,7 +49,7 @@ bool ConditionWizard::IsChangedDimensionTrackable(const int index) {
     }
 }
 
-bool ConditionWizard::IsSimpleCondition(const int index) {
+bool ConditionWizard::IsSimpleCondition(const int index) const {
     if (index >= 0 && index < (int)mAllConditions.size()) {
         return mAllConditions[index]->IsSimpleCondition();
     } else {
@@ -57,7 +57,8 @@ bool ConditionWizard::IsSimpleCondition(const int index) {
     }
 }
 
-bool ConditionWizard::equalOutputDimensions(const int index, const vector<Matcher>& dimensions) {
+bool ConditionWizard::equalOutputDimensions(const int index,
+                                            const vector<Matcher>& dimensions) const {
     if (index >= 0 && index < (int)mAllConditions.size()) {
         return mAllConditions[index]->equalOutputDimensions(mAllConditions, dimensions);
     } else {

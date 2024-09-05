@@ -18,11 +18,12 @@ package android.cts.statsd.apex;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.cts.statsd.atom.BaseTestCase;
 import com.android.apex.ApexInfo;
 import com.android.apex.XmlParser;
 import com.android.compatibility.common.util.ApiLevelUtil;
 import com.android.tradefed.log.LogUtil;
+import com.android.tradefed.testtype.DeviceTestCase;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.List;
@@ -30,7 +31,7 @@ import java.util.List;
 /**
  * Verify statsd is not in the bootstrap apexes
  */
-public class BootstrapApexTests extends BaseTestCase {
+public class BootstrapApexTests extends DeviceTestCase {
     private static final String TAG = "Statsd.BootstrapApexTests";
 
     // Constants for the paths to apex-info-list.xml
@@ -38,6 +39,7 @@ public class BootstrapApexTests extends BaseTestCase {
     private static final String BOOTSTRAP_APEX_FILE1 = "/bootstrap-apex/apex-info-list.xml";
     // - legacy location
     private static final String BOOTSTRAP_APEX_FILE2 = "/apex/.bootstrap-apex-info-list.xml";
+
 
     private boolean sdkLevelAtLeast(int sdkLevel, String codename) throws Exception {
         return ApiLevelUtil.isAtLeast(getDevice(), sdkLevel)

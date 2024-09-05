@@ -17,7 +17,12 @@ package android.cts.statsd.uidmap;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.cts.statsd.atom.DeviceAtomTestCase;
+import android.cts.statsd.metric.MetricsUtils;
+import android.cts.statsdatom.lib.AtomTestUtils;
+import android.cts.statsdatom.lib.ConfigUtils;
+import android.cts.statsdatom.lib.DeviceUtils;
+import android.cts.statsdatom.lib.ReportUtils;
+
 import com.android.compatibility.common.tradefed.build.CompatibilityBuildHelper;
 import com.android.internal.os.StatsdConfigProto;
 import com.android.os.AtomsProto;
@@ -25,18 +30,54 @@ import com.android.os.StatsLog.ConfigMetricsReportList;
 import com.android.os.StatsLog.ConfigMetricsReport;
 import com.android.os.StatsLog.UidMapping;
 import com.android.os.StatsLog.UidMapping.PackageInfoSnapshot;
+import com.android.tradefed.build.IBuildInfo;
 import com.android.tradefed.log.LogUtil;
+import com.android.tradefed.testtype.DeviceTestCase;
+import com.android.tradefed.testtype.IBuildReceiver;
+import com.android.tradefed.util.RunUtil;
 
-import java.util.List;
+import com.google.protobuf.ExtensionRegistry;
 
-public class UidMapTests extends DeviceAtomTestCase {
+public class UidMapTests extends DeviceTestCase implements IBuildReceiver {
+
+    private static final long DEVICE_SIDE_TEST_PKG_HASH =
+            Long.parseUnsignedLong("15694052924544098582");
+
+    private IBuildInfo mCtsBuild;
+
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        assertThat(mCtsBuild).isNotNull();
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.installTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_APK,
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, mCtsBuild);
+        RunUtil.getDefault().sleep(1000);
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.uninstallTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        super.tearDown();
+    }
+
+    @Override
+    public void setBuild(IBuildInfo buildInfo) {
+        mCtsBuild = buildInfo;
+    }
 
     // Tests that every report has at least one snapshot.
     public void testUidSnapshotIncluded() throws Exception {
         // There should be at least the test app installed during the test setup.
-        createAndUploadConfig(AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
+        ConfigUtils.uploadConfigForPushedAtom(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
+                AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
 
-        ConfigMetricsReportList reports = getReportList();
+        ConfigMetricsReportList reports = ReportUtils.getReportList(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(reports.getReportsCount()).isGreaterThan(0);
 
         for (ConfigMetricsReport report : reports.getReportsList()) {
@@ -64,21 +105,24 @@ public class UidMapTests extends DeviceAtomTestCase {
 
     // Tests that delta event included during app installation.
     public void testChangeFromInstallation() throws Exception {
-        getDevice().uninstallPackage(DEVICE_SIDE_TEST_PACKAGE);
-        createAndUploadConfig(AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
+        getDevice().uninstallPackage(MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        ConfigUtils.uploadConfigForPushedAtom(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
+                AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
         // Install the package after the config is sent to statsd. The uid map is not guaranteed to
         // be updated if there's no config in statsd.
         CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(mCtsBuild);
         final String result = getDevice().installPackage(
-                buildHelper.getTestFile(DEVICE_SIDE_TEST_APK), false, true);
+                buildHelper.getTestFile(MetricsUtils.DEVICE_SIDE_TEST_APK), false, true);
 
-        Thread.sleep(WAIT_TIME_LONG);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_LONG);
 
-        ConfigMetricsReportList reports = getReportList();
+        ConfigMetricsReportList reports = ReportUtils.getReportList(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(reports.getReportsCount()).isGreaterThan(0);
 
         boolean found = false;
-        int uid = getUid();
+        int uid = DeviceUtils.getAppUid(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
         for (ConfigMetricsReport report : reports.getReportsList()) {
             LogUtil.CLog.d("Got the following report: \n" + report.toString());
             if (hasMatchingChange(report.getUidMap(), uid, false)) {
@@ -91,18 +135,23 @@ public class UidMapTests extends DeviceAtomTestCase {
     // We check that a re-installation gives a change event (similar to an app upgrade).
     public void testChangeFromReinstall() throws Exception {
         CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(mCtsBuild);
-        getDevice().installPackage(buildHelper.getTestFile(DEVICE_SIDE_TEST_APK), false, true);
-        createAndUploadConfig(AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
+        getDevice().installPackage(buildHelper.getTestFile(MetricsUtils.DEVICE_SIDE_TEST_APK),
+                false, true);
+        ConfigUtils.uploadConfigForPushedAtom(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
+                AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
         // Now enable re-installation.
-        getDevice().installPackage(buildHelper.getTestFile(DEVICE_SIDE_TEST_APK), true, true);
+        getDevice().installPackage(buildHelper.getTestFile(MetricsUtils.DEVICE_SIDE_TEST_APK), true,
+                true);
 
-        Thread.sleep(WAIT_TIME_LONG);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_LONG);
 
-        ConfigMetricsReportList reports = getReportList();
+        ConfigMetricsReportList reports = ReportUtils.getReportList(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(reports.getReportsCount()).isGreaterThan(0);
 
         boolean found = false;
-        int uid = getUid();
+        int uid = DeviceUtils.getAppUid(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
         for (ConfigMetricsReport report : reports.getReportsList()) {
             LogUtil.CLog.d("Got the following report: \n" + report.toString());
             if (hasMatchingChange(report.getUidMap(), uid, false)) {
@@ -114,14 +163,19 @@ public class UidMapTests extends DeviceAtomTestCase {
 
     public void testChangeFromUninstall() throws Exception {
         CompatibilityBuildHelper buildHelper = new CompatibilityBuildHelper(mCtsBuild);
-        getDevice().installPackage(buildHelper.getTestFile(DEVICE_SIDE_TEST_APK), true, true);
-        createAndUploadConfig(AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
-        int uid = getUid();
-        getDevice().uninstallPackage(DEVICE_SIDE_TEST_PACKAGE);
+        getDevice().installPackage(buildHelper.getTestFile(MetricsUtils.DEVICE_SIDE_TEST_APK), true,
+                true);
 
-        Thread.sleep(WAIT_TIME_LONG);
+        ConfigUtils.uploadConfigForPushedAtom(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
+                AtomsProto.Atom.UID_PROCESS_STATE_CHANGED_FIELD_NUMBER);
+        int uid = DeviceUtils.getAppUid(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        getDevice().uninstallPackage(MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
 
-        ConfigMetricsReportList reports = getReportList();
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_LONG);
+
+        ConfigMetricsReportList reports = ReportUtils.getReportList(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(reports.getReportsCount()).isGreaterThan(0);
 
         boolean found = false;

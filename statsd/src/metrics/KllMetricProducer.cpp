@@ -58,9 +58,11 @@ KllMetricProducer::KllMetricProducer(const ConfigKey& key, const KllMetric& metr
                                      const ConditionOptions& conditionOptions,
                                      const StateOptions& stateOptions,
                                      const ActivationOptions& activationOptions,
-                                     const GuardrailOptions& guardrailOptions)
+                                     const GuardrailOptions& guardrailOptions,
+                                     const wp<ConfigMetadataProvider> configMetadataProvider)
     : ValueMetricProducer(metric.id(), key, protoHash, pullOptions, bucketOptions, whatOptions,
-                          conditionOptions, stateOptions, activationOptions, guardrailOptions) {
+                          conditionOptions, stateOptions, activationOptions, guardrailOptions,
+                          configMetadataProvider) {
 }
 
 KllMetricProducer::DumpProtoFields KllMetricProducer::getDumpProtoFields() const {
@@ -151,7 +153,26 @@ PastBucket<unique_ptr<KllQuantile>> KllMetricProducer::buildPartialBucket(
     return bucket;
 }
 
+// Estimate for the size of NumericValues.
+size_t KllMetricProducer::getAggregatedValueSize(const std::unique_ptr<KllQuantile>& kll) const {
+    size_t valueSize = 0;
+    // Index
+    valueSize += sizeof(int32_t);
+
+    // Value
+    valueSize += kll->SerializeToProto().ByteSizeLong();
+
+    return valueSize;
+}
+
 size_t KllMetricProducer::byteSizeLocked() const {
+    sp<ConfigMetadataProvider> configMetadataProvider = getConfigMetadataProvider();
+    if (configMetadataProvider != nullptr && configMetadataProvider->useV2SoftMemoryCalculation()) {
+        bool dimensionGuardrailHit = StatsdStats::getInstance().hasHitDimensionGuardrail(mMetricId);
+        return computeOverheadSizeLocked(!mPastBuckets.empty() || !mSkippedBuckets.empty(),
+                                         dimensionGuardrailHit) +
+               mTotalDataSize;
+    }
     size_t totalSize = 0;
     for (const auto& [_, buckets] : mPastBuckets) {
         totalSize += buckets.size() * kBucketSize;

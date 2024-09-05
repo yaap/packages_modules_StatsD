@@ -63,6 +63,7 @@ const int FIELD_ID_STATSD_STATS_ID = 22;
 const int FIELD_ID_SUBSCRIPTION_STATS = 23;
 const int FIELD_ID_SOCKET_LOSS_STATS = 24;
 const int FIELD_ID_QUEUE_STATS = 25;
+const int FIELD_ID_SOCKET_READ_STATS = 26;
 
 const int FIELD_ID_RESTRICTED_METRIC_QUERY_STATS_CALLING_UID = 1;
 const int FIELD_ID_RESTRICTED_METRIC_QUERY_STATS_CONFIG_ID = 2;
@@ -136,6 +137,7 @@ const int FIELD_ID_DB_DELETION_CONFIG_INVALID = 34;
 const int FIELD_ID_DB_DELETION_TOO_OLD = 35;
 const int FIELD_ID_DB_DELETION_CONFIG_REMOVED = 36;
 const int FIELD_ID_DB_DELETION_CONFIG_UPDATED = 37;
+const int FIELD_ID_CONFIG_METADATA_PROVIDER_PROMOTION_FAILED = 38;
 
 const int FIELD_ID_INVALID_CONFIG_REASON_ENUM = 1;
 const int FIELD_ID_INVALID_CONFIG_REASON_METRIC_ID = 2;
@@ -200,13 +202,30 @@ const int FIELD_ID_PER_SUBSCRIPTION_STATS_START_TIME = 4;
 const int FIELD_ID_PER_SUBSCRIPTION_STATS_END_TIME = 5;
 const int FIELD_ID_PER_SUBSCRIPTION_STATS_FLUSH_COUNT = 6;
 
+// Socket read stats
+const int FIELD_ID_SOCKET_READ_STATS_BATCHED_READ_SIZE = 1;
+const int FIELD_ID_SOCKET_READ_STATS_LARGE_BATCH_STATS = 2;
+
+// Large socket batch stats
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_LAST_READ_TIME = 1;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_CURR_READ_TIME = 2;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_MIN_ATOM_TIME = 3;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_MAX_ATOM_TIME = 4;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_TOTAL_ATOMS = 5;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS = 6;
+
+// Large batch socket read atom stats
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS_ATOM_ID = 1;
+const int FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS_COUNT = 2;
+
 const std::map<int, std::pair<size_t, size_t>> StatsdStats::kAtomDimensionKeySizeLimitMap = {
         {util::BINDER_CALLS, {6000, 10000}},
         {util::LOOPER_STATS, {1500, 2500}},
         {util::CPU_TIME_PER_UID_FREQ, {6000, 10000}},
 };
 
-StatsdStats::StatsdStats() : mStatsdStatsId(rand()) {
+StatsdStats::StatsdStats()
+    : mStatsdStatsId(rand()), mSocketBatchReadHistogram(kNumBinsInSocketBatchReadHistogram) {
     mPushedAtomStats.resize(kMaxPushedAtomId + 1);
     mStartTimeSec = getWallClockSec();
 }
@@ -292,6 +311,50 @@ void StatsdStats::noteLogLost(int32_t wallClockTimeSec, int32_t count, int32_t l
     mLogLossStats.emplace_back(wallClockTimeSec, count, lastError, lastTag, uid, pid);
 }
 
+void StatsdStats::noteBatchSocketRead(int32_t size, int64_t lastReadTimeNs, int64_t currReadTimeNs,
+                                      int64_t minAtomReadTimeNs, int64_t maxAtomReadTimeNs,
+                                      const unordered_map<int32_t, int32_t>& atomCounts) {
+    // Calculate the bin.
+    int bin = 0;
+    if (size < 0) {
+        ALOGE("Unexpected negative size read from socket. This should never happen");
+        bin = 0;
+    } else if (size < 5) {
+        bin = size;  // bin = [0,4].
+    } else if (size < 10) {
+        bin = 4 + (size / 5);  // bin = 5.
+    } else if (size < 100) {
+        bin = 5 + (size / 10);  // bin = [6,14].
+    } else if (size < 1000) {
+        bin = 14 + (size / 100);  // bin = [15-23].
+    } else if (size < 2000) {
+        bin = 19 + (size / 200);  // bin = [24-28].
+    } else {                      // 2000+
+        bin = 29;
+    }
+    lock_guard<std::mutex> lock(mLock);
+    mSocketBatchReadHistogram[bin] += 1;
+
+    // More detailed stats for large batches.
+    if (size >= kLargeBatchReadThreshold) {
+        // make a local copy and filter the map to atoms that pass the threshold
+        unordered_map<int32_t, int32_t> localAtomCounts = atomCounts;
+        for (auto it = localAtomCounts.begin(); it != localAtomCounts.end();) {
+            if (it->second < kMaxLargeBatchReadAtomThreshold) {
+                it = localAtomCounts.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        // Add to list.
+        if (mLargeBatchSocketReadStats.size() == kMaxLargeBatchReadSize) {
+            mLargeBatchSocketReadStats.pop_front();
+        }
+        mLargeBatchSocketReadStats.emplace_back(size, lastReadTimeNs, currReadTimeNs,
+                                                minAtomReadTimeNs, maxAtomReadTimeNs,
+                                                localAtomCounts);
+    }
+}
 void StatsdStats::noteBroadcastSent(const ConfigKey& key) {
     noteBroadcastSent(key, getWallClockSec());
 }
@@ -351,7 +414,7 @@ void StatsdStats::noteEventQueueOverflow(int64_t oldestEventTimestampNs, int32_t
 
     mOverflowCount++;
 
-    int64_t history = getElapsedRealtimeNs() - oldestEventTimestampNs;
+    const int64_t history = getElapsedRealtimeNs() - oldestEventTimestampNs;
 
     if (history > mMaxQueueHistoryNs) {
         mMaxQueueHistoryNs = history;
@@ -523,6 +586,16 @@ void StatsdStats::noteDbDeletionConfigUpdated(const ConfigKey& key) {
         return;
     }
     it->second->db_deletion_config_updated++;
+}
+
+void StatsdStats::noteConfigMetadataProviderPromotionFailed(const ConfigKey& key) {
+    lock_guard<std::mutex> lock(mLock);
+    auto it = mConfigStats.find(key);
+    if (it == mConfigStats.end()) {
+        ALOGE("Config key %s not found!", key.ToString().c_str());
+        return;
+    }
+    it->second->config_metadata_provider_promote_failure++;
 }
 
 void StatsdStats::noteUidMapDropped(int deltas) {
@@ -1068,6 +1141,7 @@ void StatsdStats::resetInternalLocked() {
         config.second->db_deletion_too_old = 0;
         config.second->db_deletion_config_removed = 0;
         config.second->db_deletion_config_updated = 0;
+        config.second->config_metadata_provider_promote_failure = 0;
     }
     for (auto& pullStats : mPulledAtomStats) {
         pullStats.second.totalPull = 0;
@@ -1100,6 +1174,8 @@ void StatsdStats::resetInternalLocked() {
     mPushedAtomDropsStats.clear();
     mRestrictedMetricQueryStats.clear();
     mSubscriptionPullThreadWakeupCount = 0;
+    std::fill(mSocketBatchReadHistogram.begin(), mSocketBatchReadHistogram.end(), 0);
+    mLargeBatchSocketReadStats.clear();
 
     for (auto it = mSubscriptionStats.begin(); it != mSubscriptionStats.end();) {
         if (it->second.end_time_sec > 0) {
@@ -1151,6 +1227,15 @@ bool StatsdStats::hasEventQueueOverflow() const {
     return mOverflowCount != 0;
 }
 
+vector<std::pair<int32_t, int32_t>> StatsdStats::getQueueOverflowAtomsStats() const {
+    lock_guard<std::mutex> lock(mLock);
+
+    vector<std::pair<int32_t, int32_t>> atomsStats(mPushedAtomDropsStats.begin(),
+                                                   mPushedAtomDropsStats.end());
+
+    return atomsStats;
+}
+
 bool StatsdStats::hasSocketLoss() const {
     lock_guard<std::mutex> lock(mLock);
     return !mLogLossStats.empty();
@@ -1184,6 +1269,10 @@ void StatsdStats::dumpStats(int out) const {
                     configStats->db_deletion_too_old, configStats->db_deletion_config_removed,
                     configStats->db_deletion_config_updated);
         }
+        if (configStats->config_metadata_provider_promote_failure > 0) {
+            dprintf(out, "ConfigMetadataProviderPromotionFailure=%d",
+                    configStats->config_metadata_provider_promote_failure);
+        }
         dprintf(out, "\n");
         if (!configStats->is_valid) {
             dprintf(out, "\tinvalid config reason: %s\n",
@@ -1206,7 +1295,8 @@ void StatsdStats::dumpStats(int out) const {
         auto dropBytesPtr = configStats->data_drop_bytes.begin();
         for (int i = 0; i < (int)configStats->data_drop_time_sec.size();
              i++, dropTimePtr++, dropBytesPtr++) {
-            dprintf(out, "\tdata drop time: %d with size %lld", *dropTimePtr,
+            dprintf(out, "\tdata drop time: %s(%lld) with %lld bytes\n",
+                    buildTimeString(*dropTimePtr).c_str(), (long long)*dropTimePtr,
                     (long long)*dropBytesPtr);
         }
 
@@ -1412,6 +1502,52 @@ void StatsdStats::dumpStats(int out) const {
                 (long long)restart);
     }
 
+    dprintf(out, "********Socket batch read size stats***********\n");
+    for (int i = 0; i < kNumBinsInSocketBatchReadHistogram; i++) {
+        if (mSocketBatchReadHistogram[i] == 0) {
+            continue;
+        }
+        string range;
+        if (i < 5) {
+            range = "[" + to_string(i) + "]";
+        } else if (i == 5) {
+            range = "[5-9]";
+        } else if (i < 15) {
+            range = "[" + to_string(i - 5) + "0-" + to_string(i - 5) + "9]";
+        } else if (i < 24) {
+            range = "[" + to_string(i - 14) + "00-" + to_string(i - 14) + "99]";
+        } else if (i < 29) {
+            range = "[" + to_string((i - 19) * 2) + "00-" + to_string((i - 19) * 2 + 1) + "99]";
+        } else {
+            range = "[2000+]";
+        }
+        dprintf(out, "%s: %lld\n", range.c_str(), (long long)mSocketBatchReadHistogram[i]);
+    }
+
+    if (mLargeBatchSocketReadStats.size() > 0) {
+        dprintf(out, "Large socket read batch stats: \n");
+        for (const auto& batchRead : mLargeBatchSocketReadStats) {
+            dprintf(out,
+                    "Num atoms: %d - read time elapsed ms: %lld, prev read time: %lld, min atom "
+                    "elapsed ms: %lld, max atom elapsed ns: %lld\n",
+                    batchRead.mSize, (long long)NanoToMillis(batchRead.mCurrReadTimeNs),
+                    (long long)NanoToMillis(batchRead.mLastReadTimeNs),
+                    (long long)NanoToMillis(batchRead.mMinAtomReadTimeNs),
+                    (long long)NanoToMillis(batchRead.mMaxAtomReadTimeNs));
+            if (batchRead.mCommonAtomCounts.size() > 0) {
+                string commonAtoms = "  Common atoms: ";
+                auto it = batchRead.mCommonAtomCounts.begin();
+                commonAtoms.append(to_string(it->first).append(": ").append(to_string(it->second)));
+                for (++it; it != batchRead.mCommonAtomCounts.end(); ++it) {
+                    commonAtoms.append(
+                            ", " + to_string(it->first).append(": ").append(to_string(it->second)));
+                }
+                dprintf(out, "%s\n", commonAtoms.c_str());
+            }
+        }
+        dprintf(out, "\n");
+    }
+
     for (const auto& loss : mLogLossStats) {
         dprintf(out,
                 "Log loss: %lld (wall clock sec) - %d (count), %d (last error), %d (last tag), %d "
@@ -1491,6 +1627,7 @@ void StatsdStats::dumpStats(int out) const {
     dprintf(out, "Statsd Stats Id %d\n", mStatsdStatsId);
     dprintf(out, "********Shard Offset Provider stats***********\n");
     dprintf(out, "Shard Offset: %u\n", ShardOffsetProvider::getInstance().getShardOffset());
+    dprintf(out, "\n");
 }
 
 void addConfigStatsToProto(const ConfigStats& configStats, ProtoOutputStream* proto) {
@@ -1682,6 +1819,8 @@ void addConfigStatsToProto(const ConfigStats& configStats, ProtoOutputStream* pr
                              configStats.db_deletion_config_removed, proto);
     writeNonZeroStatToStream(FIELD_TYPE_INT32 | FIELD_ID_DB_DELETION_CONFIG_UPDATED,
                              configStats.db_deletion_config_updated, proto);
+    writeNonZeroStatToStream(FIELD_TYPE_INT32 | FIELD_ID_CONFIG_METADATA_PROVIDER_PROMOTION_FAILED,
+                             configStats.config_metadata_provider_promote_failure, proto);
     for (int64_t latency : configStats.total_flush_latency_ns) {
         proto->write(FIELD_TYPE_INT64 | FIELD_ID_CONFIG_STATS_RESTRICTED_CONFIG_FLUSH_LATENCY |
                              FIELD_COUNT_REPEATED,
@@ -1700,7 +1839,7 @@ void addConfigStatsToProto(const ConfigStats& configStats, ProtoOutputStream* pr
     proto->end(token);
 }
 
-void StatsdStats::dumpStats(std::vector<uint8_t>* output, bool reset) {
+void StatsdStats::dumpStats(vector<uint8_t>* output, bool reset) {
     lock_guard<std::mutex> lock(mLock);
 
     ProtoOutputStream proto;
@@ -1929,6 +2068,43 @@ void StatsdStats::dumpStats(std::vector<uint8_t>* output, bool reset) {
     }
 
     proto.end(socketLossStatsToken);
+
+    // Socket batch read stats.
+    const uint64_t socketReadStatsToken =
+            proto.start(FIELD_TYPE_MESSAGE | FIELD_ID_SOCKET_READ_STATS);
+    for (const auto& it : mSocketBatchReadHistogram) {
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_SOCKET_READ_STATS_BATCHED_READ_SIZE |
+                            FIELD_COUNT_REPEATED,
+                    it);
+    }
+
+    for (const auto& batchRead : mLargeBatchSocketReadStats) {
+        const uint64_t largeBatchStatsToken =
+                proto.start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
+                            FIELD_ID_SOCKET_READ_STATS_LARGE_BATCH_STATS);
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_LARGE_BATCH_SOCKET_READ_LAST_READ_TIME,
+                    batchRead.mLastReadTimeNs);
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_LARGE_BATCH_SOCKET_READ_CURR_READ_TIME,
+                    batchRead.mCurrReadTimeNs);
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_LARGE_BATCH_SOCKET_READ_MIN_ATOM_TIME,
+                    batchRead.mMinAtomReadTimeNs);
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_LARGE_BATCH_SOCKET_READ_MAX_ATOM_TIME,
+                    batchRead.mMaxAtomReadTimeNs);
+        proto.write(FIELD_TYPE_INT64 | FIELD_ID_LARGE_BATCH_SOCKET_READ_TOTAL_ATOMS,
+                    batchRead.mSize);
+        for (const auto& [batchAtomId, batchAtomCount] : batchRead.mCommonAtomCounts) {
+            const uint64_t largeBatchAtomStatsToken =
+                    proto.start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
+                                FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS);
+            proto.write(FIELD_TYPE_INT32 | FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS_ATOM_ID,
+                        batchAtomId);
+            proto.write(FIELD_TYPE_INT32 | FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS_COUNT,
+                        batchAtomCount);
+            proto.end(largeBatchAtomStatsToken);
+        }
+        proto.end(largeBatchStatsToken);
+    }
+    proto.end(socketReadStatsToken);
 
     output->clear();
     proto.serializeToVector(output);

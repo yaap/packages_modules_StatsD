@@ -45,12 +45,12 @@ public:
     virtual const std::set<HashableDimensionKey>* getChangedToTrueDimensions(const int index) const;
     virtual const std::set<HashableDimensionKey>* getChangedToFalseDimensions(
             const int index) const;
-    bool equalOutputDimensions(const int index, const vector<Matcher>& dimensions);
+    bool equalOutputDimensions(const int index, const vector<Matcher>& dimensions) const;
 
-    bool IsChangedDimensionTrackable(const int index);
-    bool IsSimpleCondition(const int index);
+    bool IsChangedDimensionTrackable(const int index) const;
+    bool IsSimpleCondition(const int index) const;
 
-    ConditionState getUnSlicedPartConditionState(const int index) {
+    ConditionState getUnSlicedPartConditionState(const int index) const {
         return mAllConditions[index]->getUnSlicedPartConditionState();
     }
 

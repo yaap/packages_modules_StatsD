@@ -195,6 +195,7 @@ TEST_F(GaugeMetricE2ePushedTest, TestMultipleFieldsForPushedEvent) {
         backfillAggregatedAtoms(&reports);
         ASSERT_EQ(1, reports.reports_size());
         ASSERT_EQ(1, reports.reports(0).metrics_size());
+        EXPECT_TRUE(reports.reports(0).metrics(0).has_estimated_data_bytes());
         StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
         sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(),
                                         &gaugeMetrics);

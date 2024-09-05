@@ -30,6 +30,7 @@ import com.android.os.StatsLog;
 import com.android.os.StatsLog.ConfigMetricsReport;
 import com.android.os.StatsLog.ConfigMetricsReportList;
 import com.android.os.StatsLog.StatsLogReport;
+import com.android.os.framework.FrameworkExtensionAtoms;
 import com.android.os.telephony.qns.QnsExtensionAtoms;
 import com.android.statsd.shelltools.Utils;
 
@@ -99,6 +100,9 @@ public class TestDrive {
             "com.google.android.healthconnect.controller",
             "com.android.telephony.qns",
             "com.android.car",
+            "com.android.ondevicepersonalization.services",
+            "com.google.android.ondevicepersonalization.services",
+            "AID_UPROBESTATS",
     };
     private static final String[] DEFAULT_PULL_SOURCES = {
             "AID_KEYSTORE", "AID_RADIO", "AID_SYSTEM",
@@ -155,7 +159,8 @@ public class TestDrive {
         LOGGER.severe("-e");
         LOGGER.severe("\tWait for Enter key press before collecting report");
         LOGGER.severe("-d delay_ms");
-        LOGGER.severe("\tWait for delay_ms before collecting report, default is 60000 ms");
+        LOGGER.severe("\tWait for delay_ms before collecting report, default is 60000 ms. Only");
+        LOGGER.severe("\taffects collection of pushed atoms.");
         LOGGER.severe("-v");
         LOGGER.severe("\tDebug logging level");
     }
@@ -572,6 +577,8 @@ public class TestDrive {
             allowedSources.addAll(mAdditionalAllowedPackages);
             return StatsdConfig.newBuilder()
                     .addAllAllowedLogSource(allowedSources)
+                    .addWhitelistedAtomIds(
+                            FrameworkExtensionAtoms.STYLUS_PREDICTION_METRICS_REPORTED_FIELD_NUMBER)
                     .addAllDefaultPullPackages(Arrays.asList(DEFAULT_PULL_SOURCES))
                     .addPullAtomPackages(
                             PullAtomPackages.newBuilder()

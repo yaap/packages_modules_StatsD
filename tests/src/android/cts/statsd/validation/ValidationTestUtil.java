@@ -15,11 +15,10 @@
  */
 package android.cts.statsd.validation;
 
-import android.cts.statsd.atom.BaseTestCase;
-
+import com.android.compatibility.common.tradefed.build.CompatibilityBuildHelper;
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
+import com.android.tradefed.build.IBuildInfo;
 import com.android.tradefed.log.LogUtil;
-import com.android.tradefed.log.LogUtil.CLog;
 import com.android.tradefed.util.FileUtil;
 
 import com.google.protobuf.TextFormat;
@@ -28,14 +27,14 @@ import com.google.protobuf.TextFormat.ParseException;
 import java.io.File;
 import java.io.IOException;
 
-public class ValidationTestUtil extends BaseTestCase {
+public class ValidationTestUtil {
 
     private static final String TAG = "Statsd.ValidationTestUtil";
 
-    public StatsdConfig getConfig(String fileName) throws IOException {
+    public static StatsdConfig getConfig(String fileName, IBuildInfo ctsBuild) throws IOException {
         try {
             // TODO: Ideally, we should use real metrics that are also pushed to the fleet.
-            File configFile = getBuildHelper().getTestFile(fileName);
+            File configFile = getBuildHelper(ctsBuild).getTestFile(fileName);
             String configStr = FileUtil.readStringFromFile(configFile);
             StatsdConfig.Builder builder = StatsdConfig.newBuilder();
             TextFormat.merge(configStr, builder);
@@ -46,5 +45,9 @@ public class ValidationTestUtil extends BaseTestCase {
                     e);
         }
         return null;
+    }
+
+    private static CompatibilityBuildHelper getBuildHelper(IBuildInfo ctsBuild) {
+        return new CompatibilityBuildHelper(ctsBuild);
     }
 }

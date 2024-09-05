@@ -358,8 +358,35 @@ message GaugeMetric {
 
   optional int32 sampling_percentage = 17 [default = 100];
 
+  optional int32 pull_probability = 18 [default = 100];
+
   reserved 100;
   reserved 101;
+}
+
+message HistogramBinConfig {
+  message ExplicitBins {
+    repeated float bin = 1;
+  }
+
+  message GeneratedBins {
+    enum Strategy {
+      UNKNOWN = 0;
+      LINEAR = 1;
+      EXPONENTIAL = 2;
+    }
+
+    optional float min = 1;
+    optional float max = 2;
+    optional int32 count = 3;
+    optional Strategy strategy = 4;
+  }
+
+  optional int64 id = 1;
+  oneof binning_strategy {
+    GeneratedBins generated_bins = 2;
+    ExplicitBins explicit_bins = 3;
+  }
 }
 
 message ValueMetric {
@@ -390,8 +417,16 @@ message ValueMetric {
     MIN = 2;
     MAX = 3;
     AVG = 4;
+    HISTOGRAM = 5;
   }
   optional AggregationType aggregation_type = 8 [default = SUM];
+
+  repeated AggregationType aggregation_types = 25;
+
+  // The number of entries should match the number of times HISTOGRAM appears in aggregation_types.
+  // Each i'th HistogramBinConfig corresponds to the i'th HISTOGRAM entry in aggregation_types so
+  // ordering matters.
+  repeated HistogramBinConfig histogram_bin_configs = 26;
 
   optional bool include_sample_size = 22;
 
@@ -509,6 +544,15 @@ message PerfettoDetails {
   optional bytes trace_config = 1;
 }
 
+message UprobestatsDetails {
+  // The |config| field is a proto-encoded message of type
+  // uprobestats.protos.UprobestatsConfig defined in
+  // //packages/modules/UprobeStats/src/config.proto. On device,
+  // statsd doesn't need to deserialize the message as it's just
+  // passed binary-encoded to the Uprobestats API.
+  optional bytes config = 1;
+}
+
 message BroadcastSubscriberDetails {
   optional int64 subscriber_id = 1;
   repeated string cookie = 2;
@@ -530,6 +574,7 @@ message Subscription {
     IncidentdDetails incidentd_details = 4;
     PerfettoDetails perfetto_details = 5;
     BroadcastSubscriberDetails broadcast_subscriber_details = 6;
+    UprobestatsDetails uprobestats_details = 9;
   }
 
   optional float probability_of_informing = 7 [default = 1.1];
@@ -627,6 +672,13 @@ message StatsdConfig {
   optional int32 max_metrics_memory_kb = 28;
 
   optional int32 soft_metrics_memory_kb = 29;
+
+  message StatsdConfigOptions {
+    optional bool use_v2_soft_memory_limit = 1;
+    optional bool omit_system_uids_in_uidmap = 2;
+  }
+
+  optional StatsdConfigOptions statsd_config_options = 30;
 
   // Do not use.
   reserved 1000, 1001;

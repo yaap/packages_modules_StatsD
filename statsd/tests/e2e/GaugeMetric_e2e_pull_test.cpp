@@ -145,6 +145,7 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEvents) {
     backfillAggregatedAtoms(&reports);
     ASSERT_EQ(1, reports.reports_size());
     ASSERT_EQ(1, reports.reports(0).metrics_size());
+    EXPECT_TRUE(reports.reports(0).metrics(0).has_estimated_data_bytes());
     StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
     sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
     ASSERT_GT((int)gaugeMetrics.data_size(), 1);
@@ -953,6 +954,420 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEventsNoCondition) {
     EXPECT_EQ(baseTimeNs + 5 * bucketSizeNs, data.bucket_info(2).end_bucket_elapsed_nanos());
     EXPECT_TRUE(data.bucket_info(2).atom(0).subsystem_sleep_state().subsystem_name().empty());
     EXPECT_GT(data.bucket_info(2).atom(0).subsystem_sleep_state().time_millis(), 0);
+}
+
+TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithTriggerEvent) {
+    // Initiating StatsdStats at the start of this test, so it doesn't call rand() during the test.
+    StatsdStats::getInstance();
+    // Set srand seed to make rand deterministic for testing.
+    srand(0);
+
+    auto config = CreateStatsdConfig(GaugeMetric::FIRST_N_SAMPLES, /*useCondition=*/false);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+    gaugeMetric->set_pull_probability(50);
+    auto triggerEventMatcher = CreateScreenTurnedOnAtomMatcher();
+    gaugeMetric->set_trigger_event(triggerEventMatcher.id());
+    gaugeMetric->set_max_num_gauge_atoms_per_bucket(200);
+    gaugeMetric->set_bucket(ONE_HOUR);
+
+    int64_t configAddedTimeNs = 60 * NS_PER_SEC;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First bucket events.
+    for (int i = 0; i < 30; i++) {
+        events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + (i * 10 * NS_PER_SEC),
+                                                       android::view::DISPLAY_STATE_ON));
+    }
+    // Second bucket events.
+    for (int i = 0; i < 30; i++) {
+        events.push_back(CreateScreenStateChangedEvent(
+                configAddedTimeNs + bucketSizeNs + (i * 10 * NS_PER_SEC),
+                android::view::DISPLAY_STATE_ON));
+    }
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + 7 * bucketSizeNs + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(1, reports.reports_size());
+    ASSERT_EQ(1, reports.reports(0).metrics_size());
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    ASSERT_EQ((int)gaugeMetrics.data_size(), 2);  // 2 sets of data for each pull.
+
+    // Data 1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_1",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(2, data.bucket_info_size());
+
+    // Data 1, Bucket 1
+    ASSERT_EQ(13, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0), configAddedTimeNs, configAddedTimeNs + bucketSizeNs,
+            {(int64_t)60 * NS_PER_SEC, (int64_t)80 * NS_PER_SEC, (int64_t)90 * NS_PER_SEC,
+             (int64_t)130 * NS_PER_SEC, (int64_t)150 * NS_PER_SEC, (int64_t)170 * NS_PER_SEC,
+             (int64_t)190 * NS_PER_SEC, (int64_t)200 * NS_PER_SEC, (int64_t)240 * NS_PER_SEC,
+             (int64_t)250 * NS_PER_SEC, (int64_t)300 * NS_PER_SEC, (int64_t)330 * NS_PER_SEC,
+             (int64_t)340 * NS_PER_SEC});
+
+    // Data 1, Bucket 2
+    ASSERT_EQ(18, data.bucket_info(1).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(1), configAddedTimeNs + bucketSizeNs,
+            configAddedTimeNs + 2 * bucketSizeNs,
+            {(int64_t)3660 * NS_PER_SEC, (int64_t)3680 * NS_PER_SEC, (int64_t)3700 * NS_PER_SEC,
+             (int64_t)3710 * NS_PER_SEC, (int64_t)3720 * NS_PER_SEC, (int64_t)3740 * NS_PER_SEC,
+             (int64_t)3780 * NS_PER_SEC, (int64_t)3790 * NS_PER_SEC, (int64_t)3820 * NS_PER_SEC,
+             (int64_t)3850 * NS_PER_SEC, (int64_t)3860 * NS_PER_SEC, (int64_t)3870 * NS_PER_SEC,
+             (int64_t)3880 * NS_PER_SEC, (int64_t)3900 * NS_PER_SEC, (int64_t)3910 * NS_PER_SEC,
+             (int64_t)3920 * NS_PER_SEC, (int64_t)3930 * NS_PER_SEC, (int64_t)3940 * NS_PER_SEC});
+
+    // Data 2
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_2",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(2, data.bucket_info_size());
+
+    // Data 2, Bucket 1
+    ASSERT_EQ(13, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0), configAddedTimeNs, configAddedTimeNs + bucketSizeNs,
+            {(int64_t)60 * NS_PER_SEC, (int64_t)80 * NS_PER_SEC, (int64_t)90 * NS_PER_SEC,
+             (int64_t)130 * NS_PER_SEC, (int64_t)150 * NS_PER_SEC, (int64_t)170 * NS_PER_SEC,
+             (int64_t)190 * NS_PER_SEC, (int64_t)200 * NS_PER_SEC, (int64_t)240 * NS_PER_SEC,
+             (int64_t)250 * NS_PER_SEC, (int64_t)300 * NS_PER_SEC, (int64_t)330 * NS_PER_SEC,
+             (int64_t)340 * NS_PER_SEC});
+
+    // Data 2, Bucket 2
+    ASSERT_EQ(18, data.bucket_info(1).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(1), configAddedTimeNs + bucketSizeNs,
+            configAddedTimeNs + 2 * bucketSizeNs,
+            {(int64_t)3660 * NS_PER_SEC, (int64_t)3680 * NS_PER_SEC, (int64_t)3700 * NS_PER_SEC,
+             (int64_t)3710 * NS_PER_SEC, (int64_t)3720 * NS_PER_SEC, (int64_t)3740 * NS_PER_SEC,
+             (int64_t)3780 * NS_PER_SEC, (int64_t)3790 * NS_PER_SEC, (int64_t)3820 * NS_PER_SEC,
+             (int64_t)3850 * NS_PER_SEC, (int64_t)3860 * NS_PER_SEC, (int64_t)3870 * NS_PER_SEC,
+             (int64_t)3880 * NS_PER_SEC, (int64_t)3900 * NS_PER_SEC, (int64_t)3910 * NS_PER_SEC,
+             (int64_t)3920 * NS_PER_SEC, (int64_t)3930 * NS_PER_SEC, (int64_t)3940 * NS_PER_SEC});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithBucketBoundaryAlarm) {
+    // Initiating StatsdStats at the start of this test, so it doesn't call rand() during the test.
+    StatsdStats::getInstance();
+    // Set srand seed to make rand deterministic for testing.
+    srand(0);
+
+    auto config = CreateStatsdConfig(GaugeMetric::FIRST_N_SAMPLES, /*useCondition=*/false);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+    gaugeMetric->set_pull_probability(50);
+    gaugeMetric->set_max_num_gauge_atoms_per_bucket(200);
+
+    int64_t baseTimeNs = 5 * 60 * NS_PER_SEC;
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+
+    // Pulling alarm arrives on time and resets the sequential pulling alarm.
+    for (int i = 1; i < 31; i++) {
+        processor->informPullAlarmFired(configAddedTimeNs + i * bucketSizeNs);
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + 32 * bucketSizeNs + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(1, reports.reports_size());
+    ASSERT_EQ(1, reports.reports(0).metrics_size());
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    ASSERT_EQ((int)gaugeMetrics.data_size(), 2);
+
+    // Data 1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_1",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(14, data.bucket_info_size());
+
+    EXPECT_EQ(1, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {configAddedTimeNs});
+
+    EXPECT_EQ(1, data.bucket_info(1).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(1), configAddedTimeNs + 2 * bucketSizeNs,
+                             configAddedTimeNs + 3 * bucketSizeNs,
+                             {configAddedTimeNs + 2 * bucketSizeNs});  // 1200000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(2).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(2), configAddedTimeNs + 3 * bucketSizeNs,
+                             configAddedTimeNs + 4 * bucketSizeNs,
+                             {(int64_t)configAddedTimeNs + 3 * bucketSizeNs});  // 1500000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(3).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(3), configAddedTimeNs + 7 * bucketSizeNs,
+                             configAddedTimeNs + 8 * bucketSizeNs,
+                             {configAddedTimeNs + 7 * bucketSizeNs});  // 2700000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(4).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(4), configAddedTimeNs + 9 * bucketSizeNs,
+                             configAddedTimeNs + 10 * bucketSizeNs,
+                             {configAddedTimeNs + 9 * bucketSizeNs});  // 3300000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(5).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(5), configAddedTimeNs + 11 * bucketSizeNs,
+                             configAddedTimeNs + 12 * bucketSizeNs,
+                             {configAddedTimeNs + 11 * bucketSizeNs});  // 3900000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(6).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(6), configAddedTimeNs + 13 * bucketSizeNs,
+                             configAddedTimeNs + 14 * bucketSizeNs,
+                             {configAddedTimeNs + 13 * bucketSizeNs});  // 4500000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(7).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(7), configAddedTimeNs + 14 * bucketSizeNs,
+                             configAddedTimeNs + 15 * bucketSizeNs,
+                             {configAddedTimeNs + 14 * bucketSizeNs});  // 4800000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(8).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(8), configAddedTimeNs + 18 * bucketSizeNs,
+                             configAddedTimeNs + 19 * bucketSizeNs,
+                             {configAddedTimeNs + 18 * bucketSizeNs});  // 6000000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(9).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(9), configAddedTimeNs + 19 * bucketSizeNs,
+                             configAddedTimeNs + 20 * bucketSizeNs,
+                             {configAddedTimeNs + 19 * bucketSizeNs});  // 6300000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(10).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(10), configAddedTimeNs + 24 * bucketSizeNs,
+                             configAddedTimeNs + 25 * bucketSizeNs,
+                             {configAddedTimeNs + 24 * bucketSizeNs});  // 7800000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(11).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(11), configAddedTimeNs + 27 * bucketSizeNs,
+                             configAddedTimeNs + 28 * bucketSizeNs,
+                             {configAddedTimeNs + 27 * bucketSizeNs});  // 8700000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(12).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(12), configAddedTimeNs + 28 * bucketSizeNs,
+                             configAddedTimeNs + 29 * bucketSizeNs,
+                             {configAddedTimeNs + 28 * bucketSizeNs});  // 9000000000000ns
+
+    EXPECT_EQ(1, data.bucket_info(13).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(13), configAddedTimeNs + 30 * bucketSizeNs,
+                             configAddedTimeNs + 31 * bucketSizeNs,
+                             {configAddedTimeNs + 30 * bucketSizeNs});  // 9600000000000ns
+
+    // Data 2
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_2",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(14, data.bucket_info_size());
+
+    EXPECT_EQ(1, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {configAddedTimeNs});
+
+    EXPECT_EQ(1, data.bucket_info(1).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(1), configAddedTimeNs + 2 * bucketSizeNs,
+                             configAddedTimeNs + 3 * bucketSizeNs,
+                             {configAddedTimeNs + 2 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(2).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(2), configAddedTimeNs + 3 * bucketSizeNs,
+                             configAddedTimeNs + 4 * bucketSizeNs,
+                             {(int64_t)configAddedTimeNs + 3 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(3).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(3), configAddedTimeNs + 7 * bucketSizeNs,
+                             configAddedTimeNs + 8 * bucketSizeNs,
+                             {configAddedTimeNs + 7 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(4).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(4), configAddedTimeNs + 9 * bucketSizeNs,
+                             configAddedTimeNs + 10 * bucketSizeNs,
+                             {configAddedTimeNs + 9 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(5).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(5), configAddedTimeNs + 11 * bucketSizeNs,
+                             configAddedTimeNs + 12 * bucketSizeNs,
+                             {configAddedTimeNs + 11 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(6).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(6), configAddedTimeNs + 13 * bucketSizeNs,
+                             configAddedTimeNs + 14 * bucketSizeNs,
+                             {configAddedTimeNs + 13 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(7).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(7), configAddedTimeNs + 14 * bucketSizeNs,
+                             configAddedTimeNs + 15 * bucketSizeNs,
+                             {configAddedTimeNs + 14 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(8).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(8), configAddedTimeNs + 18 * bucketSizeNs,
+                             configAddedTimeNs + 19 * bucketSizeNs,
+                             {configAddedTimeNs + 18 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(9).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(9), configAddedTimeNs + 19 * bucketSizeNs,
+                             configAddedTimeNs + 20 * bucketSizeNs,
+                             {configAddedTimeNs + 19 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(10).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(10), configAddedTimeNs + 24 * bucketSizeNs,
+                             configAddedTimeNs + 25 * bucketSizeNs,
+                             {configAddedTimeNs + 24 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(11).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(11), configAddedTimeNs + 27 * bucketSizeNs,
+                             configAddedTimeNs + 28 * bucketSizeNs,
+                             {configAddedTimeNs + 27 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(12).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(12), configAddedTimeNs + 28 * bucketSizeNs,
+                             configAddedTimeNs + 29 * bucketSizeNs,
+                             {configAddedTimeNs + 28 * bucketSizeNs});
+
+    EXPECT_EQ(1, data.bucket_info(13).atom_size());
+    ValidateGaugeBucketTimes(data.bucket_info(13), configAddedTimeNs + 30 * bucketSizeNs,
+                             configAddedTimeNs + 31 * bucketSizeNs,
+                             {configAddedTimeNs + 30 * bucketSizeNs});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithCondition) {
+    // Initiating StatsdStats at the start of this test, so it doesn't call rand() during the test.
+    StatsdStats::getInstance();
+    // Set srand seed to make rand deterministic for testing.
+    srand(0);
+
+    auto config = CreateStatsdConfig(GaugeMetric::CONDITION_CHANGE_TO_TRUE, /*useCondition=*/true);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+    gaugeMetric->set_pull_probability(50);
+    gaugeMetric->set_max_num_gauge_atoms_per_bucket(200);
+    gaugeMetric->set_bucket(ONE_HOUR);
+
+    int64_t configAddedTimeNs = 60 * NS_PER_SEC;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First bucket events.
+    for (int i = 0; i < 30; i++) {
+        events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + (i * 10 * NS_PER_SEC),
+                                                       android::view::DISPLAY_STATE_OFF));
+        events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + (i * 11 * NS_PER_SEC),
+                                                       android::view::DISPLAY_STATE_ON));
+    }
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + 2 * bucketSizeNs, false, true, ADB_DUMP,
+                            FAST, &buffer);
+
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(1, reports.reports_size());
+    ASSERT_EQ(1, reports.reports(0).metrics_size());
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    ASSERT_EQ((int)gaugeMetrics.data_size(), 2);  // 2 sets of data for each pull.
+
+    // Data 1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_1",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(1, data.bucket_info_size());
+
+    // Data 1, Bucket 1
+    ASSERT_EQ(13, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0), configAddedTimeNs, configAddedTimeNs + bucketSizeNs,
+            {(int64_t)60 * NS_PER_SEC, (int64_t)80 * NS_PER_SEC, (int64_t)90 * NS_PER_SEC,
+             (int64_t)130 * NS_PER_SEC, (int64_t)150 * NS_PER_SEC, (int64_t)170 * NS_PER_SEC,
+             (int64_t)190 * NS_PER_SEC, (int64_t)200 * NS_PER_SEC, (int64_t)240 * NS_PER_SEC,
+             (int64_t)250 * NS_PER_SEC, (int64_t)300 * NS_PER_SEC, (int64_t)330 * NS_PER_SEC,
+             (int64_t)340 * NS_PER_SEC});
+
+    // Data 2
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(ATOM_TAG, data.dimensions_in_what().field());
+    ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+    EXPECT_EQ(1 /* subsystem name field */,
+              data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+    EXPECT_EQ("subsystem_name_2",
+              data.dimensions_in_what().value_tuple().dimensions_value(0).value_str());
+    ASSERT_EQ(1, data.bucket_info_size());
+
+    // Data 2, Bucket 1
+    ASSERT_EQ(13, data.bucket_info(0).atom_size());
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0), configAddedTimeNs, configAddedTimeNs + bucketSizeNs,
+            {(int64_t)60 * NS_PER_SEC, (int64_t)80 * NS_PER_SEC, (int64_t)90 * NS_PER_SEC,
+             (int64_t)130 * NS_PER_SEC, (int64_t)150 * NS_PER_SEC, (int64_t)170 * NS_PER_SEC,
+             (int64_t)190 * NS_PER_SEC, (int64_t)200 * NS_PER_SEC, (int64_t)240 * NS_PER_SEC,
+             (int64_t)250 * NS_PER_SEC, (int64_t)300 * NS_PER_SEC, (int64_t)330 * NS_PER_SEC,
+             (int64_t)340 * NS_PER_SEC});
 }
 
 #else

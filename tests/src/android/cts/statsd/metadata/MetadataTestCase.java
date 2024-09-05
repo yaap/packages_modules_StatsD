@@ -16,22 +16,37 @@
 
 package android.cts.statsd.metadata;
 
-import android.cts.statsd.atom.AtomTestCase;
+import static com.google.common.truth.Truth.assertThat;
+
+import android.cts.statsd.atom.BufferDebug;
+import android.cts.statsd.metric.MetricsUtils;
+import android.cts.statsdatom.lib.ConfigUtils;
+import android.cts.statsdatom.lib.DeviceUtils;
+import android.cts.statsdatom.lib.ReportUtils;
 
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
 import com.android.os.AtomsProto.Atom;
 import com.android.os.StatsLog.StatsdStatsReport;
+import com.android.tradefed.build.IBuildInfo;
+import com.android.tradefed.device.CollectingByteOutputReceiver;
+import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.log.LogUtil;
+import com.android.tradefed.testtype.DeviceTestCase;
+import com.android.tradefed.testtype.IBuildReceiver;
+import com.android.tradefed.util.RunUtil;
 
-public class MetadataTestCase extends AtomTestCase {
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
+
+public class MetadataTestCase extends DeviceTestCase implements IBuildReceiver {
     public static final String DUMP_METADATA_CMD = "cmd stats print-stats";
 
-    public static final String DEVICE_SIDE_TEST_APK = "CtsStatsdApp.apk";
-    public static final String DEVICE_SIDE_TEST_PACKAGE = "com.android.server.cts.device.statsd";
+    protected IBuildInfo mCtsBuild;
 
     protected StatsdStatsReport getStatsdStatsReport() throws Exception {
         try {
-            StatsdStatsReport report = getDump(StatsdStatsReport.parser(),
+            StatsdStatsReport report = MetricsUtils.getDump(getDevice(), StatsdStatsReport.parser(),
                     String.join(" ", DUMP_METADATA_CMD, "--proto"));
             return report;
         } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -41,16 +56,33 @@ public class MetadataTestCase extends AtomTestCase {
     }
 
     protected final StatsdConfig.Builder getBaseConfig() throws Exception {
-      StatsdConfig.Builder builder = createConfigBuilder();
-      addAtomEvent(builder, Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER);
-      return builder;
+        StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        ConfigUtils.addEventMetric(builder, Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER);
+        return builder;
     }
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
-        getDevice().uninstallPackage(DEVICE_SIDE_TEST_PACKAGE);
-        installPackage(DEVICE_SIDE_TEST_APK, true);
-        Thread.sleep(1000);
+        assertThat(mCtsBuild).isNotNull();
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.installTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_APK,
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, mCtsBuild);
+        RunUtil.getDefault().sleep(1000);
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.uninstallTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        super.tearDown();
+    }
+
+    @Override
+    public void setBuild(IBuildInfo buildInfo) {
+        mCtsBuild = buildInfo;
     }
 }

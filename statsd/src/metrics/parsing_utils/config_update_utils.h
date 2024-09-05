@@ -21,6 +21,7 @@
 #include "anomaly/AlarmMonitor.h"
 #include "anomaly/AlarmTracker.h"
 #include "condition/ConditionTracker.h"
+#include "config/ConfigMetadataProvider.h"
 #include "external/StatsPullerManager.h"
 #include "matchers/AtomMatchingTracker.h"
 #include "metrics/MetricProducer.h"
@@ -179,6 +180,7 @@ optional<InvalidConfigReason> updateMetrics(
         const std::set<int64_t>& replacedStates,
         const std::unordered_map<int64_t, int>& oldMetricProducerMap,
         const std::vector<sp<MetricProducer>>& oldMetricProducers,
+        const wp<ConfigMetadataProvider> configMetadataProvider,
         std::unordered_map<int64_t, int>& newMetricProducerMap,
         std::vector<sp<MetricProducer>>& newMetricProducers,
         std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
@@ -245,6 +247,7 @@ optional<InvalidConfigReason> updateStatsdConfig(
         const std::vector<sp<AnomalyTracker>>& oldAnomalyTrackers,
         const std::unordered_map<int64_t, int>& oldAlertTrackerMap,
         const std::map<int64_t, uint64_t>& oldStateProtoHashes,
+        const wp<ConfigMetadataProvider> configMetadataProvider,
         std::unordered_map<int, std::vector<int>>& allTagIdsToMatchersMap,
         std::vector<sp<AtomMatchingTracker>>& newAtomMatchingTrackers,
         std::unordered_map<int64_t, int>& newAtomMatchingTrackerMap,

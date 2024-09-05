@@ -91,6 +91,7 @@ TEST_F(KllMetricE2eTest, TestSimpleMetric) {
     ConfigMetricsReport report = reports.reports(0);
     ASSERT_EQ(report.metrics_size(), 1);
     StatsLogReport metricReport = report.metrics(0);
+    EXPECT_TRUE(metricReport.has_estimated_data_bytes());
     EXPECT_EQ(metricReport.metric_id(), metric.id());
     EXPECT_TRUE(metricReport.has_kll_metrics());
     ASSERT_EQ(metricReport.kll_metrics().data_size(), 1);

@@ -20,6 +20,7 @@
 #include "subscriber_util.h"
 
 #include "external/Perfetto.h"
+#include "external/Uprobestats.h"
 #include "subscriber/IncidentdReporter.h"
 #include "subscriber/SubscriberReporter.h"
 
@@ -56,6 +57,11 @@ void triggerSubscribers(const int64_t ruleId, const int64_t metricId,
                 if (!CollectPerfettoTraceAndUploadToDropbox(subscription.perfetto_details(),
                                                             subscription.id(), ruleId, configKey)) {
                     ALOGW("Failed to generate perfetto traces.");
+                }
+                break;
+            case Subscription::SubscriberInformationCase::kUprobestatsDetails:
+                if (!StartUprobeStats(subscription.uprobestats_details())) {
+                    ALOGW("Failed to start uprobestats.");
                 }
                 break;
             case Subscription::SubscriberInformationCase::kBroadcastSubscriberDetails:

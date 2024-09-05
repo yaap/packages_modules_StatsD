@@ -26,7 +26,7 @@ namespace os {
 namespace statsd {
 
 /** Fetches and returns the StatsCompanionService. */
-shared_ptr<IStatsCompanionService> getStatsCompanionService();
+shared_ptr<IStatsCompanionService> getStatsCompanionService(const bool blocking);
 
 }  // namespace statsd
 }  // namespace os

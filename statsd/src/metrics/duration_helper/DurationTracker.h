@@ -162,6 +162,8 @@ public:
 protected:
     virtual bool hasStartedDuration() const = 0;
 
+    // Convenience to compute the current bucket's end time, which is always aligned with the
+    // start time of the metric.
     int64_t getCurrentBucketEndTimeNs() const {
         return mStartTimeNs + (mCurrentBucketNum + 1) * mBucketSizeNs;
     }
@@ -205,12 +207,6 @@ protected:
                                                         mEventKey, currentBucketValue);
             }
         }
-    }
-
-    // Convenience to compute the current bucket's end time, which is always aligned with the
-    // start time of the metric.
-    int64_t getCurrentBucketEndTimeNs() {
-        return mStartTimeNs + (mCurrentBucketNum + 1) * mBucketSizeNs;
     }
 
     void setEventKey(const MetricDimensionKey& eventKey) {

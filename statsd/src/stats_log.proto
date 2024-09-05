@@ -127,6 +127,15 @@ message DurationMetricData {
   repeated DimensionsValue dimension_leaf_values_in_condition = 5 [deprecated = true];
 }
 
+message Histogram {
+    // Counts for histogram bins.
+    // Encoding is as follows:
+    //  * n >= 0 represents the actual count
+    //  * n == -1 should not be used
+    //  * n <= -2 represents -n consecutive bins with count of 0
+    repeated sint32 count = 1;
+}
+
 message ValueBucketInfo {
   optional int64 start_bucket_elapsed_nanos = 1;
 
@@ -145,6 +154,7 @@ message ValueBucketInfo {
       oneof value {
           int64 value_long = 2;
           double value_double = 3;
+          Histogram histogram = 5;
       }
       optional int32 sample_size = 4;
   }
@@ -318,6 +328,10 @@ message StatsLogReport {
 
   optional bool dimension_guardrail_hit = 17;
 
+  optional int64 estimated_data_bytes = 18;
+
+  repeated DataCorruptedReason data_corrupted_reason = 19;
+
   // Do not use.
   reserved 13, 15;
 }
@@ -403,6 +417,8 @@ message ConfigMetricsReport {
   reserved 10;
 
   repeated DataCorruptedReason data_corrupted_reason = 11;
+
+  optional int64 estimated_data_bytes = 12;
 }
 
 message ConfigMetricsReportList {
@@ -499,6 +515,7 @@ message StatsdStatsReport {
         optional int32 db_deletion_too_old = 35;
         optional int32 db_deletion_config_removed = 36;
         optional int32 db_deletion_config_updated = 37;
+        optional int32 config_metadata_provider_promotion_failed = 38;
     }
 
     repeated ConfigStats config_stats = 3;
@@ -691,6 +708,32 @@ message StatsdStatsReport {
     }
 
     optional EventQueueStats event_queue_stats = 25;
+
+    // Tracks info about reads from the socket.
+    message SocketReadStats {
+        // This is a histogram of sizes of the batched reads. The bins are as follows:
+        // [0, 1, 2, 3, 4, 5-9, 10-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80-89, 90-99,
+        //  100-199, 200-299, 300-399, 400-499, 500-599, 600-699, 700-799, 800-899, 900-999,
+        //  1000-1199, 1200-1399, 1400-1599, 1600-1799, 1800-1999, 2000+]
+        repeated int64 batched_read_size = 1;
+
+        message LargeBatchReadStats {
+            optional int64 last_read_time_elapsed_ns = 1;
+            optional int64 curr_read_time_elapsed_ns = 2;
+            optional int64 min_atom_time_elapsed_ns = 3;
+            optional int64 max_atom_time_elapsed_ns = 4;
+            optional int64 total_atoms_read = 5;
+
+            message BatchedAtomReadStats {
+                optional int32 atom_id = 1;
+                optional int32 count = 2;
+            }
+            repeated BatchedAtomReadStats atom_stats = 6;
+        }
+        repeated LargeBatchReadStats large_batch_read_stats = 2;
+    }
+
+    optional SocketReadStats socket_read_stats = 26;
 }
 
 message AlertTriggerDetails {

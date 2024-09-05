@@ -34,7 +34,6 @@ namespace statsd {
 
 using std::optional;
 using std::shared_ptr;
-using std::unordered_map;
 
 // Does NOT allow negative values.
 class AnomalyTracker : public virtual RefBase {
@@ -184,7 +183,7 @@ protected:
     // declared for that dimension) ends, in seconds. From this moment and onwards, anomalies
     // can be declared again.
     // Entries may be, but are not guaranteed to be, removed after the period is finished.
-    unordered_map<MetricDimensionKey, uint32_t> mRefractoryPeriodEndsSec;
+    std::unordered_map<MetricDimensionKey, uint32_t> mRefractoryPeriodEndsSec;
 
     // Advances mMostRecentBucketNum to bucketNum, deleting any data that is now too old.
     // Specifically, since it is now too old, removes the data for

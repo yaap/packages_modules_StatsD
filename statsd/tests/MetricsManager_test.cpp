@@ -32,6 +32,7 @@
 #include "src/state/StateManager.h"
 #include "src/statsd_config.pb.h"
 #include "statsd_test_util.h"
+#include "statslog_statsdtest.h"
 
 using namespace testing;
 using android::sp;
@@ -53,10 +54,12 @@ const ConfigKey kConfigKey(0, kConfigId);
 
 const long timeBaseSec = 1000;
 
-StatsdConfig buildGoodRestrictedConfig() {
+StatsdConfig buildEventConfig(bool isRestricted) {
     StatsdConfig config;
     config.set_id(kConfigId);
-    config.set_restricted_metrics_delegate_package_name("delegate");
+    if (isRestricted) {
+        config.set_restricted_metrics_delegate_package_name("delegate");
+    }
 
     AtomMatcher* eventMatcher = config.add_atom_matcher();
     eventMatcher->set_id(StringToId("SCREEN_IS_ON"));
@@ -69,6 +72,14 @@ StatsdConfig buildGoodRestrictedConfig() {
     return config;
 }
 
+StatsdConfig buildGoodRestrictedConfig() {
+    return buildEventConfig(/*isRestricted*/ true);
+}
+
+StatsdConfig buildGoodEventConfig() {
+    return buildEventConfig(/*isRestricted*/ false);
+}
+
 set<int32_t> unionSet(const vector<set<int32_t>> sets) {
     set<int32_t> toRet;
     for (const set<int32_t>& s : sets) {
@@ -76,6 +87,7 @@ set<int32_t> unionSet(const vector<set<int32_t>> sets) {
     }
     return toRet;
 }
+
 }  // anonymous namespace
 
 TEST(MetricsManagerTest, TestLogSources) {

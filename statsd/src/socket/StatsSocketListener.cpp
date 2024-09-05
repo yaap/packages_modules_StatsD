@@ -33,6 +33,9 @@
 #include "logd/logevent_util.h"
 #include "stats_log_util.h"
 #include "statslog_statsd.h"
+#include "utils/api_tracing.h"
+
+using namespace std;
 
 namespace android {
 namespace os {
@@ -42,16 +45,19 @@ StatsSocketListener::StatsSocketListener(const std::shared_ptr<LogEventQueue>& q
                                          const std::shared_ptr<LogEventFilter>& logEventFilter)
     : SocketListener(getLogSocket(), false /*start listen*/),
       mQueue(queue),
-      mLogEventFilter(logEventFilter) {
+      mLogEventFilter(logEventFilter),
+      mLastSocketReadTimeNs(0) {
 }
 
 bool StatsSocketListener::onDataAvailable(SocketClient* cli) {
+    ATRACE_CALL();
     static bool name_set;
     if (!name_set) {
         prctl(PR_SET_NAME, "statsd.writer");
         name_set = true;
     }
 
+    int64_t elapsedTimeNs = getElapsedRealtimeNs();
     // + 1 to ensure null terminator if MAX_PAYLOAD buffer is received
     char buffer[sizeof(android_log_header_t) + LOGGER_ENTRY_MAX_PAYLOAD + 1];
     struct iovec iov = {buffer, sizeof(buffer) - 1};
@@ -61,39 +67,73 @@ bool StatsSocketListener::onDataAvailable(SocketClient* cli) {
             NULL, 0, &iov, 1, control, sizeof(control), 0,
     };
 
-    int socket = cli->getSocket();
-
-    // To clear the entire buffer is secure/safe, but this contributes to 1.68%
-    // overhead under logging load. We are safe because we check counts, but
-    // still need to clear null terminator
-    // memset(buffer, 0, sizeof(buffer));
-    ssize_t n = recvmsg(socket, &hdr, 0);
-    if (n <= (ssize_t)(sizeof(android_log_header_t))) {
-        return false;
-    }
-
-    buffer[n] = 0;
-
-    struct ucred* cred = NULL;
-
-    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&hdr);
-    while (cmsg != NULL) {
-        if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_CREDENTIALS) {
-            cred = (struct ucred*)CMSG_DATA(cmsg);
-            break;
+    const int socket = cli->getSocket();
+    int i = 0;
+    int64_t minAtomReadTime = INT64_MAX;
+    int64_t maxAtomReadTime = -1;
+    mAtomCounts.clear();
+    ssize_t n = 0;
+    while (n = recvmsg(socket, &hdr, MSG_DONTWAIT), n > 0) {
+        // To clear the entire buffer is secure/safe, but this contributes to 1.68%
+        // overhead under logging load. We are safe because we check counts, but
+        // still need to clear null terminator.
+        // Note that the memset, if needed, should happen before each read in the while loop.
+        // memset(buffer, 0, sizeof(buffer));
+        if (n <= (ssize_t)(sizeof(android_log_header_t))) {
+            return false;
         }
-        cmsg = CMSG_NXTHDR(&hdr, cmsg);
+        buffer[n] = 0;
+        i++;
+
+        struct ucred* cred = NULL;
+
+        struct cmsghdr* cmsg = CMSG_FIRSTHDR(&hdr);
+        while (cmsg != NULL) {
+            if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_CREDENTIALS) {
+                cred = (struct ucred*)CMSG_DATA(cmsg);
+                break;
+            }
+            cmsg = CMSG_NXTHDR(&hdr, cmsg);
+        }
+
+        struct ucred fake_cred;
+        if (cred == NULL) {
+            cred = &fake_cred;
+            cred->pid = 0;
+            cred->uid = DEFAULT_OVERFLOWUID;
+        }
+
+        const uint32_t uid = cred->uid;
+        const uint32_t pid = cred->pid;
+
+        auto [atomId, atomTimeNs] =
+                processSocketMessage(buffer, n, uid, pid, *mQueue, *mLogEventFilter);
+        mAtomCounts[atomId]++;
+        minAtomReadTime = min(minAtomReadTime, atomTimeNs);
+        maxAtomReadTime = max(maxAtomReadTime, atomTimeNs);
     }
 
-    struct ucred fake_cred;
-    if (cred == NULL) {
-        cred = &fake_cred;
-        cred->pid = 0;
-        cred->uid = DEFAULT_OVERFLOWUID;
+    StatsdStats::getInstance().noteBatchSocketRead(i, mLastSocketReadTimeNs, elapsedTimeNs,
+                                                   minAtomReadTime, maxAtomReadTime, mAtomCounts);
+    mLastSocketReadTimeNs = elapsedTimeNs;
+    mAtomCounts.clear();
+    return true;
+}
+
+tuple<int32_t, int64_t> StatsSocketListener::processSocketMessage(const char* buffer,
+                                                                  const uint32_t len, uint32_t uid,
+                                                                  uint32_t pid,
+                                                                  LogEventQueue& queue,
+                                                                  const LogEventFilter& filter) {
+    ATRACE_CALL();
+    static const uint32_t kStatsEventTag = 1937006964;
+
+    if (len <= (ssize_t)(sizeof(android_log_header_t)) + sizeof(uint32_t)) {
+        return {-1, 0};
     }
 
-    uint8_t* ptr = ((uint8_t*)buffer) + sizeof(android_log_header_t);
-    n -= sizeof(android_log_header_t);
+    const uint8_t* ptr = ((uint8_t*)buffer) + sizeof(android_log_header_t);
+    uint32_t bufferLen = len - sizeof(android_log_header_t);
 
     // When a log failed to write to statsd socket (e.g., due ot EBUSY), a special message would
     // be sent to statsd when the socket communication becomes available again.
@@ -102,8 +142,9 @@ bool StatsSocketListener::onDataAvailable(SocketClient* cli) {
     // Note that all normal stats logs are in the format of event_list, so there won't be confusion.
     //
     // TODO(b/80538532): In addition to log it in StatsdStats, we should properly reset the config.
-    if (n == sizeof(android_log_event_long_t)) {
-        android_log_event_long_t* long_event = reinterpret_cast<android_log_event_long_t*>(ptr);
+    if (bufferLen == sizeof(android_log_event_long_t)) {
+        const android_log_event_long_t* long_event =
+                reinterpret_cast<const android_log_event_long_t*>(ptr);
         if (long_event->payload.type == EVENT_TYPE_LONG) {
             int64_t composed_long = long_event->payload.data;
 
@@ -113,33 +154,37 @@ bool StatsSocketListener::onDataAvailable(SocketClient* cli) {
             int32_t last_atom_tag = (int32_t)((0xffffffff00000000 & (uint64_t)composed_long) >> 32);
 
             ALOGE("Found dropped events: %d error %d last atom tag %d from uid %d", dropped_count,
-                  long_event->header.tag, last_atom_tag, cred->uid);
+                  long_event->header.tag, last_atom_tag, uid);
             StatsdStats::getInstance().noteLogLost((int32_t)getWallClockSec(), dropped_count,
-                                                   long_event->header.tag, last_atom_tag, cred->uid,
-                                                   cred->pid);
-            return true;
+                                                   long_event->header.tag, last_atom_tag, uid, pid);
+            return {-1, 0};
         }
+    }
+
+    // test that received valid StatsEvent buffer
+    const uint32_t statsEventTag = *reinterpret_cast<const uint32_t*>(ptr);
+    if (statsEventTag != kStatsEventTag) {
+        return {-1, 0};
     }
 
     // move past the 4-byte StatsEventTag
     const uint8_t* msg = ptr + sizeof(uint32_t);
-    const uint32_t len = n - sizeof(uint32_t);
-    const uint32_t uid = cred->uid;
-    const uint32_t pid = cred->pid;
+    bufferLen -= sizeof(uint32_t);
 
-    processMessage(msg, len, uid, pid, mQueue, mLogEventFilter);
-
-    return true;
+    return processStatsEventBuffer(msg, bufferLen, uid, pid, queue, filter);
 }
 
-void StatsSocketListener::processMessage(const uint8_t* msg, uint32_t len, uint32_t uid,
-                                         uint32_t pid, const std::shared_ptr<LogEventQueue>& queue,
-                                         const std::shared_ptr<LogEventFilter>& filter) {
+tuple<int32_t, int64_t> StatsSocketListener::processStatsEventBuffer(const uint8_t* msg,
+                                                                     const uint32_t len,
+                                                                     uint32_t uid, uint32_t pid,
+                                                                     LogEventQueue& queue,
+                                                                     const LogEventFilter& filter) {
+    ATRACE_CALL();
     std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(uid, pid);
 
-    if (filter->getFilteringEnabled()) {
+    if (filter.getFilteringEnabled()) {
         const LogEvent::BodyBufferInfo bodyInfo = logEvent->parseHeader(msg, len);
-        if (filter->isAtomInUse(logEvent->GetTagId())) {
+        if (filter.isAtomInUse(logEvent->GetTagId())) {
             logEvent->parseBody(bodyInfo);
         }
     } else {
@@ -165,12 +210,13 @@ void StatsSocketListener::processMessage(const uint8_t* msg, uint32_t len, uint3
         }
     }
 
-    const auto [success, oldestTimestamp, queueSize] = queue->push(std::move(logEvent));
+    const auto [success, oldestTimestamp, queueSize] = queue.push(std::move(logEvent));
     if (success) {
         StatsdStats::getInstance().noteEventQueueSize(queueSize, atomTimestamp);
     } else {
         StatsdStats::getInstance().noteEventQueueOverflow(oldestTimestamp, atomId, isAtomSkipped);
     }
+    return {atomId, atomTimestamp};
 }
 
 int StatsSocketListener::getLogSocket() {

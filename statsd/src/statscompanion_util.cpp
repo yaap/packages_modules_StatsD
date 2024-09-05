@@ -25,8 +25,13 @@ namespace android {
 namespace os {
 namespace statsd {
 
-shared_ptr<IStatsCompanionService> getStatsCompanionService() {
-    ::ndk::SpAIBinder binder(AServiceManager_getService("statscompanion"));
+shared_ptr<IStatsCompanionService> getStatsCompanionService(const bool blocking) {
+    ::ndk::SpAIBinder binder;
+    if (blocking) {
+        binder = ndk::SpAIBinder(AServiceManager_getService("statscompanion"));
+    } else {
+        binder = ndk::SpAIBinder(AServiceManager_checkService("statscompanion"));
+    }
     return IStatsCompanionService::fromBinder(binder);
 }
 

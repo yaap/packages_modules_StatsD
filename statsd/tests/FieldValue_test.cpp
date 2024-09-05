@@ -542,6 +542,124 @@ TEST(AtomMatcherTest, TestWriteDimensionPath) {
     }
 }
 
+TEST(AtomMatcherTest, TestDedupFieldMatchersAllDifferent) {
+    // Matchers: Fields 1, 2, 3
+    FieldMatcher matcher1;
+    matcher1.set_field(10);
+    FieldMatcher* child = matcher1.add_child();
+    child->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(3);
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(matcher1, &fieldMatchers);
+    ASSERT_EQ(3, fieldMatchers.size());
+
+    // Deduped Matchers: Fields 1, 2, 3
+    std::vector<Matcher> dedupedFieldMatchers = dedupFieldMatchers(fieldMatchers);
+    ASSERT_EQ((size_t)3, dedupedFieldMatchers.size());
+    EXPECT_EQ(fieldMatchers[0], dedupedFieldMatchers[0]);
+    EXPECT_EQ(fieldMatchers[1], dedupedFieldMatchers[1]);
+    EXPECT_EQ(fieldMatchers[2], dedupedFieldMatchers[2]);
+}
+
+TEST(AtomMatcherTest, TestDedupFieldMatchersAllSame) {
+    // Matcher: Fields 1, 1, 1
+    FieldMatcher matcher1;
+    matcher1.set_field(10);
+    FieldMatcher* child = matcher1.add_child();
+    child->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(1);
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(matcher1, &fieldMatchers);
+    ASSERT_EQ(3, fieldMatchers.size());
+
+    // Deduped Matchers: Fields 1, 1, 1
+    std::vector<Matcher> dedupedFieldMatchers = dedupFieldMatchers(fieldMatchers);
+    ASSERT_EQ((size_t)1, dedupedFieldMatchers.size());
+    EXPECT_EQ(fieldMatchers[0], dedupedFieldMatchers[0]);
+}
+
+TEST(AtomMatcherTest, TestDedupFieldMatcherMixOfFields) {
+    // Matcher: Fields 2, 2, 1, 3, 2, 1, 3
+    FieldMatcher matcher1;
+    matcher1.set_field(10);
+    FieldMatcher* child = matcher1.add_child();
+    child->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(3);
+    child = matcher1.add_child();
+    child->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(3);
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(matcher1, &fieldMatchers);
+    ASSERT_EQ(7, fieldMatchers.size());
+
+    // Deduped Matchers: Fields 2, 1, 3
+    std::vector<Matcher> dedupedFieldMatchers = dedupFieldMatchers(fieldMatchers);
+    ASSERT_EQ((size_t)3, dedupedFieldMatchers.size());
+    EXPECT_EQ(fieldMatchers[0], dedupedFieldMatchers[0]);
+    EXPECT_EQ(fieldMatchers[2], dedupedFieldMatchers[1]);
+    EXPECT_EQ(fieldMatchers[3], dedupedFieldMatchers[2]);
+}
+
+TEST(AtomMatcherTest, TestDedupFieldMatcherDifferentPositionSameFields) {
+    // Matcher: Fields 3, 1.1(FIRST), 1.2(FIRST), 1.1(FIRST), 1.1(LAST), 1.2(FIRST), 2
+    FieldMatcher matcher1;
+    matcher1.set_field(10);
+    FieldMatcher* child = matcher1.add_child();
+    child->set_field(3);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child->set_position(Position::FIRST);
+    child->add_child()->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child->set_position(Position::FIRST);
+    child->add_child()->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child->set_position(Position::FIRST);
+    child->add_child()->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child->set_position(Position::LAST);
+    child->add_child()->set_field(1);
+    child = matcher1.add_child();
+    child->set_field(1);
+    child->set_position(Position::FIRST);
+    child->add_child()->set_field(2);
+    child = matcher1.add_child();
+    child->set_field(2);
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(matcher1, &fieldMatchers);
+    ASSERT_EQ(7, fieldMatchers.size());
+
+    // Deduped Matchers: Fields 3, 1.1(FIRST), 1.2(FIRST), 1.1(LAST) 2
+    std::vector<Matcher> dedupedFieldMatchers = dedupFieldMatchers(fieldMatchers);
+    ASSERT_EQ((size_t)5, dedupedFieldMatchers.size());
+    EXPECT_EQ(fieldMatchers[0], dedupedFieldMatchers[0]);
+    EXPECT_EQ(fieldMatchers[1], dedupedFieldMatchers[1]);
+    EXPECT_EQ(fieldMatchers[2], dedupedFieldMatchers[2]);
+    EXPECT_EQ(fieldMatchers[4], dedupedFieldMatchers[3]);
+    EXPECT_EQ(fieldMatchers[6], dedupedFieldMatchers[4]);
+}
+
 void checkAttributionNodeInDimensionsValueParcel(StatsDimensionsValueParcel& attributionNodeParcel,
                                                  int32_t nodeDepthInAttributionChain,
                                                  int32_t uid, string tag) {

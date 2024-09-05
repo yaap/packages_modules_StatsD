@@ -133,7 +133,7 @@ static ConfigKey parseDbName(char* name) {
 }
 
 void StorageManager::writeFile(const char* file, const void* buffer, int numBytes) {
-    int fd = open(file, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    int fd = open(file, O_WRONLY | O_CREAT | O_CLOEXEC | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd == -1) {
         VLOG("Attempt to access %s but failed", file);
         return;

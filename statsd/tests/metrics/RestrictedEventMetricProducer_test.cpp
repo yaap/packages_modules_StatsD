@@ -54,11 +54,12 @@ protected:
 TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventMultipleEvents) {
     EventMetric metric;
     metric.set_id(metricId1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
     std::unique_ptr<LogEvent> event1 = CreateRestrictedLogEvent(/*atomTag=*/123, /*timestampNs=*/1);
     std::unique_ptr<LogEvent> event2 = CreateRestrictedLogEvent(/*atomTag=*/123, /*timestampNs=*/3);
 
@@ -87,11 +88,12 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventMultipleEvents) {
 TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventMultipleFields) {
     EventMetric metric;
     metric.set_id(metricId2);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
     AStatsEvent* statsEvent = AStatsEvent_obtain();
     AStatsEvent_setAtomId(statsEvent, 1);
     AStatsEvent_addInt32Annotation(statsEvent, ASTATSLOG_ANNOTATION_ID_RESTRICTION_CATEGORY,
@@ -129,12 +131,13 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventWithCondition) {
     EventMetric metric;
     metric.set_id(metricId1);
     metric.set_condition(StringToId("SCREEN_ON"));
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/0,
                                            /*initialConditionCache=*/{ConditionState::kUnknown},
                                            new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
     std::unique_ptr<LogEvent> event1 = CreateRestrictedLogEvent(/*atomTag=*/123, /*timestampNs=*/1);
     std::unique_ptr<LogEvent> event2 = CreateRestrictedLogEvent(/*atomTag=*/123, /*timestampNs=*/3);
 
@@ -162,11 +165,12 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventWithCondition) {
 TEST_F(RestrictedEventMetricProducerTest, TestOnDumpReportNoOp) {
     EventMetric metric;
     metric.set_id(metricId1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
     std::unique_ptr<LogEvent> event1 = CreateRestrictedLogEvent(/*timestampNs=*/1);
     producer.onMatchedLogEvent(/*matcherIndex=*/1, *event1);
     ProtoOutputStream output;
@@ -182,11 +186,12 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnDumpReportNoOp) {
 TEST_F(RestrictedEventMetricProducerTest, TestOnMetricRemove) {
     EventMetric metric;
     metric.set_id(metricId1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
     EXPECT_FALSE(metricTableExist(metricId1));
 
     std::unique_ptr<LogEvent> event1 = CreateRestrictedLogEvent(/*timestampNs=*/1);
@@ -201,11 +206,12 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMetricRemove) {
 TEST_F(RestrictedEventMetricProducerTest, TestRestrictedEventMetricTtlDeletesFirstEvent) {
     EventMetric metric;
     metric.set_id(metricId1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
 
     int64_t currentTimeNs = getWallClockNs();
     int64_t eightDaysAgo = currentTimeNs - 8 * 24 * 3600 * NS_PER_SEC;
@@ -243,11 +249,12 @@ TEST_F(RestrictedEventMetricProducerTest, TestLoadMetricMetadataSetsCategory) {
     metricMetadata.set_restricted_category(1);  // CATEGORY_DIAGNOSTIC
     EventMetric metric;
     metric.set_id(metricId1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     RestrictedEventMetricProducer producer(configKey, metric,
                                            /*conditionIndex=*/-1,
                                            /*initialConditionCache=*/{}, new ConditionWizard(),
                                            /*protoHash=*/0x1234567890,
-                                           /*startTimeNs=*/0);
+                                           /*startTimeNs=*/0, provider);
 
     producer.loadMetricMetadataFromProto(metricMetadata);
 

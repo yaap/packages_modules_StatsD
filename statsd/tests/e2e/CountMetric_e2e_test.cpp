@@ -251,6 +251,7 @@ TEST(CountMetricE2eTest, TestConditionTrueNanos) {
 
     ASSERT_EQ(1, reports.reports_size());
     ASSERT_EQ(1, reports.reports(0).metrics_size());
+    EXPECT_TRUE(reports.reports(0).metrics(0).has_estimated_data_bytes());
     EXPECT_TRUE(reports.reports(0).metrics(0).has_count_metrics());
     StatsLogReport::CountMetricDataWrapper countMetrics;
     sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).count_metrics(), &countMetrics);

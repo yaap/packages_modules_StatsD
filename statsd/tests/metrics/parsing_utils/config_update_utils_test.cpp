@@ -64,6 +64,7 @@ sp<AlarmMonitor> periodicAlarmMonitor = new AlarmMonitor(
         /*minDiffToUpdateRegisteredAlarmTimeSec=*/0,
         [](const shared_ptr<IStatsCompanionService>&, int64_t) {},
         [](const shared_ptr<IStatsCompanionService>&) {});
+sp<ConfigMetadataProvider> configMetadataProvider;
 unordered_map<int, vector<int>> allTagIdsToMatchersMap;
 vector<sp<AtomMatchingTracker>> oldAtomMatchingTrackers;
 unordered_map<int64_t, int> oldAtomMatchingTrackerMap;
@@ -87,10 +88,11 @@ bool initConfig(const StatsdConfig& config) {
     // initStatsdConfig returns nullopt if config is valid
     return !initStatsdConfig(
                     key, config, uidMap, pullerManager, anomalyAlarmMonitor, periodicAlarmMonitor,
-                    timeBaseNs, timeBaseNs, allTagIdsToMatchersMap, oldAtomMatchingTrackers,
-                    oldAtomMatchingTrackerMap, oldConditionTrackers, oldConditionTrackerMap,
-                    oldMetricProducers, oldMetricProducerMap, oldAnomalyTrackers, oldAlarmTrackers,
-                    tmpConditionToMetricMap, tmpTrackerToMetricMap, tmpTrackerToConditionMap,
+                    timeBaseNs, timeBaseNs, configMetadataProvider, allTagIdsToMatchersMap,
+                    oldAtomMatchingTrackers, oldAtomMatchingTrackerMap, oldConditionTrackers,
+                    oldConditionTrackerMap, oldMetricProducers, oldMetricProducerMap,
+                    oldAnomalyTrackers, oldAlarmTrackers, tmpConditionToMetricMap,
+                    tmpTrackerToMetricMap, tmpTrackerToConditionMap,
                     tmpActivationAtomTrackerToMetricMap, tmpDeactivationAtomTrackerToMetricMap,
                     oldAlertTrackerMap, metricsWithActivation, oldStateHashes, noReportMetricIds)
                     .has_value();
@@ -1974,16 +1976,17 @@ TEST_F(ConfigUpdateTest, TestUpdateEventMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, replacedConditions, newConditionTrackers,
                             conditionCache, /*stateAtomIdMap=*/{}, /*allStateGroupMaps=*/{},
                             /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
-                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
-                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
-                            deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                            replacedMetrics),
+                            provider, newMetricProducerMap, newMetricProducers,
+                            conditionToMetricMap, trackerToMetricMap, noReportMetricIds,
+                            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
+                            metricsWithActivation, replacedMetrics),
               nullopt);
 
     unordered_map<int64_t, int> expectedMetricProducerMap = {
@@ -2207,14 +2210,15 @@ TEST_F(ConfigUpdateTest, TestUpdateCountMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, /*replacedConditions=*/{}, newConditionTrackers,
                             conditionCache, stateAtomIdMap, allStateGroupMaps, replacedStates,
-                            oldMetricProducerMap, oldMetricProducers, newMetricProducerMap,
-                            newMetricProducers, conditionToMetricMap, trackerToMetricMap,
-                            noReportMetricIds, activationAtomTrackerToMetricMap,
+                            oldMetricProducerMap, oldMetricProducers, provider,
+                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
+                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
                             replacedMetrics),
               nullopt);
@@ -2420,16 +2424,17 @@ TEST_F(ConfigUpdateTest, TestUpdateGaugeMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, /*replacedConditions=*/{}, newConditionTrackers,
                             conditionCache, /*stateAtomIdMap=*/{}, /*allStateGroupMaps=*/{},
                             /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
-                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
-                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
-                            deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                            replacedMetrics),
+                            provider, newMetricProducerMap, newMetricProducers,
+                            conditionToMetricMap, trackerToMetricMap, noReportMetricIds,
+                            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
+                            metricsWithActivation, replacedMetrics),
               nullopt);
 
     unordered_map<int64_t, int> expectedMetricProducerMap = {
@@ -2743,12 +2748,13 @@ TEST_F(ConfigUpdateTest, TestUpdateDurationMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, /*replacedMatchers=*/{},
                             newAtomMatchingTrackers, newConditionTrackerMap, replacedConditions,
                             newConditionTrackers, conditionCache, stateAtomIdMap, allStateGroupMaps,
-                            replacedStates, oldMetricProducerMap, oldMetricProducers,
+                            replacedStates, oldMetricProducerMap, oldMetricProducers, provider,
                             newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                             trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
@@ -3011,12 +3017,13 @@ TEST_F(ConfigUpdateTest, TestUpdateValueMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, /*replacedMatchers=*/{},
                             newAtomMatchingTrackers, newConditionTrackerMap, replacedConditions,
                             newConditionTrackers, conditionCache, stateAtomIdMap, allStateGroupMaps,
-                            replacedStates, oldMetricProducerMap, oldMetricProducers,
+                            replacedStates, oldMetricProducerMap, oldMetricProducers, provider,
                             newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                             trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
@@ -3228,13 +3235,14 @@ TEST_F(ConfigUpdateTest, TestUpdateKllMetrics) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(
                       key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                       new StatsPullerManager(), oldAtomMatchingTrackerMap,
                       newAtomMatchingTrackerMap, /*replacedMatchers=*/{}, newAtomMatchingTrackers,
                       newConditionTrackerMap, replacedConditions, newConditionTrackers,
                       conditionCache, /*stateAtomIdMap=*/{}, /*allStateGroupMaps=*/{},
-                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
+                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers, provider,
                       newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                       trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                       deactivationAtomTrackerToMetricMap, metricsWithActivation, replacedMetrics),
@@ -3401,16 +3409,17 @@ TEST_F(ConfigUpdateTest, TestUpdateMetricActivations) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, config, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, replacedConditions, newConditionTrackers,
                             conditionCache, /*stateAtomIdMap=*/{}, /*allStateGroupMaps=*/{},
                             /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
-                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
-                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
-                            deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                            replacedMetrics),
+                            provider, newMetricProducerMap, newMetricProducers,
+                            conditionToMetricMap, trackerToMetricMap, noReportMetricIds,
+                            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
+                            metricsWithActivation, replacedMetrics),
               nullopt);
 
     // Verify event activation/deactivation maps.
@@ -3563,16 +3572,17 @@ TEST_F(ConfigUpdateTest, TestUpdateMetricsMultipleTypes) {
     unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, /*replacedConditions=*/{}, newConditionTrackers,
                             conditionCache, /*stateAtomIdMap*/ {}, /*allStateGroupMaps=*/{},
                             /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
-                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
-                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
-                            deactivationAtomTrackerToMetricMap, metricsWithActivation,
-                            replacedMetrics),
+                            provider, newMetricProducerMap, newMetricProducers,
+                            conditionToMetricMap, trackerToMetricMap, noReportMetricIds,
+                            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
+                            metricsWithActivation, replacedMetrics),
               nullopt);
 
     unordered_map<int64_t, int> expectedMetricProducerMap = {
@@ -3794,13 +3804,14 @@ TEST_F(ConfigUpdateTest, TestUpdateAlerts) {
     vector<int> metricsWithActivation;
     set<int64_t> replacedMetrics;
     int64_t currentTimeNs = 12345;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(
                       key, config, /*timeBaseNs=*/123, currentTimeNs, new StatsPullerManager(),
                       oldAtomMatchingTrackerMap, oldAtomMatchingTrackerMap, /*replacedMatchers*/ {},
                       oldAtomMatchingTrackers, oldConditionTrackerMap, /*replacedConditions=*/{},
                       oldConditionTrackers, {ConditionState::kUnknown}, /*stateAtomIdMap*/ {},
                       /*allStateGroupMaps=*/{},
-                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
+                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers, provider,
                       newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                       trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                       deactivationAtomTrackerToMetricMap, metricsWithActivation, replacedMetrics),
@@ -3983,14 +3994,15 @@ TEST_F(ConfigUpdateTest, TestMetricHasMultipleActivations) {
     set<int64_t> replacedMatchers;
     set<int64_t> replacedConditions;
     set<int64_t> replacedStates;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, config, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, replacedConditions, newConditionTrackers,
                             conditionCache, stateAtomIdMap, allStateGroupMaps, replacedStates,
-                            oldMetricProducerMap, oldMetricProducers, newMetricProducerMap,
-                            newMetricProducers, conditionToMetricMap, trackerToMetricMap,
-                            noReportMetricIds, activationAtomTrackerToMetricMap,
+                            oldMetricProducerMap, oldMetricProducers, provider,
+                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
+                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
                             replacedMetrics),
               InvalidConfigReason(INVALID_CONFIG_REASON_METRIC_HAS_MULTIPLE_ACTIVATIONS, metricId));
@@ -4020,14 +4032,15 @@ TEST_F(ConfigUpdateTest, TestNoReportMetricNotFound) {
     set<int64_t> replacedMatchers;
     set<int64_t> replacedConditions;
     set<int64_t> replacedStates;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(key, config, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, replacedConditions, newConditionTrackers,
                             conditionCache, stateAtomIdMap, allStateGroupMaps, replacedStates,
-                            oldMetricProducerMap, oldMetricProducers, newMetricProducerMap,
-                            newMetricProducers, conditionToMetricMap, trackerToMetricMap,
-                            noReportMetricIds, activationAtomTrackerToMetricMap,
+                            oldMetricProducerMap, oldMetricProducers, provider,
+                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
+                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
                             replacedMetrics),
               InvalidConfigReason(INVALID_CONFIG_REASON_NO_REPORT_METRIC_NOT_FOUND, metricId));
@@ -4064,6 +4077,7 @@ TEST_F(ConfigUpdateTest, TestMetricSlicedStateAtomAllowedFromAnyUid) {
     set<int64_t> replacedMatchers;
     set<int64_t> replacedConditions;
     set<int64_t> replacedStates;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
 
     newAtomMatchingTrackerMap[StringToId("ScreenTurnedOn")] = 0;
     stateAtomIdMap[StringToId("ScreenState")] = util::SCREEN_STATE_CHANGED;
@@ -4074,7 +4088,7 @@ TEST_F(ConfigUpdateTest, TestMetricSlicedStateAtomAllowedFromAnyUid) {
                     replacedMatchers, newAtomMatchingTrackers, newConditionTrackerMap,
                     replacedConditions, newConditionTrackers, conditionCache, stateAtomIdMap,
                     allStateGroupMaps, replacedStates, oldMetricProducerMap, oldMetricProducers,
-                    newMetricProducerMap, newMetricProducers, conditionToMetricMap,
+                    provider, newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                     trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                     deactivationAtomTrackerToMetricMap, metricsWithActivation, replacedMetrics),
             InvalidConfigReason(INVALID_CONFIG_REASON_METRIC_SLICED_STATE_ATOM_ALLOWED_FROM_ANY_UID,
@@ -4145,15 +4159,16 @@ TEST_F(ConfigUpdateTest, TestUpdateConfigNonEventMetricHasRestrictedDelegate) {
     set<int64_t> replacedMatchers;
     set<int64_t> replacedConditions;
     set<int64_t> replacedStates;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
 
     EXPECT_EQ(updateMetrics(key, config, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                             new StatsPullerManager(), oldAtomMatchingTrackerMap,
                             newAtomMatchingTrackerMap, replacedMatchers, newAtomMatchingTrackers,
                             newConditionTrackerMap, replacedConditions, newConditionTrackers,
                             conditionCache, stateAtomIdMap, allStateGroupMaps, replacedStates,
-                            oldMetricProducerMap, oldMetricProducers, newMetricProducerMap,
-                            newMetricProducers, conditionToMetricMap, trackerToMetricMap,
-                            noReportMetricIds, activationAtomTrackerToMetricMap,
+                            oldMetricProducerMap, oldMetricProducers, provider,
+                            newMetricProducerMap, newMetricProducers, conditionToMetricMap,
+                            trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                             deactivationAtomTrackerToMetricMap, metricsWithActivation,
                             replacedMetrics),
               InvalidConfigReason(INVALID_CONFIG_REASON_RESTRICTED_METRIC_NOT_SUPPORTED));
@@ -4196,13 +4211,14 @@ TEST_P(ConfigUpdateDimLimitTest, TestDimLimit) {
     vector<int> metricsWithActivation;
     vector<sp<MetricProducer>> newMetricProducers;
     set<int64_t> replacedMetrics;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     EXPECT_EQ(updateMetrics(
                       key, newConfig, /*timeBaseNs=*/123, /*currentTimeNs=*/12345,
                       new StatsPullerManager(), oldAtomMatchingTrackerMap,
                       oldAtomMatchingTrackerMap, /*replacedMatchers=*/{}, oldAtomMatchingTrackers,
                       oldConditionTrackerMap, /*replacedConditions=*/{}, oldConditionTrackers,
                       /*conditionCache=*/{}, /*stateAtomIdMap=*/{}, /*allStateGroupMaps=*/{},
-                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers,
+                      /*replacedStates=*/{}, oldMetricProducerMap, oldMetricProducers, provider,
                       newMetricProducerMap, newMetricProducers, conditionToMetricMap,
                       trackerToMetricMap, noReportMetricIds, activationAtomTrackerToMetricMap,
                       deactivationAtomTrackerToMetricMap, metricsWithActivation, replacedMetrics),

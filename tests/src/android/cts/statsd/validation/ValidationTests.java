@@ -18,7 +18,11 @@ package android.cts.statsd.validation;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
-import android.cts.statsd.atom.DeviceAtomTestCase;
+import android.cts.statsd.metric.MetricsUtils;
+import android.cts.statsdatom.lib.AtomTestUtils;
+import android.cts.statsdatom.lib.ConfigUtils;
+import android.cts.statsdatom.lib.DeviceUtils;
+import android.cts.statsdatom.lib.ReportUtils;
 import android.os.BatteryPluggedStateEnum;
 import android.os.BatteryStatsProto;
 import android.os.UidProto;
@@ -47,9 +51,14 @@ import com.android.os.StatsLog.DurationBucketInfo;
 import com.android.os.StatsLog.DurationMetricData;
 import com.android.os.StatsLog.EventMetricData;
 import com.android.os.StatsLog.StatsLogReport;
+import com.android.tradefed.build.IBuildInfo;
 import com.android.tradefed.log.LogUtil.CLog;
+import com.android.tradefed.testtype.DeviceTestCase;
+import com.android.tradefed.testtype.IBuildReceiver;
+import com.android.tradefed.util.RunUtil;
 
 import com.google.common.collect.Range;
+import com.google.protobuf.ExtensionRegistry;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -60,36 +69,53 @@ import java.util.Set;
 /**
  * Side-by-side comparison between statsd and batterystats.
  */
-public class ValidationTests extends DeviceAtomTestCase {
+public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
+
+    private IBuildInfo mCtsBuild;
+
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        assertThat(mCtsBuild).isNotNull();
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.installTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_APK,
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, mCtsBuild);
+        RunUtil.getDefault().sleep(1000);
+        DeviceUtils.turnBatteryStatsAutoResetOff(
+                getDevice()); // Turn off Battery Stats auto resetting
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.uninstallTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        DeviceUtils.resetBatteryStatus(getDevice());
+        DeviceUtils.turnScreenOn(getDevice());
+        DeviceUtils.turnBatteryStatsAutoResetOn(getDevice());
+        super.tearDown();
+    }
+
+    @Override
+    public void setBuild(IBuildInfo buildInfo) {
+        mCtsBuild = buildInfo;
+    }
 
     private static final String TAG = "Statsd.ValidationTests";
     private static final String FEATURE_AUTOMOTIVE = "android.hardware.type.automotive";
     private static final boolean ENABLE_LOAD_TEST = false;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        turnBatteryStatsAutoResetOff(); // Turn off Battery Stats auto resetting
-    }
-
-    @Override
-    protected void tearDown() throws Exception {
-        resetBatteryStatus(); // Undo any unplugDevice().
-        turnScreenOn(); // Reset screen to on state
-        turnBatteryStatsAutoResetOn(); // Turn Battery Stats auto resetting back on
-        super.tearDown();
-    }
-
     public void testPartialWakelock() throws Exception {
-        if (!hasFeature(FEATURE_AUTOMOTIVE, false)) return;
+        if (!DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
         resetBatteryStats();
-        unplugDevice();
-        flushBatteryStatsHandlers();
+        DeviceUtils.unplugDevice(getDevice());
+        DeviceUtils.flushBatteryStatsHandlers(getDevice());
         // AoD needs to be turned off because the screen should go into an off state. But, if AoD is
         // on and the device doesn't support STATE_DOZE, the screen sadly goes back to STATE_ON.
-        String aodState = getAodState();
-        setAodState("0");
-        turnScreenOff();
+        String aodState = DeviceUtils.getAodState(getDevice());
+        DeviceUtils.setAodState(getDevice(), "0");
+        DeviceUtils.turnScreenOff(getDevice());
 
         final int atomTag = Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER;
         Set<Integer> wakelockOn = new HashSet<>(Arrays.asList(
@@ -105,15 +131,17 @@ public class ValidationTests extends DeviceAtomTestCase {
         // Add state sets to the list in order.
         List<Set<Integer>> stateSet = Arrays.asList(wakelockOn, wakelockOff);
 
-        createAndUploadConfig(atomTag, true);  // True: uses attribution.
-        runDeviceTests(DEVICE_SIDE_TEST_PACKAGE, ".AtomTests", "testWakelockState");
+        ConfigUtils.uploadConfigForPushedAtomWithUid(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, atomTag, true);  // True: uses attribution.
+        DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, ".AtomTests",
+                "testWakelockState");
 
         // Sorted list of events in order in which they occurred.
-        List<EventMetricData> data = getEventMetricDataList();
+        List<EventMetricData> data = ReportUtils.getEventMetricDataList(getDevice());
 
         //=================== verify that statsd is correct ===============//
         // Assert that the events happened in the expected order.
-        assertStatesOccurred(stateSet, data, WAIT_TIME_SHORT,
+        AtomTestUtils.assertStatesOccurred(stateSet, data,
                 atom -> atom.getWakelockStateChanged().getState().getNumber());
 
         for (EventMetricData event : data) {
@@ -126,28 +154,30 @@ public class ValidationTests extends DeviceAtomTestCase {
 
     @RestrictedBuildTest
     public void testPartialWakelockDuration() throws Exception {
-        if (!hasFeature(FEATURE_AUTOMOTIVE, false)) return;
+        if (!DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
 
         // getUid() needs shell command via ADB. turnScreenOff() sometimes let system go to suspend.
         // ADB disconnection causes failure of getUid(). Move up here before turnScreenOff().
-        final int EXPECTED_UID = getUid();
+        final int EXPECTED_UID = DeviceUtils.getAppUid(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
 
-        turnScreenOn(); // To ensure that the ScreenOff later gets logged.
+        DeviceUtils.turnScreenOn(getDevice()); // To ensure that the ScreenOff later gets logged.
         // AoD needs to be turned off because the screen should go into an off state. But, if AoD is
         // on and the device doesn't support STATE_DOZE, the screen sadly goes back to STATE_ON.
-        String aodState = getAodState();
-        setAodState("0");
+        String aodState = DeviceUtils.getAodState(getDevice());
+        DeviceUtils.setAodState(getDevice(), "0");
         uploadWakelockDurationBatteryStatsConfig(TimeUnit.CTS);
-        Thread.sleep(WAIT_TIME_SHORT);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_SHORT);
         resetBatteryStats();
-        unplugDevice();
-        turnScreenOff();
-        flushBatteryStatsHandlers();
+        DeviceUtils.unplugDevice(getDevice());
+        DeviceUtils.turnScreenOff(getDevice());
+        DeviceUtils.flushBatteryStatsHandlers(getDevice());
 
-        Thread.sleep(WAIT_TIME_SHORT);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_SHORT);
 
-        runDeviceTests(DEVICE_SIDE_TEST_PACKAGE, ".AtomTests", "testWakelockState");
-        Thread.sleep(WAIT_TIME_LONG); // Make sure the one second bucket has ended.
+        DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, ".AtomTests",
+                "testWakelockState");
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_LONG); // Make sure the one second bucket has ended.
 
 
         final String EXPECTED_TAG = "StatsdPartialWakelock";
@@ -169,33 +199,35 @@ public class ValidationTests extends DeviceAtomTestCase {
                 EXPECTED_UID, EXPECTED_TAG
         ).that(statsdDurationMs).isIn(Range.closed((long) MIN_DURATION, (long) MAX_DURATION));
 
-        setAodState(aodState); // restores AOD to initial state.
+        DeviceUtils.setAodState(getDevice(), aodState); // restores AOD to initial state.
     }
 
     public void testPartialWakelockLoad() throws Exception {
         if (!ENABLE_LOAD_TEST) return;
-        turnScreenOn(); // To ensure that the ScreenOff later gets logged.
+        DeviceUtils.turnScreenOn(getDevice()); // To ensure that the ScreenOff later gets logged.
         uploadWakelockDurationBatteryStatsConfig(TimeUnit.CTS);
-        Thread.sleep(WAIT_TIME_SHORT);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_SHORT);
         resetBatteryStats();
-        unplugDevice();
-        turnScreenOff();
+        DeviceUtils.unplugDevice(getDevice());
+        DeviceUtils.turnScreenOff(getDevice());
 
-        runDeviceTests(DEVICE_SIDE_TEST_PACKAGE, ".AtomTests", "testWakelockLoad");
+        DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, ".AtomTests",
+                "testWakelockLoad");
         // Give time for stuck wakelocks to increase duration.
-        Thread.sleep(10_000);
+        RunUtil.getDefault().sleep(10_000);
 
 
         final String EXPECTED_TAG = "StatsdPartialWakelock";
-        final int EXPECTED_UID = getUid();
+        final int EXPECTED_UID = DeviceUtils.getAppUid(getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
         final int NUM_THREADS = 16;
         final int NUM_COUNT_PER_THREAD = 1000;
         final int MAX_DURATION_MS = 15_000;
         final int MIN_DURATION_MS = 1_000;
 
 
-        BatteryStatsProto batterystatsProto = getBatteryStatsProto();
-        HashMap<Integer, HashMap<Long, Long>> statsdWakelockData = getStatsdWakelockData();
+//        BatteryStatsProto batterystatsProto = getBatteryStatsProto();
+//        HashMap<Integer, HashMap<Long, Long>> statsdWakelockData = getStatsdWakelockData();
 
         // TODO: this fails because we only have the hashes of the wakelock tags in statsd.
         // If we want to run this test, we need to fix this.
@@ -256,7 +288,8 @@ public class ValidationTests extends DeviceAtomTestCase {
     // TODO: Refactor these into some utils class.
 
     public HashMap<Integer, HashMap<Long, Long>> getStatsdWakelockData() throws Exception {
-        StatsLogReport report = getStatsLogReport();
+        StatsLogReport report = ReportUtils.getStatsLogReport(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         CLog.d("Received the following stats log report: \n" + report.toString());
 
         // Stores total duration of each wakelock across buckets.
@@ -607,13 +640,14 @@ public class ValidationTests extends DeviceAtomTestCase {
                         .addPredicate(screenIsOffId)
                         .addPredicate(deviceIsUnpluggedId));
 
-        StatsdConfig.Builder builder = createConfigBuilder();
+        StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
         builder.addDurationMetric(DurationMetric.newBuilder()
-                .setId(metricId)
-                .setWhat(partialWakelockIsOnId)
-                .setCondition(screenOffBatteryOnId)
-                .setDimensionsInWhat(dimensions)
-                .setBucket(bucketsize))
+                        .setId(metricId)
+                        .setWhat(partialWakelockIsOnId)
+                        .setCondition(screenOffBatteryOnId)
+                        .setDimensionsInWhat(dimensions)
+                        .setBucket(bucketsize))
                 .addAtomMatcher(wakelockAcquire)
                 .addAtomMatcher(wakelockChangeAcquire)
                 .addAtomMatcher(wakelockRelease)
@@ -639,6 +673,10 @@ public class ValidationTests extends DeviceAtomTestCase {
                 .addPredicate(screenIsOff)
                 .addPredicate(screenOffBatteryOn);
 
-        uploadConfig(builder);
+        ConfigUtils.uploadConfig(getDevice(), builder);
+    }
+
+    private void resetBatteryStats() throws Exception {
+        getDevice().executeShellCommand("dumpsys batterystats --reset");
     }
 }

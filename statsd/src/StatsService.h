@@ -59,8 +59,7 @@ namespace statsd {
 class StatsService : public BnStatsd {
 public:
     StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> queue,
-                 const std::shared_ptr<LogEventFilter>& logEventFilter,
-                 int initEventDelaySecs = kStatsdInitDelaySecs);
+                 const std::shared_ptr<LogEventFilter>& logEventFilter);
     virtual ~StatsService();
 
     /** The anomaly alarm registered with AlarmManager won't be updated by less than this. */
@@ -413,7 +412,7 @@ private:
     /*
      * Notify StatsLogProcessor of boot completed
      */
-    void onStatsdInitCompleted();
+    void onStatsdInitCompleted(int initEventDelaySecs);
 
     /*
      * This method is used to stop log reader thread.
@@ -488,10 +487,7 @@ private:
 
     ScopedAIBinder_DeathRecipient mStatsCompanionServiceDeathRecipient;
 
-    const int mInitEventDelaySecs;
-
     friend class StatsServiceConfigTest;
-    friend class StatsServiceStatsdInitTest;
     friend class RestrictedConfigE2ETest;
 
     FRIEND_TEST(StatsLogProcessorTest, TestActivationsPersistAcrossSystemServerRestart);
@@ -523,7 +519,7 @@ private:
     FRIEND_TEST(AnomalyDurationDetectionE2eTest, TestDurationMetric_SUM_multiple_buckets);
     FRIEND_TEST(AnomalyDurationDetectionE2eTest, TestDurationMetric_SUM_long_refractory_period);
 
-    FRIEND_TEST(StatsServiceStatsdInitTest, StatsServiceStatsdInitTest);
+    FRIEND_TEST(StatsServiceConfigTest, StatsServiceStatsdInitTest);
 };
 
 }  // namespace statsd

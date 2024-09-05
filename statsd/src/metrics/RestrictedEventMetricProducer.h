@@ -16,6 +16,7 @@ public:
             const ConfigKey& key, const EventMetric& eventMetric, const int conditionIndex,
             const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
             const uint64_t protoHash, int64_t startTimeNs,
+            const wp<ConfigMetadataProvider> configMetadataProvider,
             const std::unordered_map<int, std::shared_ptr<Activation>>& eventActivationMap = {},
             const std::unordered_map<int, std::vector<std::shared_ptr<Activation>>>&
                     eventDeactivationMap = {},

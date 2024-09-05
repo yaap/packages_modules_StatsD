@@ -38,6 +38,7 @@ public:
             const ConfigKey& key, const EventMetric& eventMetric, int conditionIndex,
             const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
             const uint64_t protoHash, int64_t startTimeNs,
+            const wp<ConfigMetadataProvider> configMetadataProvider,
             const std::unordered_map<int, std::shared_ptr<Activation>>& eventActivationMap = {},
             const std::unordered_map<int, std::vector<std::shared_ptr<Activation>>>&
                     eventDeactivationMap = {},
@@ -49,9 +50,6 @@ public:
     MetricType getMetricType() const override {
         return METRIC_TYPE_EVENT;
     }
-
-protected:
-    size_t mTotalSize;
 
 private:
     void onMatchedLogEventInternalLocked(
@@ -95,6 +93,9 @@ private:
     size_t byteSizeLocked() const override;
 
     void dumpStatesLocked(int out, bool verbose) const override{};
+
+    DataCorruptionSeverity determineCorruptionSeverity(DataCorruptedReason reason,
+                                                       LostAtomType atomType) const override;
 
     // Maps the field/value pairs of an atom to a list of timestamps used to deduplicate atoms.
     std::unordered_map<AtomDimensionKey, std::vector<int64_t>> mAggregatedAtoms;

@@ -30,6 +30,9 @@ java_library_static {
     srcs: [
         ":statslog-statsd-java-gen",
     ],
+    libs: [
+        "androidx.annotation_annotation",
+    ],
     visibility: [
         "//cts/hostsidetests/statsd/apps:__subpackages__",
         "//vendor:__subpackages__",

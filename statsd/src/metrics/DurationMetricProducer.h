@@ -44,6 +44,7 @@ public:
             const int startIndex, int stopIndex, int stopAllIndex, const bool nesting,
             const sp<ConditionWizard>& wizard, const uint64_t protoHash,
             const FieldMatcher& internalDimensions, int64_t timeBaseNs, const int64_t startTimeNs,
+            const wp<ConfigMetadataProvider> configMetadataProvider,
             const unordered_map<int, shared_ptr<Activation>>& eventActivationMap = {},
             const unordered_map<int, vector<shared_ptr<Activation>>>& eventDeactivationMap = {},
             const vector<int>& slicedStateAtoms = {},
@@ -137,6 +138,9 @@ private:
 
     void addAnomalyTrackerLocked(sp<AnomalyTracker>& anomalyTracker,
                                  const UpdateStatus& updateStatus, int64_t updateTimeNs);
+
+    size_t computeBucketSizeLocked(const bool isFullBucket, const MetricDimensionKey& dimKey,
+                                   const bool isFirstBucket) const override;
 
     const DurationMetric_AggregationType mAggregationType;
 

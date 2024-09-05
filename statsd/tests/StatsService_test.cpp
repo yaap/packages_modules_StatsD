@@ -146,32 +146,10 @@ TEST(StatsServiceTest, TestGetUidFromArgs) {
     EXPECT_FALSE(service->getUidFromArgs(args, 2, uid));
 }
 
-class StatsServiceStatsdInitTest : public StatsServiceConfigTest,
-                                   public testing::WithParamInterface<bool> {
-public:
-    StatsServiceStatsdInitTest() : kInitDelaySec(GetParam() ? 0 : 3) {
-    }
-
-    static std::string ToString(testing::TestParamInfo<bool> info) {
-        return info.param ? "NoDelay" : "WithDelay";
-    }
-
-protected:
-    const int kInitDelaySec = 0;
-
-    shared_ptr<StatsService> createStatsService() override {
-        return SharedRefBase::make<StatsService>(new UidMap(), /*queue=*/nullptr,
-                                                 std::make_shared<LogEventFilter>(),
-                                                 /*initEventDelaySecs=*/kInitDelaySec);
-    }
-};
-
-INSTANTIATE_TEST_SUITE_P(StatsServiceStatsdInitTest, StatsServiceStatsdInitTest, testing::Bool(),
-                         StatsServiceStatsdInitTest::ToString);
-
-TEST_P(StatsServiceStatsdInitTest, StatsServiceStatsdInitTest) {
+TEST_F(StatsServiceConfigTest, StatsServiceStatsdInitTest) {
     // used for error threshold tolerance due to sleep() is involved
     const int64_t ERROR_THRESHOLD_NS = 25 * 1000000;  // 25 ms
+    const int INIT_DELAY_SEC = 3;
 
     auto pullAtomCallback = SharedRefBase::make<FakeSubsystemSleepCallbackWithTiming>();
 
@@ -188,23 +166,14 @@ TEST_P(StatsServiceStatsdInitTest, StatsServiceStatsdInitTest) {
     service->mProcessor->mPullerManager->ForceClearPullerCache();
 
     const int64_t initCompletedTimeNs = getElapsedRealtimeNs();
-    service->onStatsdInitCompleted();
+    service->onStatsdInitCompleted(INIT_DELAY_SEC);
     ASSERT_EQ(3, pullAtomCallback->pullNum);
 
     // Checking pull with or without delay according to the flag value
     const int64_t lastPullNs = pullAtomCallback->mPullTimeNs;
 
-    if (GetParam()) {
-        // when flag is defined - should be small delay between init & pull
-        // expect delay smaller than 1 second
-        EXPECT_GE(lastPullNs, initCompletedTimeNs);
-        EXPECT_LE(lastPullNs, initCompletedTimeNs + ERROR_THRESHOLD_NS);
-    } else {
-        // when flag is not defined - big delay is expected (kInitDelaySec)
-        EXPECT_GE(lastPullNs, initCompletedTimeNs + kInitDelaySec * NS_PER_SEC);
-        EXPECT_LE(lastPullNs,
-                  initCompletedTimeNs + kInitDelaySec * NS_PER_SEC + ERROR_THRESHOLD_NS);
-    }
+    EXPECT_GE(lastPullNs, initCompletedTimeNs + INIT_DELAY_SEC * NS_PER_SEC);
+    EXPECT_LE(lastPullNs, initCompletedTimeNs + INIT_DELAY_SEC * NS_PER_SEC + ERROR_THRESHOLD_NS);
 
     const int64_t bucketSizeNs =
             TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
@@ -244,9 +213,9 @@ TEST_P(StatsServiceStatsdInitTest, StatsServiceStatsdInitTest) {
     ASSERT_GT(bucketInfo1.atom(0).subsystem_sleep_state().time_millis(), 0);
 
     EXPECT_GE(NanoToMillis(bucketInfo1.start_bucket_elapsed_nanos()),
-              NanoToMillis(initCompletedTimeNs + kInitDelaySec * NS_PER_SEC));
+              NanoToMillis(initCompletedTimeNs + INIT_DELAY_SEC * NS_PER_SEC));
     EXPECT_LE(NanoToMillis(bucketInfo1.start_bucket_elapsed_nanos()),
-              NanoToMillis(initCompletedTimeNs + kInitDelaySec * NS_PER_SEC + ERROR_THRESHOLD_NS));
+              NanoToMillis(initCompletedTimeNs + INIT_DELAY_SEC * NS_PER_SEC + ERROR_THRESHOLD_NS));
 
     // this check confirms that bucket end is not affected by the StatsService init delay
     EXPECT_EQ(NanoToMillis(bucketInfo1.end_bucket_elapsed_nanos()),

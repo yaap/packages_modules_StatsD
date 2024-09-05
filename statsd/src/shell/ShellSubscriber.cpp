@@ -24,6 +24,7 @@
 
 #include "guardrail/StatsdStats.h"
 #include "stats_log_util.h"
+#include "utils/api_tracing.h"
 
 using aidl::android::os::IStatsSubscriptionCallback;
 
@@ -126,6 +127,7 @@ void ShellSubscriber::pullAndSendHeartbeats() {
 }
 
 void ShellSubscriber::onLogEvent(const LogEvent& event) {
+    ATRACE_CALL();
     // Skip if event is skipped
     if (event.isParsedHeaderOnly()) {
         return;

@@ -348,7 +348,6 @@ TEST_F(ShellSubscriberCallbackTest, testAddSubscription) {
 
     auto subscriptionStats = getStatsdStatsReport().subscription_stats();
 
-    EXPECT_EQ(subscriptionStats.pull_thread_wakeup_count(), 0);
     ASSERT_EQ(subscriptionStats.per_subscription_stats_size(), 1);
     auto perSubscriptionStats = subscriptionStats.per_subscription_stats(0);
     EXPECT_EQ(perSubscriptionStats.pushed_atom_count(), 3);

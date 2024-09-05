@@ -38,27 +38,3 @@ android_test_helper_app {
     ],
     compile_multilib: "both",
 }
-
-android_test_helper_app {
-    name: "StatsdAtomStormApp2",
-    manifest: "AndroidManifest2.xml",
-    defaults: ["cts_defaults"],
-    platform_apis: true,
-    min_sdk_version: "24",
-    srcs: [
-        "src/**/*.java",
-    ],
-    libs: [
-        "android.test.runner",
-        "junit",
-        "org.apache.http.legacy",
-    ],
-    privileged: true,
-    static_libs: [
-        "ctstestrunner-axt",
-        "compatibility-device-util-axt",
-        "androidx.legacy_legacy-support-v4",
-        "androidx.test.rules",
-    ],
-    compile_multilib: "both",
-}

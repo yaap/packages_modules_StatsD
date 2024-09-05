@@ -16,6 +16,7 @@
 
 #include <android/util/ProtoOutputStream.h>
 #include <gtest/gtest.h>
+#include <private/android_filesystem_config.h>
 #include <src/uid_data.pb.h>
 #include <stdio.h>
 
@@ -38,6 +39,7 @@ namespace statsd {
 using android::util::ProtoOutputStream;
 using android::util::ProtoReader;
 using ::ndk::SharedRefBase;
+using Change = UidMapping_Change;
 
 #ifdef __ANDROID__
 
@@ -54,10 +56,10 @@ const vector<string> kInstallers{"", "", "com.android.vending"};
 const vector<vector<uint8_t>> kCertificateHashes{{'a', 'z'}, {'b', 'c'}, {'d', 'e'}};
 const vector<uint8_t> kDeleted(3, false);
 
-void sendPackagesToStatsd(shared_ptr<StatsService> service, const vector<int32_t>& uids,
-                          const vector<int64_t>& versions, const vector<string>& versionStrings,
-                          const vector<string>& apps, const vector<string>& installers,
-                          const vector<vector<uint8_t>>& certificateHashes) {
+UidData createUidData(const vector<int32_t>& uids, const vector<int64_t>& versions,
+                      const vector<string>& versionStrings, const vector<string>& apps,
+                      const vector<string>& installers,
+                      const vector<vector<uint8_t>>& certificateHashes) {
     // Populate UidData from app data.
     UidData uidData;
     for (size_t i = 0; i < uids.size(); i++) {
@@ -69,7 +71,13 @@ void sendPackagesToStatsd(shared_ptr<StatsService> service, const vector<int32_t
         appInfo->set_installer(installers[i]);
         appInfo->set_certificate_hash(certificateHashes[i].data(), certificateHashes[i].size());
     }
+    return uidData;
+}
 
+void sendPackagesToStatsd(shared_ptr<StatsService> service, const vector<int32_t>& uids,
+                          const vector<int64_t>& versions, const vector<string>& versionStrings,
+                          const vector<string>& apps, const vector<string>& installers,
+                          const vector<vector<uint8_t>>& certificateHashes) {
     // Create file descriptor from serialized UidData.
     // Create a file that lives in memory.
     ScopedFileDescriptor scopedFd(memfd_create("doesn't matter", MFD_CLOEXEC));
@@ -77,6 +85,9 @@ void sendPackagesToStatsd(shared_ptr<StatsService> service, const vector<int32_t
     int f = fcntl(fd, F_GETFD);  // Read the file descriptor flags.
     ASSERT_NE(-1, f);            // Ensure there was no error while reading file descriptor flags.
     ASSERT_TRUE(f & FD_CLOEXEC);
+
+    UidData uidData =
+            createUidData(uids, versions, versionStrings, apps, installers, certificateHashes);
     ASSERT_TRUE(uidData.SerializeToFileDescriptor(fd));
     ASSERT_EQ(0, lseek(fd, 0, SEEK_SET));
 
@@ -96,6 +107,15 @@ vector<uint32_t> computeIndices(const Iterator begin, const Iterator end,
     }
     return indices;
 }
+
+class UidMapTestAppendUidMapBase : public Test {
+protected:
+    const ConfigKey cfgKey;
+    const sp<UidMap> uidMap;
+
+    UidMapTestAppendUidMapBase() : cfgKey(1, StringToId("config1")), uidMap(new UidMap()) {
+    }
+};
 
 }  // anonymous namespace
 
@@ -330,6 +350,7 @@ TEST(UidMapTest, TestOutputIncludesAtLeastOneSnapshot) {
     ProtoOutputStream proto;
     m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
 
     // Check there's still a uidmap attached this one.
@@ -354,6 +375,7 @@ TEST(UidMapTest, TestRemovedAppRetained) {
     ProtoOutputStream proto;
     m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
 
     // Snapshot should still contain this item as deleted.
@@ -381,6 +403,7 @@ TEST(UidMapTest, TestRemovedAppOverGuardrail) {
     ProtoOutputStream proto;
     m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(maxDeletedApps + 10, results.snapshots(0).package_info_size());
@@ -394,6 +417,7 @@ TEST(UidMapTest, TestRemovedAppOverGuardrail) {
     proto.clear();
     m.appendUidMap(/* timestamp */ 5, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     // Snapshot drops the first nine items.
     outputStreamToProto(&proto, &results);
@@ -416,6 +440,7 @@ TEST(UidMapTest, TestClearingOutput) {
     ProtoOutputStream proto;
     m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     UidMapping results;
     outputStreamToProto(&proto, &results);
@@ -425,6 +450,7 @@ TEST(UidMapTest, TestClearingOutput) {
     proto.clear();
     m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -436,6 +462,7 @@ TEST(UidMapTest, TestClearingOutput) {
     proto.clear();
     m.appendUidMap(/* timestamp */ 6, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -450,6 +477,7 @@ TEST(UidMapTest, TestClearingOutput) {
     proto.clear();
     m.appendUidMap(/* timestamp */ 8, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -459,6 +487,7 @@ TEST(UidMapTest, TestClearingOutput) {
     proto.clear();
     m.appendUidMap(/* timestamp */ 9, config2, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -483,11 +512,13 @@ TEST(UidMapTest, TestMemoryComputed) {
     ProtoOutputStream proto;
     m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     size_t prevBytes = m.mBytesUsed;
 
     m.appendUidMap(/* timestamp */ 4, config1, /* includeVersionStrings */ true,
                    /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                   /* omitSystemUids */ false,
                    /* str_set */ nullptr, &proto);
     EXPECT_TRUE(m.mBytesUsed < prevBytes);
 }
@@ -518,10 +549,9 @@ TEST(UidMapTest, TestMemoryGuardrail) {
     ASSERT_EQ(1U, m.mChanges.size());
 }
 
-class UidMapTestAppendUidMap : public Test {
+namespace {
+class UidMapTestAppendUidMap : public UidMapTestAppendUidMapBase {
 protected:
-    const ConfigKey config1;
-    const sp<UidMap> uidMap;
     const shared_ptr<StatsService> service;
 
     set<string> installersSet;
@@ -529,8 +559,7 @@ protected:
     vector<uint64_t> installerHashes;
 
     UidMapTestAppendUidMap()
-        : config1(1, StringToId("config1")),
-          uidMap(new UidMap()),
+        : UidMapTestAppendUidMapBase(),
           service(SharedRefBase::make<StatsService>(uidMap, /* queue */ nullptr,
                                                     std::make_shared<LogEventFilter>())) {
     }
@@ -551,9 +580,9 @@ protected:
 TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndHashStrings) {
     ProtoOutputStream proto;
     set<string> strSet;
-    uidMap->appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
-                         /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0, &strSet,
-                         &proto);
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
+                         /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                         /* omitSystemUids */ false, &strSet, &proto);
 
     UidMapping results;
     outputStreamToProto(&proto, &results);
@@ -587,8 +616,9 @@ TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndHashStri
 
 TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndDontHashStrings) {
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
                          /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
+                         /* omitSystemUids */ false,
                          /* str_set */ nullptr, &proto);
 
     UidMapping results;
@@ -636,8 +666,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(UidMapTestAppendUidMapHashStrings, TestNoIncludeInstallersInReport) {
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
                          /* includeInstaller */ false, /* truncatedCertificateHashSize */ 0,
+                         /* omitSystemUids */ false,
                          /* str_set */ GetParam(), &proto);
 
     UidMapping results;
@@ -669,8 +700,9 @@ INSTANTIATE_TEST_SUITE_P(ZeroOneTwoThree, UidMapTestTruncateCertificateHash,
 TEST_P(UidMapTestTruncateCertificateHash, TestCertificateHashesTruncated) {
     const uint8_t hashSize = GetParam();
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
-                         /* includeInstaller */ false, hashSize, /* str_set */ nullptr, &proto);
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
+                         /* includeInstaller */ false, hashSize, /* omitSystemUids */ false,
+                         /* str_set */ nullptr, &proto);
 
     UidMapping results;
     outputStreamToProto(&proto, &results);
@@ -691,6 +723,93 @@ TEST_P(UidMapTestTruncateCertificateHash, TestCertificateHashesTruncated) {
                 UnorderedPointwise(EqPackageInfo(), expectedPackageInfos));
 }
 
+class UidMapTestAppendUidMapSystemUids : public UidMapTestAppendUidMapBase {
+protected:
+    static const uint64_t bucketStartTimeNs = 10000000000;  // 0:10
+    uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(TEN_MINUTES) * 1000000LL;
+    StatsdConfig config;
+
+    void SetUp() override {
+        UidData uidData =
+                createUidData({AID_LMKD, AID_APP_START + 1, AID_USER_OFFSET + AID_UWB,
+                               AID_USER_OFFSET + AID_APP_START + 2, AID_ROOT, AID_APP_START - 1,
+                               AID_APP_START} /* uids */,
+                              {1, 2, 3, 4, 5, 6, 7} /* versions */,
+                              {"v1", "v2", "v3", "v4", "v5", "v6", "v7"} /* versionStrings */,
+                              {"LMKD", "app1", "UWB", "app2", "root", "app3", "app4"} /* apps */,
+                              vector(7, string("installer")) /* installers */,
+                              vector(7, vector<uint8_t>{}) /* certificateHashes */);
+
+        uidMap->updateMap(/* timestamp */ 1, uidData);
+
+        uidMap->updateApp(/* timestamp */ 5, "LMKD", AID_LMKD, /* versionCode */ 10, "v10",
+                          /* installer */ "", /* certificateHash */ {});
+        uidMap->updateApp(/* timestamp */ 6, "UWB", AID_USER_OFFSET + AID_UWB, /* versionCode */ 20,
+                          "v20", /* installer */ "", /* certificateHash */ {});
+        uidMap->updateApp(/* timestamp */ 7, "root", AID_ROOT, /* versionCode */ 50, "v50",
+                          /* installer */ "", /* certificateHash */ {});
+        uidMap->updateApp(/* timestamp */ 8, "app3", AID_APP_START - 1, /* versionCode */ 60, "v60",
+                          /* installer */ "", /* certificateHash */ {});
+        uidMap->updateApp(/* timestamp */ 9, "app4", AID_APP_START, /* versionCode */ 70, "v70",
+                          /* installer */ "", /* certificateHash */ {});
+
+        *config.add_atom_matcher() =
+                CreateSimpleAtomMatcher("TestAtomMatcher", util::TEST_ATOM_REPORTED);
+        *config.add_event_metric() =
+                createEventMetric("TestAtomReported", config.atom_matcher(0).id(), nullopt);
+    }
+
+    inline sp<StatsLogProcessor> createStatsLogProcessor(const StatsdConfig& config) const {
+        return CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey,
+                                       /* puller */ nullptr, /* puller atomTag */ 0, uidMap);
+    }
+
+    UidMapping getUidMapping(const sp<StatsLogProcessor>& processor) const {
+        vector<uint8_t> buffer;
+        processor->onDumpReport(cfgKey, bucketStartTimeNs + bucketSizeNs + 1, false, true, ADB_DUMP,
+                                FAST, &buffer);
+        ConfigMetricsReportList reports;
+        reports.ParseFromArray(&buffer[0], buffer.size());
+        return reports.reports(0).uid_map();
+    }
+};
+
+TEST_F(UidMapTestAppendUidMapSystemUids, testHasSystemUids) {
+    sp<StatsLogProcessor> processor = createStatsLogProcessor(config);
+    UidMapping results = getUidMapping(processor);
+
+    ASSERT_EQ(results.snapshots_size(), 1);
+    EXPECT_THAT(results.snapshots(0).package_info(),
+                IsSupersetOf({
+                        Property(&PackageInfo::uid, AID_LMKD),
+                        Property(&PackageInfo::uid, AID_USER_OFFSET + AID_UWB),
+                        Property(&PackageInfo::uid, AID_ROOT),
+                        Property(&PackageInfo::uid, AID_APP_START - 1),
+                }));
+
+    EXPECT_THAT(results.changes(), IsSupersetOf({
+                                           Property(&Change::uid, AID_LMKD),
+                                           Property(&Change::uid, AID_USER_OFFSET + AID_UWB),
+                                           Property(&Change::uid, AID_ROOT),
+                                           Property(&Change::uid, AID_APP_START - 1),
+                                   }));
+}
+
+TEST_F(UidMapTestAppendUidMapSystemUids, testHasNoSystemUids) {
+    config.mutable_statsd_config_options()->set_omit_system_uids_in_uidmap(true);
+    sp<StatsLogProcessor> processor = createStatsLogProcessor(config);
+    UidMapping results = getUidMapping(processor);
+
+    ASSERT_EQ(results.snapshots_size(), 1);
+    EXPECT_THAT(results.snapshots(0).package_info(),
+                Each(Property(&PackageInfo::uid,
+                              AllOf(Not(Eq(AID_LMKD)), Not(Eq(AID_USER_OFFSET + AID_UWB)),
+                                    Not(Eq(AID_ROOT)), Not(Eq(AID_APP_START - 1))))));
+
+    EXPECT_THAT(results.changes(), ElementsAre(Property(&Change::uid, AID_APP_START)));
+}
+
+}  // anonymous namespace
 #else
 GTEST_LOG_(INFO) << "This test does nothing.\n";
 #endif

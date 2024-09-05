@@ -16,31 +16,39 @@
 
 package com.android.server.cts.device.statsd;
 
-import android.os.SystemClock;
 import android.util.StatsLog;
 
 import org.junit.Test;
 
 public class StatsdStressLogging {
-    private static final int EVENT_STORM_ATOMS_COUNT = 100000;
+    private static final int EventStormAtomsCount = 50000;
+    private static final int RelaxedLoggingAtomsCount = 10;
+    private static final int RecommendedLoggingIntervalMs = 10;
 
-    /** Tests that logging many atoms back to back leads to socket overflow and data loss. */
+    /** Tests socket overflow. */
     @Test
     public void testLogAtomsBackToBack() throws Exception {
         // logging back to back many atoms to force socket overflow
-        logAtoms(EVENT_STORM_ATOMS_COUNT);
+        logAtomsBackToBack(EventStormAtomsCount, 0);
 
-        // Using sleep to allow bypass libstatsocket dumpAtomsLossStats() cooldown timer
-        SystemClock.sleep(100);
-
-        // Try to log atoms into socket successfully to trigger libstatsocket dumpAtomsLossStats()
-        logAtoms(1);
+        // Due to the nature of stress test there is some unpredictability aspect, repeating
+        // natural atom logging flow several times to have higher guaranty of atom delivery
+        // including recommended delay between logging atoms
+        for (int i = 0; i < RelaxedLoggingAtomsCount; i++) {
+            Thread.sleep(RecommendedLoggingIntervalMs);
+            // give chance for libstatssocket send loss stats to statsd triggering
+            // successful logging
+            logAtomsBackToBack(1, RecommendedLoggingIntervalMs);
+        }
     }
 
-    private void logAtoms(int iterations) {
+    private void logAtomsBackToBack(int iterations, int loggingDelay) throws Exception {
         // single atom logging takes ~2us excluding JNI interactions
         for (int i = 0; i < iterations; i++) {
             StatsLog.logStart(i);
+            if (loggingDelay > 0) {
+                Thread.sleep(loggingDelay);
+            }
             StatsLog.logStop(i);
         }
     }

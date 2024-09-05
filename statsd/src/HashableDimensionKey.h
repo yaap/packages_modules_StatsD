@@ -135,6 +135,8 @@ public:
 
     bool operator<(const MetricDimensionKey& that) const;
 
+    size_t getSize(const bool usesNestedDimensions) const;
+
 private:
     HashableDimensionKey mDimensionKeyInWhat;
     HashableDimensionKey mStateValuesKey;

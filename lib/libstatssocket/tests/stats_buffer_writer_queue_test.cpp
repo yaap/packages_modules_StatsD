@@ -24,10 +24,14 @@
 #include "utils.h"
 
 using testing::_;
+using testing::AnyNumber;
+using testing::DoAll;
 using testing::Return;
 using testing::StrictMock;
 
-constexpr static int WAIT_MS = 200;
+namespace {
+
+constexpr static int WAIT_MS = 100;
 
 static AStatsEvent* generateTestEvent() {
     AStatsEvent* event = AStatsEvent_obtain();
@@ -40,11 +44,12 @@ static AStatsEvent* generateTestEvent() {
 class BasicBufferWriterQueueMock : public BufferWriterQueue {
 public:
     BasicBufferWriterQueueMock() = default;
-    MOCK_METHOD(bool, handleCommand, (const BasicBufferWriterQueueMock::Cmd& cmd),
-                (const override));
+    MOCK_METHOD(bool, handleCommand, (const BufferWriterQueue::Cmd& cmd), (const override));
 };
 
 typedef StrictMock<BasicBufferWriterQueueMock> BufferWriterQueueMock;
+
+}  // namespace
 
 TEST(StatsBufferWriterQueueTest, TestWriteSuccess) {
     AStatsEvent* event = generateTestEvent();
@@ -64,6 +69,9 @@ TEST(StatsBufferWriterQueueTest, TestWriteSuccess) {
     EXPECT_TRUE(addedToQueue);
     // to yeld to the queue worker thread
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_MS));
+
+    queue.drainQueue();
+    EXPECT_EQ(queue.getQueueSize(), 0);
 }
 
 TEST(StatsBufferWriterQueueTest, TestWriteOverflow) {
@@ -89,6 +97,9 @@ TEST(StatsBufferWriterQueueTest, TestWriteOverflow) {
     EXPECT_FALSE(addedToQueue);
 
     EXPECT_EQ(queue.getQueueSize(), BufferWriterQueueMock::kQueueMaxSizeLimit);
+
+    queue.drainQueue();
+    EXPECT_EQ(queue.getQueueSize(), 0);
 }
 
 TEST(StatsBufferWriterQueueTest, TestSleepOnOverflow) {
@@ -104,12 +115,16 @@ TEST(StatsBufferWriterQueueTest, TestSleepOnOverflow) {
     std::vector<int64_t> attemptsTs;
 
     BufferWriterQueueMock queue;
-    EXPECT_CALL(queue, handleCommand(_))
-            .WillRepeatedly([&attemptsTs](const BufferWriterQueueMock::Cmd&) {
-                // store timestamp for command handler invocations
-                attemptsTs.push_back(get_elapsed_realtime_ns());
-                return false;
-            });
+    ON_CALL(queue, handleCommand(_))
+            .WillByDefault(DoAll(
+                    [&attemptsTs](const BufferWriterQueue::Cmd&) {
+                        // store timestamp for command handler invocations
+                        attemptsTs.push_back(get_elapsed_realtime_ns());
+                        return false;
+                    },
+                    Return(false)));
+
+    EXPECT_CALL(queue, handleCommand(_)).Times(AnyNumber());
 
     // simulate failed write to stats socket to fill the queue
     for (int i = 0; i < BufferWriterQueueMock::kQueueMaxSizeLimit; i++) {
@@ -117,9 +132,12 @@ TEST(StatsBufferWriterQueueTest, TestSleepOnOverflow) {
         EXPECT_TRUE(addedToQueue);
     }
     AStatsEvent_release(event);
-
     // to yeld to the queue worker thread
     std::this_thread::sleep_for(std::chrono::milliseconds(WAIT_MS));
+
+    // to eliminate extra commands handling on the worker thread
+    queue.drainQueue();
+    EXPECT_EQ(queue.getQueueSize(), 0);
 
     EXPECT_GE(attemptsTs.size(), 2);
     for (int i = 0; i < attemptsTs.size() - 1; i++) {

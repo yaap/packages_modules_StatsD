@@ -36,7 +36,8 @@ public:
                                const ConditionOptions& conditionOptions,
                                const StateOptions& stateOptions,
                                const ActivationOptions& activationOptions,
-                               const GuardrailOptions& guardrailOptions);
+                               const GuardrailOptions& guardrailOptions,
+                               const wp<ConfigMetadataProvider> configMetadataProvider);
 
     // Process data pulled on bucket boundary.
     void onDataPulled(const std::vector<std::shared_ptr<LogEvent>>& allData, PullResult pullResult,
@@ -142,12 +143,27 @@ private:
     // Internal function to calculate the current used bytes.
     size_t byteSizeLocked() const override;
 
-    void combineValueFields(pair<LogEvent, vector<int>>& eventValues, const LogEvent& newEvent,
-                            const vector<int>& newValueIndices) const;
+    void combineValueFields(pair<LogEvent, std::vector<int>>& eventValues, const LogEvent& newEvent,
+                            const std::vector<int>& newValueIndices) const;
+
+    ValueMetric::AggregationType getAggregationTypeLocked(int index) const {
+        return mAggregationTypes.size() == 1 ? mAggregationTypes[0] : mAggregationTypes[index];
+    }
+
+    size_t getAggregatedValueSize(const Value& value) const override;
+
+    bool hasAvgAggregationType(const vector<ValueMetric::AggregationType> aggregationTypes) const {
+        for (const int aggType : aggregationTypes) {
+            if (aggType == ValueMetric_AggregationType_AVG) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     const bool mUseAbsoluteValueOnReset;
 
-    const ValueMetric::AggregationType mAggregationType;
+    const std::vector<ValueMetric::AggregationType> mAggregationTypes;
 
     const bool mIncludeSampleSize;
 
@@ -170,6 +186,9 @@ private:
     bool mHasGlobalBase;
 
     const int64_t mMaxPullDelayNs;
+
+    // Deduped value fields for matching.
+    const std::vector<Matcher> mDedupedFieldMatchers;
 
     // For anomaly detection.
     std::unordered_map<MetricDimensionKey, int64_t> mCurrentFullBucket;
@@ -232,6 +251,8 @@ private:
     FRIEND_TEST(NumericValueMetricProducerTest,
                 TestSlicedStateWithMultipleDimensionsMissingDataInPull);
     FRIEND_TEST(NumericValueMetricProducerTest, TestUploadThreshold);
+    FRIEND_TEST(NumericValueMetricProducerTest, TestMultipleAggTypesPulled);
+    FRIEND_TEST(NumericValueMetricProducerTest, TestMultipleAggTypesPushed);
 
     FRIEND_TEST(NumericValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenOneConditionFailed);
     FRIEND_TEST(NumericValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenInitialPullFailed);
@@ -282,6 +303,9 @@ private:
     FRIEND_TEST(MetricsManagerUtilDimLimitTest, TestDimLimit);
 
     FRIEND_TEST(ConfigUpdateDimLimitTest, TestDimLimit);
+
+    FRIEND_TEST(ValueMetricE2eTest, TestInitWithMultipleAggTypes);
+    FRIEND_TEST(ValueMetricE2eTest, TestInitWithDefaultAggType);
 
     friend class NumericValueMetricProducerTestHelper;
 };

@@ -88,7 +88,7 @@ int main(int /*argc*/, char** /*argv*/) {
     ABinderProcess_startThreadPool();
 
     // Initialize boot flags
-    FlagProvider::getInstance().initBootFlags({STATSD_INIT_COMPLETED_NO_DELAY_FLAG});
+    FlagProvider::getInstance().initBootFlags({});
 
     std::shared_ptr<LogEventQueue> eventQueue =
             std::make_shared<LogEventQueue>(50000); /*buffer limit. Buffer is NOT pre-allocated*/
@@ -97,14 +97,21 @@ int main(int /*argc*/, char** /*argv*/) {
 
     std::shared_ptr<LogEventFilter> logEventFilter = std::make_shared<LogEventFilter>();
 
-    const int initEventDelay = FlagProvider::getInstance().getBootFlagBool(
-                                       STATSD_INIT_COMPLETED_NO_DELAY_FLAG, FLAG_FALSE)
-                                       ? 0
-                                       : StatsService::kStatsdInitDelaySecs;
     initSeedRandom();
+
+    // Start reading events from the socket as early as possible.
+    // Processing from the queue is delayed until StatsService::startup to allow
+    // config initialization to occur before we start processing atoms.
+    gSocketListener = new StatsSocketListener(eventQueue, logEventFilter);
+
+    ALOGI("Statsd starts to listen to socket.");
+    // Backlog and /proc/sys/net/unix/max_dgram_qlen set to large value
+    if (gSocketListener->startListener(600)) {
+        exit(1);
+    }
+
     // Create the service
-    gStatsService =
-            SharedRefBase::make<StatsService>(uidMap, eventQueue, logEventFilter, initEventDelay);
+    gStatsService = SharedRefBase::make<StatsService>(uidMap, eventQueue, logEventFilter);
     auto binder = gStatsService->asBinder();
 
     // We want to be able to ask for the selinux context of callers:
@@ -124,13 +131,8 @@ int main(int /*argc*/, char** /*argv*/) {
 
     gStatsService->Startup();
 
-    gSocketListener = new StatsSocketListener(eventQueue, logEventFilter);
-
-    ALOGI("Statsd starts to listen to socket.");
-    // Backlog and /proc/sys/net/unix/max_dgram_qlen set to large value
-    if (gSocketListener->startListener(600)) {
-        exit(1);
-    }
+    // Enable the filter now since configs are initialized.
+    logEventFilter->setFilteringEnabled(true);
 
     // Use self-pipe to notify this thread to gracefully quit
     // when receiving SIGTERM

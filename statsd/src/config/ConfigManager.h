@@ -19,7 +19,9 @@
 #include <aidl/android/os/IPendingIntentRef.h>
 #include <stdio.h>
 
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include "config/ConfigKey.h"

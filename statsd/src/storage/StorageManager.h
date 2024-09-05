@@ -56,6 +56,9 @@ public:
 
     /**
      * Writes a given byte array as a file to the specified file path.
+     *
+     * A new file is created if the file does not already exist.
+     * If the file already exists, it is cleared and then overwritten.
      */
     static void writeFile(const char* file, const void* buffer, int numBytes);
 

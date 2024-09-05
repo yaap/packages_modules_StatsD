@@ -93,7 +93,7 @@ void DurationAnomalyTracker::informAlarmsFired(
     // seldomly called. The alternative would be having InternalAlarms store information about the
     // DurationAnomalyTracker and key, but that's a lot of data overhead to speed up something that
     // is rarely ever called.
-    unordered_map<MetricDimensionKey, sp<const InternalAlarm>> matchedAlarms;
+    std::unordered_map<MetricDimensionKey, sp<const InternalAlarm>> matchedAlarms;
     for (const auto& kv : mAlarms) {
         if (firedAlarms.count(kv.second) > 0) {
             matchedAlarms.insert({kv.first, kv.second});

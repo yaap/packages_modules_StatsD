@@ -30,6 +30,7 @@
 #include "src/hash.h"
 #include "src/logd/LogEvent.h"
 #include "src/matchers/EventMatcherWizard.h"
+#include "src/metrics/NumericValueMetricProducer.h"
 #include "src/packages/UidMap.h"
 #include "src/stats_log.pb.h"
 #include "src/stats_log_util.h"
@@ -37,6 +38,7 @@
 #include "stats_annotations.h"
 #include "stats_event.h"
 #include "statslog_statsdtest.h"
+#include "tests/metrics/metrics_test_helper.h"
 
 namespace android {
 namespace os {
@@ -377,7 +379,7 @@ void writeAttribution(AStatsEvent* statsEvent, const vector<int>& attributionUid
                       const vector<string>& attributionTags);
 
 // Builds statsEvent to get buffer that is parsed into logEvent then releases statsEvent.
-void parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent);
+bool parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent);
 
 shared_ptr<LogEvent> CreateTwoValueLogEvent(int atomId, int64_t eventTimeNs, int32_t value1,
                                             int32_t value2);
@@ -569,12 +571,26 @@ void createStatsEvent(AStatsEvent* statsEvent, uint8_t typeId, uint32_t atomId);
 
 void fillStatsEventWithSampleValue(AStatsEvent* statsEvent, uint8_t typeId);
 
+SocketLossInfo createSocketLossInfo(int32_t uid, int32_t atomId);
+
+// helper API to create STATS_SOCKET_LOSS_REPORTED LogEvent
+std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t lossAtomId);
+
 // Create a statsd log event processor upon the start time in seconds, config and key.
 sp<StatsLogProcessor> CreateStatsLogProcessor(
         const int64_t timeBaseNs, int64_t currentTimeNs, const StatsdConfig& config,
         const ConfigKey& key, const shared_ptr<IPullAtomCallback>& puller = nullptr,
         const int32_t atomTag = 0 /*for puller only*/, const sp<UidMap> = new UidMap(),
         const shared_ptr<LogEventFilter>& logEventFilter = std::make_shared<LogEventFilter>());
+
+sp<NumericValueMetricProducer> createNumericValueMetricProducer(
+        sp<MockStatsPullerManager>& pullerManager, const ValueMetric& metric, const int atomId,
+        bool isPulled, const ConfigKey& configKey, const uint64_t protoHash,
+        const int64_t timeBaseNs, const int64_t startTimeNs, const int logEventMatcherIndex,
+        optional<ConditionState> conditionAfterFirstBucketPrepared = nullopt,
+        vector<int32_t> slicedStateAtoms = {},
+        unordered_map<int, unordered_map<int, int64_t>> stateGroupMap = {},
+        sp<EventMatcherWizard> eventMatcherWizard = nullptr);
 
 LogEventFilter::AtomIdSet CreateAtomIdSetDefault();
 LogEventFilter::AtomIdSet CreateAtomIdSetFromConfig(const StatsdConfig& config);
@@ -836,6 +852,13 @@ std::vector<uint8_t> protoToBytes(const P& proto) {
 StatsdConfig buildGoodConfig(int configId);
 
 StatsdConfig buildGoodConfig(int configId, int alertId);
+
+class MockConfigMetadataProvider : public ConfigMetadataProvider {
+public:
+    MOCK_METHOD(bool, useV2SoftMemoryCalculation, (), (override));
+};
+
+sp<MockConfigMetadataProvider> makeMockConfigMetadataProvider(bool enabled);
 
 }  // namespace statsd
 }  // namespace os

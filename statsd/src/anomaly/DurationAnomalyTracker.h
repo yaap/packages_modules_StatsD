@@ -23,8 +23,6 @@ namespace android {
 namespace os {
 namespace statsd {
 
-using std::unordered_map;
-
 class DurationAnomalyTracker : public virtual AnomalyTracker {
 public:
     DurationAnomalyTracker(const Alert& alert, const ConfigKey& configKey,

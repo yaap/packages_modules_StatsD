@@ -36,6 +36,7 @@
 #include "stats_util.h"
 #include "statslog_statsd.h"
 #include "storage/StorageManager.h"
+#include "utils/api_tracing.h"
 
 using namespace android;
 using android::base::StringPrintf;
@@ -73,6 +74,7 @@ const int FIELD_ID_CURRENT_REPORT_WALL_CLOCK_NANOS = 6;
 const int FIELD_ID_DUMP_REPORT_REASON = 8;
 const int FIELD_ID_STRINGS = 9;
 const int FIELD_ID_DATA_CORRUPTED_REASON = 11;
+const int FIELD_ID_ESTIMATED_DATA_BYTES = 12;
 
 // for ActiveConfigList
 const int FIELD_ID_ACTIVE_CONFIG_LIST_CONFIG = 1;
@@ -388,6 +390,7 @@ void StatsLogProcessor::resetConfigsLocked(const int64_t timestampNs) {
 }
 
 void StatsLogProcessor::OnLogEvent(LogEvent* event) {
+    ATRACE_CALL();
     OnLogEvent(event, getElapsedRealtimeNs());
 }
 
@@ -769,6 +772,8 @@ void StatsLogProcessor::onConfigMetricsReportLocked(
 
     std::set<string> str_set;
 
+    int64_t totalSize = it->second->byteSize();
+
     ProtoOutputStream tempProto;
     // First, fill in ConfigMetricsReport using current data on memory, which
     // starts from filling in StatsLogReport's.
@@ -782,6 +787,7 @@ void StatsLogProcessor::onConfigMetricsReportLocked(
         mUidMap->appendUidMap(dumpTimeStampNs, key, it->second->versionStringsInReport(),
                               it->second->installerInReport(),
                               it->second->packageCertificateHashSizeBytes(),
+                              it->second->omitSystemUidsInUidMap(),
                               it->second->hashStringInReport() ? &str_set : nullptr, &tempProto);
         tempProto.end(uidMapToken);
     }
@@ -803,7 +809,12 @@ void StatsLogProcessor::onConfigMetricsReportLocked(
     }
 
     // Data corrupted reason
-    writeDataCorruptedReasons(tempProto);
+    writeDataCorruptedReasons(tempProto, FIELD_ID_DATA_CORRUPTED_REASON,
+                              StatsdStats::getInstance().hasEventQueueOverflow(),
+                              StatsdStats::getInstance().hasSocketLoss());
+
+    // Estimated memory bytes
+    tempProto.write(FIELD_TYPE_INT64 | FIELD_ID_ESTIMATED_DATA_BYTES, totalSize);
 
     flushProtoToBuffer(tempProto, buffer);
 
@@ -1104,8 +1115,11 @@ void StatsLogProcessor::flushIfNecessaryLocked(const ConfigKey& key,
                                                MetricsManager& metricsManager) {
     int64_t elapsedRealtimeNs = getElapsedRealtimeNs();
     auto lastCheckTime = mLastByteSizeTimes.find(key);
+    int64_t minCheckPeriodNs = metricsManager.useV2SoftMemoryCalculation()
+                                       ? StatsdStats::kMinByteSizeV2CheckPeriodNs
+                                       : StatsdStats::kMinByteSizeCheckPeriodNs;
     if (lastCheckTime != mLastByteSizeTimes.end()) {
-        if (elapsedRealtimeNs - lastCheckTime->second < StatsdStats::kMinByteSizeCheckPeriodNs) {
+        if (elapsedRealtimeNs - lastCheckTime->second < minCheckPeriodNs) {
             return;
         }
     }
@@ -1449,6 +1463,7 @@ void StatsLogProcessor::onUidMapReceived(const int64_t eventTimeNs) {
 }
 
 void StatsLogProcessor::onStatsdInitCompleted(const int64_t elapsedTimeNs) {
+    ATRACE_CALL();
     std::lock_guard<std::mutex> lock(mMetricsMutex);
     VLOG("Received boot completed signal");
     for (const auto& it : mMetricsManagers) {
@@ -1503,17 +1518,6 @@ void StatsLogProcessor::updateLogEventFilterLocked() const {
     StateManager::getInstance().addAllAtomIds(allAtomIds);
     VLOG("StatsLogProcessor: Updating allAtomIds done. Total atoms %d", (int)allAtomIds.size());
     mLogEventFilter->setAtomIds(std::move(allAtomIds), this);
-}
-
-void StatsLogProcessor::writeDataCorruptedReasons(ProtoOutputStream& proto) {
-    if (StatsdStats::getInstance().hasEventQueueOverflow()) {
-        proto.write(FIELD_TYPE_INT32 | FIELD_COUNT_REPEATED | FIELD_ID_DATA_CORRUPTED_REASON,
-                    DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
-    }
-    if (StatsdStats::getInstance().hasSocketLoss()) {
-        proto.write(FIELD_TYPE_INT32 | FIELD_COUNT_REPEATED | FIELD_ID_DATA_CORRUPTED_REASON,
-                    DATA_CORRUPTED_SOCKET_LOSS);
-    }
 }
 
 bool StatsLogProcessor::validateAppBreadcrumbEvent(const LogEvent& event) const {

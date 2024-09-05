@@ -140,7 +140,8 @@ public:
     // record is deleted.
     void appendUidMap(int64_t timestamp, const ConfigKey& key, const bool includeVersionStrings,
                       const bool includeInstaller, const uint8_t truncatedCertificateHashSize,
-                      std::set<string>* str_set, ProtoOutputStream* proto);
+                      const bool omitSystemUids, std::set<string>* str_set,
+                      ProtoOutputStream* proto);
 
     // Forces the output to be cleared. We still generate a snapshot based on the current state.
     // This results in extra data uploaded but helps us reconstruct the uid mapping on the server
@@ -158,7 +159,7 @@ public:
     // str_set: if not null, add new string to the set and write str_hash to proto
     //          if null, write string to proto.
     void writeUidMapSnapshot(int64_t timestamp, bool includeVersionStrings, bool includeInstaller,
-                             const uint8_t truncatedCertificateHashSize,
+                             const uint8_t truncatedCertificateHashSize, bool omitSystemUids,
                              const std::set<int32_t>& interestingUids,
                              std::map<string, int>* installerIndices, std::set<string>* str_set,
                              ProtoOutputStream* proto) const;
@@ -170,6 +171,7 @@ private:
     void writeUidMapSnapshotLocked(const int64_t timestamp, const bool includeVersionStrings,
                                    const bool includeInstaller,
                                    const uint8_t truncatedCertificateHashSize,
+                                   const bool omitSystemUids,
                                    const std::set<int32_t>& interestingUids,
                                    std::map<string, int>* installerIndices,
                                    std::set<string>* str_set, ProtoOutputStream* proto) const;

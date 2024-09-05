@@ -724,14 +724,16 @@ void writeAttribution(AStatsEvent* statsEvent, const vector<int>& attributionUid
                                       cTags.data(), attributionUids.size());
 }
 
-void parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent) {
+bool parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent) {
     AStatsEvent_build(statsEvent);
 
     size_t size;
     uint8_t* buf = AStatsEvent_getBuffer(statsEvent, &size);
-    logEvent->parseBuffer(buf, size);
+    const bool result = logEvent->parseBuffer(buf, size);
 
     AStatsEvent_release(statsEvent);
+
+    return result;
 }
 
 void CreateTwoValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs, int32_t value1,
@@ -1454,6 +1456,71 @@ sp<StatsLogProcessor> CreateStatsLogProcessor(const int64_t timeBaseNs, const in
     return processor;
 }
 
+sp<NumericValueMetricProducer> createNumericValueMetricProducer(
+        sp<MockStatsPullerManager>& pullerManager, const ValueMetric& metric, const int atomId,
+        bool isPulled, const ConfigKey& configKey, const uint64_t protoHash,
+        const int64_t timeBaseNs, const int64_t startTimeNs, const int logEventMatcherIndex,
+        optional<ConditionState> conditionAfterFirstBucketPrepared,
+        vector<int32_t> slicedStateAtoms,
+        unordered_map<int, unordered_map<int, int64_t>> stateGroupMap,
+        sp<EventMatcherWizard> eventMatcherWizard) {
+    if (eventMatcherWizard == nullptr) {
+        eventMatcherWizard = createEventMatcherWizard(atomId, logEventMatcherIndex);
+    }
+    sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+    if (isPulled) {
+        EXPECT_CALL(*pullerManager, RegisterReceiver(atomId, configKey, _, _, _))
+                .WillOnce(Return());
+        EXPECT_CALL(*pullerManager, UnRegisterReceiver(atomId, configKey, _))
+                .WillRepeatedly(Return());
+    }
+    const int64_t bucketSizeNs = MillisToNano(
+            TimeUnitToBucketSizeInMillisGuardrailed(configKey.GetUid(), metric.bucket()));
+    const bool containsAnyPositionInDimensionsInWhat = HasPositionANY(metric.dimensions_in_what());
+    const bool shouldUseNestedDimensions = ShouldUseNestedDimensions(metric.dimensions_in_what());
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(metric.value_field(), &fieldMatchers);
+
+    const auto [dimensionSoftLimit, dimensionHardLimit] =
+            StatsdStats::getAtomDimensionKeySizeLimits(atomId,
+                                                       StatsdStats::kDimensionKeySizeHardLimitMin);
+
+    int conditionIndex = conditionAfterFirstBucketPrepared ? 0 : -1;
+    vector<ConditionState> initialConditionCache;
+    if (conditionAfterFirstBucketPrepared) {
+        initialConditionCache.push_back(ConditionState::kUnknown);
+    }
+
+    // get the condition_correction_threshold_nanos value
+    const optional<int64_t> conditionCorrectionThresholdNs =
+            metric.has_condition_correction_threshold_nanos()
+                    ? optional<int64_t>(metric.condition_correction_threshold_nanos())
+                    : nullopt;
+
+    std::vector<ValueMetric::AggregationType> aggregationTypes;
+    if (metric.aggregation_types_size() != 0) {
+        for (int i = 0; i < metric.aggregation_types_size(); i++) {
+            aggregationTypes.push_back(metric.aggregation_types(i));
+        }
+    } else {  // aggregation_type() is set or default is used.
+        aggregationTypes.push_back(metric.aggregation_type());
+    }
+
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    const int pullAtomId = isPulled ? atomId : -1;
+    return new NumericValueMetricProducer(
+            configKey, metric, protoHash, {pullAtomId, pullerManager},
+            {timeBaseNs, startTimeNs, bucketSizeNs, metric.min_bucket_size_nanos(),
+             conditionCorrectionThresholdNs, metric.split_bucket_for_app_upgrade()},
+            {containsAnyPositionInDimensionsInWhat, shouldUseNestedDimensions, logEventMatcherIndex,
+             eventMatcherWizard, metric.dimensions_in_what(), fieldMatchers, aggregationTypes},
+            {conditionIndex, metric.links(), initialConditionCache, wizard},
+            {metric.state_link(), slicedStateAtoms, stateGroupMap},
+            {/*eventActivationMap=*/{}, /*eventDeactivationMap=*/{}},
+            {dimensionSoftLimit, dimensionHardLimit}, provider);
+}
+
 LogEventFilter::AtomIdSet CreateAtomIdSetDefault() {
     LogEventFilter::AtomIdSet resultList(std::move(StatsLogProcessor::getDefaultAtomIdSet()));
     StateManager::getInstance().addAllAtomIds(resultList);
@@ -2126,6 +2193,7 @@ PackageInfoSnapshot getPackageInfoSnapshot(const sp<UidMap> uidMap) {
     ProtoOutputStream protoOutputStream;
     uidMap->writeUidMapSnapshot(/* timestamp */ 1, /* includeVersionStrings */ true,
                                 /* includeInstaller */ true, /* certificateHashSize */ UINT8_MAX,
+                                /* omitSystemUids */ false,
                                 /* interestingUids */ {},
                                 /* installerIndices */ nullptr, /* str_set */ nullptr,
                                 &protoOutputStream);
@@ -2314,6 +2382,42 @@ StatsdConfig buildGoodConfig(int configId, int alertId) {
 
     return config;
 }
+
+sp<MockConfigMetadataProvider> makeMockConfigMetadataProvider(bool enabled) {
+    sp<MockConfigMetadataProvider> metadataProvider = new StrictMock<MockConfigMetadataProvider>();
+    EXPECT_CALL(*metadataProvider, useV2SoftMemoryCalculation()).Times(AnyNumber());
+    EXPECT_CALL(*metadataProvider, useV2SoftMemoryCalculation()).WillRepeatedly(Return(enabled));
+    return nullptr;
+}
+
+SocketLossInfo createSocketLossInfo(int32_t uid, int32_t atomId) {
+    SocketLossInfo lossInfo;
+    lossInfo.uid = uid;
+    lossInfo.errors.push_back(-11);
+    lossInfo.atomIds.push_back(atomId);
+    lossInfo.counts.push_back(1);
+    return lossInfo;
+}
+
+std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t lossAtomId) {
+    const SocketLossInfo lossInfo = createSocketLossInfo(uid, lossAtomId);
+
+    AStatsEvent* statsEvent = AStatsEvent_obtain();
+    AStatsEvent_setAtomId(statsEvent, util::STATS_SOCKET_LOSS_REPORTED);
+    AStatsEvent_writeInt32(statsEvent, lossInfo.uid);
+    AStatsEvent_addBoolAnnotation(statsEvent, ASTATSLOG_ANNOTATION_ID_IS_UID, true);
+    AStatsEvent_writeInt64(statsEvent, lossInfo.firstLossTsNanos);
+    AStatsEvent_writeInt64(statsEvent, lossInfo.lastLossTsNanos);
+    AStatsEvent_writeInt32(statsEvent, lossInfo.overflowCounter);
+    AStatsEvent_writeInt32Array(statsEvent, lossInfo.errors.data(), lossInfo.errors.size());
+    AStatsEvent_writeInt32Array(statsEvent, lossInfo.atomIds.data(), lossInfo.atomIds.size());
+    AStatsEvent_writeInt32Array(statsEvent, lossInfo.counts.data(), lossInfo.counts.size());
+
+    std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(uid /* uid */, 0 /* pid */);
+    parseStatsEventToLogEvent(statsEvent, logEvent.get());
+    return logEvent;
+}
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

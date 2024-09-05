@@ -18,48 +18,83 @@ package android.cts.statsd.metric;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
-import android.cts.statsd.atom.DeviceAtomTestCase;
+import android.cts.statsdatom.lib.AtomTestUtils;
+import android.cts.statsdatom.lib.ConfigUtils;
+import android.cts.statsdatom.lib.DeviceUtils;
+import android.cts.statsdatom.lib.ReportUtils;
 
 import com.android.internal.os.StatsdConfigProto;
 import com.android.internal.os.StatsdConfigProto.FieldMatcher;
 import com.android.internal.os.StatsdConfigProto.Position;
 import com.android.os.AtomsProto.Atom;
 import com.android.os.AtomsProto.AppBreadcrumbReported;
-import com.android.os.AtomsProto.BleScanStateChanged;
 import com.android.os.AtomsProto.WakelockStateChanged;
 import com.android.os.AttributionNode;
-import com.android.os.StatsLog;
 import com.android.os.StatsLog.ConfigMetricsReport;
 import com.android.os.StatsLog.ConfigMetricsReportList;
 import com.android.os.StatsLog.CountBucketInfo;
 import com.android.os.StatsLog.CountMetricData;
 import com.android.os.StatsLog.StatsLogReport;
-import com.android.tradefed.device.DeviceNotAvailableException;
+import com.android.tradefed.build.IBuildInfo;
 import com.android.tradefed.log.LogUtil;
+import com.android.tradefed.testtype.DeviceTestCase;
+import com.android.tradefed.testtype.IBuildReceiver;
+import com.android.tradefed.util.RunUtil;
 
-import java.util.Arrays;
+import com.google.protobuf.ExtensionRegistry;
+
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class CountMetricsTests extends DeviceAtomTestCase {
+public class CountMetricsTests extends DeviceTestCase implements IBuildReceiver {
+
+    private IBuildInfo mCtsBuild;
+
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        assertThat(mCtsBuild).isNotNull();
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.installTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_APK,
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, mCtsBuild);
+        RunUtil.getDefault().sleep(1000);
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        ConfigUtils.removeConfig(getDevice());
+        ReportUtils.clearReports(getDevice());
+        DeviceUtils.uninstallTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
+        super.tearDown();
+    }
+
+    @Override
+    public void setBuild(IBuildInfo buildInfo) {
+        mCtsBuild = buildInfo;
+    }
 
     public void testSimpleEventCountMetric() throws Exception {
         int matcherId = 1;
-        StatsdConfigProto.StatsdConfig.Builder builder = createConfigBuilder();
+        StatsdConfigProto.StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
         builder.addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
-                .setId(MetricsUtils.COUNT_METRIC_ID)
-                .setBucket(StatsdConfigProto.TimeUnit.CTS)
-                .setWhat(matcherId))
+                        .setId(MetricsUtils.COUNT_METRIC_ID)
+                        .setBucket(StatsdConfigProto.TimeUnit.ONE_MINUTE)
+                        .setWhat(matcherId))
                 .addAtomMatcher(MetricsUtils.simpleAtomMatcher(matcherId));
-        uploadConfig(builder);
+        ConfigUtils.uploadConfig(getDevice(), builder);
 
-        doAppBreadcrumbReportedStart(0);
-        Thread.sleep(100);
-        doAppBreadcrumbReportedStop(0);
-        Thread.sleep(2000);  // Wait for the metrics to propagate to statsd.
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), 0);
+        RunUtil.getDefault().sleep(100);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.STOP.getNumber(), 0);
+        RunUtil.getDefault().sleep(2000);  // Wait for the metrics to propagate to statsd.
 
-        StatsLogReport metricReport = getStatsLogReport();
+        StatsLogReport metricReport = ReportUtils.getStatsLogReport(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         LogUtil.CLog.d("Got the following stats log report: \n" + metricReport.toString());
         assertThat(metricReport.getMetricId()).isEqualTo(MetricsUtils.COUNT_METRIC_ID);
         assertThat(metricReport.hasCountMetrics()).isTrue();
@@ -69,6 +104,7 @@ public class CountMetricsTests extends DeviceAtomTestCase {
         assertThat(countData.getDataCount()).isGreaterThan(0);
         assertThat(countData.getData(0).getBucketInfo(0).getCount()).isEqualTo(2);
     }
+
     public void testEventCountWithCondition() throws Exception {
         int startMatcherId = 1;
         int endMatcherId = 2;
@@ -76,7 +112,7 @@ public class CountMetricsTests extends DeviceAtomTestCase {
         int conditionId = 4;
 
         StatsdConfigProto.AtomMatcher whatMatcher =
-               MetricsUtils.unspecifiedAtomMatcher(whatMatcherId);
+                MetricsUtils.unspecifiedAtomMatcher(whatMatcherId);
 
         StatsdConfigProto.AtomMatcher predicateStartMatcher =
                 MetricsUtils.startAtomMatcher(startMatcherId);
@@ -92,7 +128,8 @@ public class CountMetricsTests extends DeviceAtomTestCase {
                 .setId(conditionId)
                 .build();
 
-        StatsdConfigProto.StatsdConfig.Builder builder = createConfigBuilder()
+        StatsdConfigProto.StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                        MetricsUtils.DEVICE_SIDE_TEST_PACKAGE)
                 .addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
                         .setId(MetricsUtils.COUNT_METRIC_ID)
                         .setBucket(StatsdConfigProto.TimeUnit.CTS)
@@ -103,20 +140,26 @@ public class CountMetricsTests extends DeviceAtomTestCase {
                 .addAtomMatcher(predicateEndMatcher)
                 .addPredicate(p);
 
-        uploadConfig(builder);
+        ConfigUtils.uploadConfig(getDevice(), builder);
 
-        doAppBreadcrumbReported(0, AppBreadcrumbReported.State.UNSPECIFIED.ordinal());
-        Thread.sleep(10);
-        doAppBreadcrumbReportedStart(0);
-        Thread.sleep(10);
-        doAppBreadcrumbReported(0, AppBreadcrumbReported.State.UNSPECIFIED.ordinal());
-        Thread.sleep(10);
-        doAppBreadcrumbReportedStop(0);
-        Thread.sleep(10);
-        doAppBreadcrumbReported(0, AppBreadcrumbReported.State.UNSPECIFIED.ordinal());
-        Thread.sleep(2000);  // Wait for the metrics to propagate to statsd.
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 0);
+        RunUtil.getDefault().sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), 0);
+        RunUtil.getDefault().sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 0);
+        RunUtil.getDefault().sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.STOP.getNumber(), 0);
+        RunUtil.getDefault().sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), 0);
+        RunUtil.getDefault().sleep(2000);  // Wait for the metrics to propagate to statsd.
 
-        StatsLogReport metricReport = getStatsLogReport();
+        StatsLogReport metricReport = ReportUtils.getStatsLogReport(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(metricReport.getMetricId()).isEqualTo(MetricsUtils.COUNT_METRIC_ID);
         assertThat(metricReport.hasCountMetrics()).isTrue();
 
@@ -149,7 +192,7 @@ public class CountMetricsTests extends DeviceAtomTestCase {
 
         StatsdConfigProto.AtomMatcher activationMatcher =
                 MetricsUtils.appBreadcrumbMatcherWithLabel(activationMatcherId,
-                                                           activationMatcherLabel);
+                        activationMatcherLabel);
 
         StatsdConfigProto.Predicate p = StatsdConfigProto.Predicate.newBuilder()
                 .setSimplePredicate(StatsdConfigProto.SimplePredicate.newBuilder()
@@ -159,7 +202,8 @@ public class CountMetricsTests extends DeviceAtomTestCase {
                 .setId(conditionId)
                 .build();
 
-        StatsdConfigProto.StatsdConfig.Builder builder = createConfigBuilder()
+        StatsdConfigProto.StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                        MetricsUtils.DEVICE_SIDE_TEST_PACKAGE)
                 .addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
                         .setId(MetricsUtils.COUNT_METRIC_ID)
                         .setBucket(StatsdConfigProto.TimeUnit.ONE_MINUTE)
@@ -178,66 +222,79 @@ public class CountMetricsTests extends DeviceAtomTestCase {
                                 .setAtomMatcherId(activationMatcherId)
                                 .setTtlSeconds(ttlSec)));
 
-        uploadConfig(builder);
+        ConfigUtils.uploadConfig(getDevice(), builder);
 
         // Activate the metric.
-        doAppBreadcrumbReported(activationMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), activationMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Set the condition to true.
-        doAppBreadcrumbReportedStart(startMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), startMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Log an event that should be counted. Bucket 1 Count 1.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Log an event that should be counted. Bucket 1 Count 2.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Set the condition to false.
-        doAppBreadcrumbReportedStop(endMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.STOP.getNumber(), endMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Log an event that should not be counted because condition is false.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Let the metric deactivate.
-        Thread.sleep(ttlSec * 1000);
+        RunUtil.getDefault().sleep(ttlSec * 1000);
 
         // Log an event that should not be counted.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Condition to true again.
-        doAppBreadcrumbReportedStart(startMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), startMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Event should not be counted, metric is still not active.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Activate the metric.
-        doAppBreadcrumbReported(activationMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), activationMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         //  Log an event that should be counted.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Let the metric deactivate.
-        Thread.sleep(ttlSec * 1000);
+        RunUtil.getDefault().sleep(ttlSec * 1000);
 
         // Log an event that should not be counted.
-        doAppBreadcrumbReported(whatMatcherLabel);
-        Thread.sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), whatMatcherLabel);
+        RunUtil.getDefault().sleep(10);
 
         // Wait for the metrics to propagate to statsd.
-        Thread.sleep(2000);
+        RunUtil.getDefault().sleep(2000);
 
-        StatsLogReport metricReport = getStatsLogReport();
+        StatsLogReport metricReport = ReportUtils.getStatsLogReport(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         assertThat(metricReport.getMetricId()).isEqualTo(MetricsUtils.COUNT_METRIC_ID);
         LogUtil.CLog.d("Received the following data: " + metricReport.toString());
         assertThat(metricReport.hasCountMetrics()).isTrue();
@@ -252,27 +309,30 @@ public class CountMetricsTests extends DeviceAtomTestCase {
 
     public void testPartialBucketCountMetric() throws Exception {
         int matcherId = 1;
-        StatsdConfigProto.StatsdConfig.Builder builder = createConfigBuilder();
-        builder
-            .addCountMetric(
-                StatsdConfigProto.CountMetric.newBuilder()
-                    .setId(MetricsUtils.COUNT_METRIC_ID)
-                    .setBucket(StatsdConfigProto.TimeUnit.ONE_DAY) // Ensures partial bucket.
-                    .setWhat(matcherId)
-                    .setSplitBucketForAppUpgrade(true))
-            .addAtomMatcher(MetricsUtils.simpleAtomMatcher(matcherId));
-        uploadConfig(builder);
+        StatsdConfigProto.StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                        MetricsUtils.DEVICE_SIDE_TEST_PACKAGE)
+                .addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
+                        .setId(MetricsUtils.COUNT_METRIC_ID)
+                        .setBucket(StatsdConfigProto.TimeUnit.ONE_DAY) // Ensures partial bucket.
+                        .setWhat(matcherId)
+                        .setSplitBucketForAppUpgrade(true))
+                .addAtomMatcher(MetricsUtils.simpleAtomMatcher(matcherId));
+        ConfigUtils.uploadConfig(getDevice(), builder);
 
-        doAppBreadcrumbReportedStart(0);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), 0);
 
         builder.getCountMetricBuilder(0).setBucket(StatsdConfigProto.TimeUnit.CTS);
-        uploadConfig(builder);  // The count metric had a partial bucket.
-        doAppBreadcrumbReportedStart(0);
-        Thread.sleep(10);
-        doAppBreadcrumbReportedStart(0);
-        Thread.sleep(WAIT_TIME_LONG); // Finish the current bucket.
+        ConfigUtils.uploadConfig(getDevice(), builder);  // The count metric had a partial bucket.
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), 0);
+        RunUtil.getDefault().sleep(10);
+        AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
+                AppBreadcrumbReported.State.START.getNumber(), 0);
+        RunUtil.getDefault().sleep(AtomTestUtils.WAIT_TIME_LONG); // Finish the current bucket.
 
-        ConfigMetricsReportList reports = getReportList();
+        ConfigMetricsReportList reports = ReportUtils.getReportList(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         LogUtil.CLog.d("Got following report list: " + reports.toString());
 
         assertThat(reports.getReportsCount()).isEqualTo(2);
@@ -285,9 +345,9 @@ public class CountMetricsTests extends DeviceAtomTestCase {
             assertThat(report.getMetrics(0).getCountMetrics().getDataCount()).isEqualTo(1);
         }
         CountMetricData data1 =
-                reports.getReports(inOrder? 0 : 1).getMetrics(0).getCountMetrics().getData(0);
+                reports.getReports(inOrder ? 0 : 1).getMetrics(0).getCountMetrics().getData(0);
         CountMetricData data2 =
-                reports.getReports(inOrder? 1 : 0).getMetrics(0).getCountMetrics().getData(0);
+                reports.getReports(inOrder ? 1 : 0).getMetrics(0).getCountMetrics().getData(0);
         // Data1 should have only 1 bucket, and it should be a partial bucket.
         // The count should be 1.
         assertThat(data1.getBucketInfoCount()).isEqualTo(1);
@@ -326,90 +386,93 @@ public class CountMetricsTests extends DeviceAtomTestCase {
                         .build();
 
         StatsdConfigProto.State state = StatsdConfigProto.State.newBuilder()
-            .setId(stateId)
-            .setAtomId(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
-            .setMap(StatsdConfigProto.StateMap.newBuilder()
-                    .addGroup(StatsdConfigProto.StateMap.StateGroup.newBuilder()
-                            .setGroupId(onStateGroupId)
-                            .addValue(WakelockStateChanged.State.ACQUIRE_VALUE)
-                            .addValue(WakelockStateChanged.State.CHANGE_ACQUIRE_VALUE)
-                    )
-                    .addGroup(StatsdConfigProto.StateMap.StateGroup.newBuilder()
-                            .setGroupId(offStateGroupId)
-                            .addValue(WakelockStateChanged.State.RELEASE_VALUE)
-                            .addValue(WakelockStateChanged.State.CHANGE_RELEASE_VALUE)
-                    )
-            )
-            .build();
+                .setId(stateId)
+                .setAtomId(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
+                .setMap(StatsdConfigProto.StateMap.newBuilder()
+                        .addGroup(StatsdConfigProto.StateMap.StateGroup.newBuilder()
+                                .setGroupId(onStateGroupId)
+                                .addValue(WakelockStateChanged.State.ACQUIRE_VALUE)
+                                .addValue(WakelockStateChanged.State.CHANGE_ACQUIRE_VALUE)
+                        )
+                        .addGroup(StatsdConfigProto.StateMap.StateGroup.newBuilder()
+                                .setGroupId(offStateGroupId)
+                                .addValue(WakelockStateChanged.State.RELEASE_VALUE)
+                                .addValue(WakelockStateChanged.State.CHANGE_RELEASE_VALUE)
+                        )
+                )
+                .build();
 
         StatsdConfigProto.MetricStateLink stateLink = StatsdConfigProto.MetricStateLink.newBuilder()
-            .setStateAtomId(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
-            .setFieldsInWhat(FieldMatcher.newBuilder()
-                    .setField(whatAtomId)
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(1)
-                            .setPosition(Position.FIRST)
-                            .addChild(FieldMatcher.newBuilder()
-                                    .setField(AttributionNode.UID_FIELD_NUMBER)
-                            )
-                    )
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(2)
-                    )
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(3)
-                    )
-            )
-            .setFieldsInState(FieldMatcher.newBuilder()
-                    .setField(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(WakelockStateChanged.ATTRIBUTION_NODE_FIELD_NUMBER)
-                            .setPosition(Position.FIRST)
-                            .addChild(FieldMatcher.newBuilder()
-                                    .setField(AttributionNode.UID_FIELD_NUMBER)
-                            )
-                    )
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(WakelockStateChanged.TYPE_FIELD_NUMBER)
-                    )
-                    .addChild(FieldMatcher.newBuilder()
-                            .setField(WakelockStateChanged.TAG_FIELD_NUMBER)
-                    )
-            )
-            .build();
-
-        StatsdConfigProto.StatsdConfig.Builder builder = createConfigBuilder()
-                .addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
-                    .setId(MetricsUtils.COUNT_METRIC_ID)
-                    .setBucket(StatsdConfigProto.TimeUnit.CTS)
-                    .setWhat(whatMatcherId)
-                    .addSliceByState(stateId)
-                    .addStateLink(stateLink)
-                    .setDimensionsInWhat(
-                        FieldMatcher.newBuilder()
-                            .setField(whatAtomId)
-                            .addChild(FieldMatcher.newBuilder()
-                                    .setField(1)
-                                    .setPosition(Position.FIRST)
-                                    .addChild(FieldMatcher.newBuilder()
-                                            .setField(AttributionNode.UID_FIELD_NUMBER)
-                                    )
-                            )
-                            .addChild(FieldMatcher.newBuilder()
-                                    .setField(2)
-                            )
-                            .addChild(FieldMatcher.newBuilder()
-                                    .setField(3)
+                .setStateAtomId(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
+                .setFieldsInWhat(FieldMatcher.newBuilder()
+                        .setField(whatAtomId)
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(1)
+                                .setPosition(Position.FIRST)
+                                .addChild(FieldMatcher.newBuilder()
+                                        .setField(AttributionNode.UID_FIELD_NUMBER)
+                                )
                         )
-                    )
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(2)
+                        )
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(3)
+                        )
+                )
+                .setFieldsInState(FieldMatcher.newBuilder()
+                        .setField(Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER)
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(WakelockStateChanged.ATTRIBUTION_NODE_FIELD_NUMBER)
+                                .setPosition(Position.FIRST)
+                                .addChild(FieldMatcher.newBuilder()
+                                        .setField(AttributionNode.UID_FIELD_NUMBER)
+                                )
+                        )
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(WakelockStateChanged.TYPE_FIELD_NUMBER)
+                        )
+                        .addChild(FieldMatcher.newBuilder()
+                                .setField(WakelockStateChanged.TAG_FIELD_NUMBER)
+                        )
+                )
+                .build();
+
+        StatsdConfigProto.StatsdConfig.Builder builder = ConfigUtils.createConfigBuilder(
+                        MetricsUtils.DEVICE_SIDE_TEST_PACKAGE)
+                .addCountMetric(StatsdConfigProto.CountMetric.newBuilder()
+                        .setId(MetricsUtils.COUNT_METRIC_ID)
+                        .setBucket(StatsdConfigProto.TimeUnit.CTS)
+                        .setWhat(whatMatcherId)
+                        .addSliceByState(stateId)
+                        .addStateLink(stateLink)
+                        .setDimensionsInWhat(
+                                FieldMatcher.newBuilder()
+                                        .setField(whatAtomId)
+                                        .addChild(FieldMatcher.newBuilder()
+                                                .setField(1)
+                                                .setPosition(Position.FIRST)
+                                                .addChild(FieldMatcher.newBuilder()
+                                                        .setField(AttributionNode.UID_FIELD_NUMBER)
+                                                )
+                                        )
+                                        .addChild(FieldMatcher.newBuilder()
+                                                .setField(2)
+                                        )
+                                        .addChild(FieldMatcher.newBuilder()
+                                                .setField(3)
+                                        )
+                        )
                 )
                 .addAtomMatcher(whatMatcher)
                 .addState(state);
-        uploadConfig(builder);
+        ConfigUtils.uploadConfig(getDevice(), builder);
 
-        runDeviceTests(DEVICE_SIDE_TEST_PACKAGE, ".AtomTests", "testSliceByWakelockState");
+        DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE, ".AtomTests",
+                "testSliceByWakelockState");
 
-        StatsLogReport metricReport = getStatsLogReport();
+        StatsLogReport metricReport = ReportUtils.getStatsLogReport(getDevice(),
+                ExtensionRegistry.getEmptyRegistry());
         LogUtil.CLog.d("Got the following stats log report: \n" + metricReport.toString());
         assertThat(metricReport.getMetricId()).isEqualTo(MetricsUtils.COUNT_METRIC_ID);
         assertThat(metricReport.hasCountMetrics()).isTrue();
@@ -420,10 +483,10 @@ public class CountMetricsTests extends DeviceAtomTestCase {
 
         List<CountMetricData> sortedDataList = IntStream.range(0, dataWrapper.getDataCount())
                 .mapToObj(i -> {
-                        CountMetricData data = dataWrapper.getData(i);
-                        assertWithMessage("Unexpected SliceByState count for data[%s]", "" + i)
-                                .that(data.getSliceByStateCount()).isEqualTo(1);
-                        return data;
+                    CountMetricData data = dataWrapper.getData(i);
+                    assertWithMessage("Unexpected SliceByState count for data[%s]", "" + i)
+                            .that(data.getSliceByStateCount()).isEqualTo(1);
+                    return data;
                 })
                 .sorted((data1, data2) ->
                         Long.compare(data1.getSliceByState(0).getGroupId(),

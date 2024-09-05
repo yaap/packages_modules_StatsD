@@ -84,8 +84,10 @@ TEST_F(EventMetricE2eTest, TestEventMetricDataAggregated) {
     ASSERT_EQ(reports.reports_size(), 1);
 
     ConfigMetricsReport report = reports.reports(0);
+    EXPECT_TRUE(report.has_estimated_data_bytes());
     ASSERT_EQ(report.metrics_size(), 1);
     StatsLogReport wakelockEventMetricReport = report.metrics(0);
+    EXPECT_TRUE(wakelockEventMetricReport.has_estimated_data_bytes());
     EXPECT_EQ(wakelockEventMetricReport.metric_id(), wakelockEventMetric.id());
     EXPECT_TRUE(wakelockEventMetricReport.has_event_metrics());
     ASSERT_EQ(wakelockEventMetricReport.event_metrics().data_size(), 3);

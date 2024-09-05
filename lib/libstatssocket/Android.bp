@@ -74,18 +74,6 @@ cc_library_shared {
     min_sdk_version: "30",
 }
 
-//TODO (b/149842105): Figure out if there is a better solution for this.
-cc_test_library {
-    name: "libstatssocket_private",
-    defaults: [
-        "libstatssocket_defaults",
-    ],
-    visibility: [
-        "//packages/modules/StatsD/apex/tests/libstatspull",
-        "//packages/modules/StatsD/statsd",
-    ],
-}
-
 cc_library_headers {
     name: "libstatssocket_headers",
     export_include_dirs: ["include"],
@@ -114,10 +102,10 @@ cc_test {
     static_libs: [
         "libbase",
         "libgmock",
-        "libstatssocket_private",
     ],
     shared_libs: [
         "libutils",
+        "libstatssocket",
     ],
     test_suites: [
         "device-tests",
@@ -137,6 +125,7 @@ cc_test {
     },
     require_root: true,
     min_sdk_version: "30",
+    test_for: ["com.android.os.statsd"],
 }
 
 genrule {
@@ -162,4 +151,30 @@ genrule {
     out: [
         "stats_statsdsocketlog.cpp",
     ],
+}
+
+cc_fuzz {
+    name: "statsevent_fuzzer",
+    defaults: [
+        "libstatssocket_defaults",
+    ],
+    srcs: [
+        "fuzzers/stats_event_fuzzer.cpp",
+    ],
+    local_include_dirs: [
+        "include",
+    ],
+    host_supported: true,
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-parameter",
+    ],
+    fuzz_config: {
+        cc: [
+            "singhtejinder@google.com",
+            "sharaienko@google.com",
+        ],
+    },
 }

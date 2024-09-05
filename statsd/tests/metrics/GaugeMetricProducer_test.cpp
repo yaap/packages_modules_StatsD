@@ -98,13 +98,14 @@ TEST(GaugeMetricProducerTest, TestFirstBucket) {
             createEventMatcherWizard(tagId, logEventMatcherIndex);
 
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
 
     // statsd started long ago.
     // The metric starts in the middle of the bucket
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       -1, -1, tagId, 5, 600 * NS_PER_SEC + NS_PER_SEC / 2,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     EXPECT_EQ(600500000000, gaugeProducer.mCurrentBucketStartTimeNs);
@@ -140,10 +141,12 @@ TEST(GaugeMetricProducerTest, TestPulledEventsNoCondition) {
                 return true;
             }));
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, -1, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     vector<shared_ptr<LogEvent>> allData;
@@ -228,10 +231,12 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPushedEvents) {
     sp<EventMatcherWizard> eventMatcherWizard =
             createEventMatcherWizard(tagId, logEventMatcherIndex);
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       -1 /* -1 means no pulling */, -1, tagId, bucketStartTimeNs,
-                                      bucketStartTimeNs, pullerManager);
+                                      bucketStartTimeNs, pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     sp<AnomalyTracker> anomalyTracker =
@@ -310,6 +315,8 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPulled) {
     sp<EventMatcherWizard> eventMatcherWizard =
             createEventMatcherWizard(tagId, logEventMatcherIndex);
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     EXPECT_CALL(*pullerManager, RegisterReceiver(tagId, kConfigKey, _, _, _)).WillOnce(Return());
     EXPECT_CALL(*pullerManager, UnRegisterReceiver(tagId, kConfigKey, _)).WillOnce(Return());
@@ -326,7 +333,7 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPulled) {
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, -1, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     vector<shared_ptr<LogEvent>> allData;
@@ -392,10 +399,12 @@ TEST(GaugeMetricProducerTest, TestPulledWithAppUpgradeDisabled) {
     EXPECT_CALL(*pullerManager, Pull(tagId, kConfigKey, bucketStartTimeNs, _))
             .WillOnce(Return(false));
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, -1, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     vector<shared_ptr<LogEvent>> allData;
@@ -446,10 +455,12 @@ TEST(GaugeMetricProducerTest, TestPulledEventsWithCondition) {
                 return true;
             }));
 
-    GaugeMetricProducer gaugeProducer(kConfigKey, metric, 0 /*condition index*/,
-                                      {ConditionState::kUnknown}, wizard, protoHash,
-                                      logEventMatcherIndex, eventMatcherWizard, tagId, -1, tagId,
-                                      bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, metric, 0 /*condition index*/, {ConditionState::kUnknown}, wizard,
+            protoHash, logEventMatcherIndex, eventMatcherWizard, tagId, -1, tagId,
+            bucketStartTimeNs, bucketStartTimeNs, pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     gaugeProducer.onConditionChanged(true, conditionChangeNs);
@@ -534,10 +545,12 @@ TEST(GaugeMetricProducerTest, TestPulledEventsWithSlicedCondition) {
                 return true;
             }));
 
-    GaugeMetricProducer gaugeProducer(kConfigKey, metric, 0 /*condition index*/,
-                                      {ConditionState::kUnknown}, wizard, protoHash,
-                                      logEventMatcherIndex, eventMatcherWizard, tagId, -1, tagId,
-                                      bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, metric, 0 /*condition index*/, {ConditionState::kUnknown}, wizard,
+            protoHash, logEventMatcherIndex, eventMatcherWizard, tagId, -1, tagId,
+            bucketStartTimeNs, bucketStartTimeNs, pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     gaugeProducer.onSlicedConditionMayChange(true, sliceConditionChangeNs);
@@ -579,10 +592,12 @@ TEST(GaugeMetricProducerTest, TestPulledEventsAnomalyDetection) {
     sp<EventMatcherWizard> eventMatcherWizard =
             createEventMatcherWizard(tagId, logEventMatcherIndex);
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, -1, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     Alert alert;
@@ -679,10 +694,12 @@ TEST(GaugeMetricProducerTest, TestPullOnTrigger) {
             .WillOnce(Return(true));
 
     int triggerId = 5;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, triggerId, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     ASSERT_EQ(0UL, gaugeProducer.mCurrentSlicedBucket->size());
@@ -737,10 +754,12 @@ TEST(GaugeMetricProducerTest, TestPullNWithoutTrigger) {
                 return true;
             }));
 
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, /*triggerId=*/-1, tagId, bucketStartTimeNs,
-                                      bucketStartTimeNs, pullerManager);
+                                      bucketStartTimeNs, pullerManager, provider);
 
     EXPECT_EQ(0UL, gaugeProducer.mCurrentSlicedBucket->size());
     gaugeProducer.prepareFirstBucket();
@@ -808,10 +827,12 @@ TEST(GaugeMetricProducerTest, TestRemoveDimensionInOutput) {
             .WillOnce(Return(true));
 
     int triggerId = 5;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, triggerId, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     LogEvent triggerEvent(/*uid=*/0, /*pid=*/0);
@@ -878,10 +899,12 @@ TEST(GaugeMetricProducerTest_BucketDrop, TestBucketDropWhenBucketTooSmall) {
             }));
 
     int triggerId = 5;
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+
     GaugeMetricProducer gaugeProducer(kConfigKey, metric, -1 /*-1 meaning no condition*/, {},
                                       wizard, protoHash, logEventMatcherIndex, eventMatcherWizard,
                                       tagId, triggerId, tagId, bucketStartTimeNs, bucketStartTimeNs,
-                                      pullerManager);
+                                      pullerManager, provider);
     gaugeProducer.prepareFirstBucket();
 
     LogEvent triggerEvent(/*uid=*/0, /*pid=*/0);
@@ -950,11 +973,11 @@ TEST(GaugeMetricProducerTest, TestPullDimensionalSampling) {
                 data->push_back(makeUidLogEvent(tagId, bucketStartTimeNs + 20, 1003, 18, 10));
                 return true;
             }));
-
-    GaugeMetricProducer gaugeProducer(kConfigKey, sampledGaugeMetric,
-                                      -1 /*-1 meaning no condition*/, {}, wizard, protoHash,
-                                      logEventMatcherIndex, eventMatcherWizard, tagId, triggerId,
-                                      tagId, bucketStartTimeNs, bucketStartTimeNs, pullerManager);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, sampledGaugeMetric, -1 /*-1 meaning no condition*/, {}, wizard, protoHash,
+            logEventMatcherIndex, eventMatcherWizard, tagId, triggerId, tagId, bucketStartTimeNs,
+            bucketStartTimeNs, pullerManager, provider);
     SamplingInfo samplingInfo;
     samplingInfo.shardCount = shardCount;
     translateFieldMatcher(sampledGaugeMetric.dimensional_sampling_info().sampled_what_field(),

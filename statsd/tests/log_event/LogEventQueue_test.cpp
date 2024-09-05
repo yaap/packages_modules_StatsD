@@ -118,9 +118,9 @@ TEST(LogEventQueue_test, TestSlowConsumer) {
 TEST(LogEventQueue_test, TestQueueMaxSize) {
     StatsdStats::getInstance().reset();
 
-    std::shared_ptr<LogEventQueue> queue(std::make_shared<LogEventQueue>(50));
-    std::shared_ptr<LogEventFilter> filter(std::make_shared<LogEventFilter>());
-    filter->setFilteringEnabled(false);
+    LogEventQueue queue(50);
+    LogEventFilter filter;
+    filter.setFilteringEnabled(false);
 
     int64_t eventTimeNs = 100;
     int64_t oldestEventNs = 0;
@@ -129,7 +129,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
         auto statsEvent = makeStatsEvent(eventTimeNs);
         size_t bufferSize;
         const uint8_t* buffer = AStatsEvent_getBuffer(statsEvent, &bufferSize);
-        StatsSocketListener::processMessage(buffer, bufferSize, 0, 0, queue, filter);
+        StatsSocketListener::processStatsEventBuffer(buffer, bufferSize, 0, 0, queue, filter);
         AStatsEvent_release(statsEvent);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObserved, i + 1);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObservedElapsedNanos, eventTimeNs);
@@ -142,7 +142,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
     // consumer reads the entire queue
     int64_t nextEventTs = 100;
     for (int i = 0; i < 30; i++, nextEventTs++) {
-        auto event = queue->waitPop();
+        auto event = queue.waitPop();
         EXPECT_TRUE(event != nullptr);
         // All events are in right order.
         EXPECT_EQ(nextEventTs, event->GetElapsedTimestampNs());
@@ -154,7 +154,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
         auto statsEvent = makeStatsEvent(eventTimeNs);
         size_t bufferSize;
         const uint8_t* buffer = AStatsEvent_getBuffer(statsEvent, &bufferSize);
-        StatsSocketListener::processMessage(buffer, bufferSize, 0, 0, queue, filter);
+        StatsSocketListener::processStatsEventBuffer(buffer, bufferSize, 0, 0, queue, filter);
         AStatsEvent_release(statsEvent);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObserved, lastMaxSizeObserved);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObservedElapsedNanos,
@@ -163,7 +163,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
     }
 
     for (int i = 0; i < 1; i++, nextEventTs++) {
-        auto event = queue->waitPop();
+        auto event = queue.waitPop();
         EXPECT_TRUE(event != nullptr);
         // All events are in right order.
         EXPECT_EQ(nextEventTs, event->GetElapsedTimestampNs());
@@ -176,7 +176,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
         auto statsEvent = makeStatsEvent(eventTimeNs);
         size_t bufferSize;
         const uint8_t* buffer = AStatsEvent_getBuffer(statsEvent, &bufferSize);
-        StatsSocketListener::processMessage(buffer, bufferSize, 0, 0, queue, filter);
+        StatsSocketListener::processStatsEventBuffer(buffer, bufferSize, 0, 0, queue, filter);
         AStatsEvent_release(statsEvent);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObserved, lastMaxSizeObserved);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObservedElapsedNanos,
@@ -188,7 +188,7 @@ TEST(LogEventQueue_test, TestQueueMaxSize) {
         auto statsEvent = makeStatsEvent(eventTimeNs);
         size_t bufferSize;
         const uint8_t* buffer = AStatsEvent_getBuffer(statsEvent, &bufferSize);
-        StatsSocketListener::processMessage(buffer, bufferSize, 0, 0, queue, filter);
+        StatsSocketListener::processStatsEventBuffer(buffer, bufferSize, 0, 0, queue, filter);
         AStatsEvent_release(statsEvent);
         EXPECT_EQ(StatsdStats::getInstance().mEventQueueMaxSizeObserved,
                   lastMaxSizeObserved + i + 1);

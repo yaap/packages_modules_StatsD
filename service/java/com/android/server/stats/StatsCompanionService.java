@@ -755,7 +755,8 @@ public class StatsCompanionService extends IStatsCompanionService.Stub {
             // Setup receiver for device reboots or shutdowns.
             filter = new IntentFilter(Intent.ACTION_REBOOT);
             filter.addAction(Intent.ACTION_SHUTDOWN);
-            mContext.registerReceiverForAllUsers(shutdownEventReceiver, filter, null, null);
+            mContext.registerReceiverForAllUsers(shutdownEventReceiver, filter, null,
+                    /* scheduler= */ mHandler);
 
             // Register listener for statsd_java properties updates.
             DeviceConfig.addOnPropertiesChangedListener(NAMESPACE_STATSD_JAVA,

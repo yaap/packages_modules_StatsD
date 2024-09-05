@@ -16,12 +16,13 @@
 #pragma once
 
 #include <utils/RefBase.h>
+
+#include <set>
+#include <unordered_map>
+
 #include "HashableDimensionKey.h"
 #include "logd/LogEvent.h"
-
 #include "state/StateListener.h"
-
-#include <unordered_map>
 
 namespace android {
 namespace os {

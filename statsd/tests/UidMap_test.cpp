@@ -56,6 +56,11 @@ const vector<string> kInstallers{"", "", "com.android.vending"};
 const vector<vector<uint8_t>> kCertificateHashes{{'a', 'z'}, {'b', 'c'}, {'d', 'e'}};
 const vector<uint8_t> kDeleted(3, false);
 
+const UidMapOptions DEFAULT_OPTIONS = {.includeVersionStrings = true,
+                                       .includeInstaller = true,
+                                       .truncatedCertificateHashSize = 0,
+                                       .omitSystemUids = false};
+
 UidData createUidData(const vector<int32_t>& uids, const vector<int64_t>& versions,
                       const vector<string>& versionStrings, const vector<string>& apps,
                       const vector<string>& installers,
@@ -348,10 +353,7 @@ TEST(UidMapTest, TestOutputIncludesAtLeastOneSnapshot) {
     m.mLastUpdatePerConfigKey[config1] = 2;
 
     ProtoOutputStream proto;
-    m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
-                   /* str_set */ nullptr, &proto);
+    m.appendUidMap(/* timestamp */ 3, config1, DEFAULT_OPTIONS, /* str_set */ nullptr, &proto);
 
     // Check there's still a uidmap attached this one.
     UidMapping results;
@@ -373,9 +375,7 @@ TEST(UidMapTest, TestRemovedAppRetained) {
     m.removeApp(2, kApp2, 1000);
 
     ProtoOutputStream proto;
-    m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 3, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
 
     // Snapshot should still contain this item as deleted.
@@ -401,9 +401,7 @@ TEST(UidMapTest, TestRemovedAppOverGuardrail) {
     // First, verify that we have the expected number of items.
     UidMapping results;
     ProtoOutputStream proto;
-    m.appendUidMap(/* timestamp */ 3, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 3, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(maxDeletedApps + 10, results.snapshots(0).package_info_size());
@@ -415,9 +413,7 @@ TEST(UidMapTest, TestRemovedAppOverGuardrail) {
     }
 
     proto.clear();
-    m.appendUidMap(/* timestamp */ 5, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 5, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     // Snapshot drops the first nine items.
     outputStreamToProto(&proto, &results);
@@ -438,9 +434,7 @@ TEST(UidMapTest, TestClearingOutput) {
     m.updateMap(1 /* timestamp */, uidData);
 
     ProtoOutputStream proto;
-    m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 2, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     UidMapping results;
     outputStreamToProto(&proto, &results);
@@ -448,9 +442,7 @@ TEST(UidMapTest, TestClearingOutput) {
 
     // We have to keep at least one snapshot in memory at all times.
     proto.clear();
-    m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 2, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -460,9 +452,7 @@ TEST(UidMapTest, TestClearingOutput) {
     m.updateApp(5, kApp1, 1000, 40, "v40", "", /* certificateHash */ {});
     ASSERT_EQ(1U, m.mChanges.size());
     proto.clear();
-    m.appendUidMap(/* timestamp */ 6, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 6, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -475,9 +465,7 @@ TEST(UidMapTest, TestClearingOutput) {
 
     // We still can't remove anything.
     proto.clear();
-    m.appendUidMap(/* timestamp */ 8, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 8, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -485,9 +473,7 @@ TEST(UidMapTest, TestClearingOutput) {
     ASSERT_EQ(2U, m.mChanges.size());
 
     proto.clear();
-    m.appendUidMap(/* timestamp */ 9, config2, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 9, config2, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     outputStreamToProto(&proto, &results);
     ASSERT_EQ(1, results.snapshots_size());
@@ -510,15 +496,11 @@ TEST(UidMapTest, TestMemoryComputed) {
     m.updateApp(3, kApp1, 1000, 40, "v40", "", /* certificateHash */ {});
 
     ProtoOutputStream proto;
-    m.appendUidMap(/* timestamp */ 2, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 2, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     size_t prevBytes = m.mBytesUsed;
 
-    m.appendUidMap(/* timestamp */ 4, config1, /* includeVersionStrings */ true,
-                   /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                   /* omitSystemUids */ false,
+    m.appendUidMap(/* timestamp */ 4, config1, DEFAULT_OPTIONS,
                    /* str_set */ nullptr, &proto);
     EXPECT_TRUE(m.mBytesUsed < prevBytes);
 }
@@ -580,9 +562,7 @@ protected:
 TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndHashStrings) {
     ProtoOutputStream proto;
     set<string> strSet;
-    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
-                         /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                         /* omitSystemUids */ false, &strSet, &proto);
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, DEFAULT_OPTIONS, &strSet, &proto);
 
     UidMapping results;
     outputStreamToProto(&proto, &results);
@@ -616,9 +596,7 @@ TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndHashStri
 
 TEST_F(UidMapTestAppendUidMap, TestInstallersInReportIncludeInstallerAndDontHashStrings) {
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
-                         /* includeInstaller */ true, /* truncatedCertificateHashSize */ 0,
-                         /* omitSystemUids */ false,
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, DEFAULT_OPTIONS,
                          /* str_set */ nullptr, &proto);
 
     UidMapping results;
@@ -666,9 +644,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(UidMapTestAppendUidMapHashStrings, TestNoIncludeInstallersInReport) {
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
-                         /* includeInstaller */ false, /* truncatedCertificateHashSize */ 0,
-                         /* omitSystemUids */ false,
+    UidMapOptions options = DEFAULT_OPTIONS;
+    options.includeInstaller = false;
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, options,
                          /* str_set */ GetParam(), &proto);
 
     UidMapping results;
@@ -700,8 +678,10 @@ INSTANTIATE_TEST_SUITE_P(ZeroOneTwoThree, UidMapTestTruncateCertificateHash,
 TEST_P(UidMapTestTruncateCertificateHash, TestCertificateHashesTruncated) {
     const uint8_t hashSize = GetParam();
     ProtoOutputStream proto;
-    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, /* includeVersionStrings */ true,
-                         /* includeInstaller */ false, hashSize, /* omitSystemUids */ false,
+    UidMapOptions options = DEFAULT_OPTIONS;
+    options.includeInstaller = false;
+    options.truncatedCertificateHashSize = hashSize;
+    uidMap->appendUidMap(/* timestamp */ 3, cfgKey, options,
                          /* str_set */ nullptr, &proto);
 
     UidMapping results;

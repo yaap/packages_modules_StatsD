@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "sdk_guard_util.h"
 #include "src/StatsLogProcessor.h"
 #include "src/StatsService.h"
 #include "src/flags/FlagProvider.h"
@@ -353,6 +354,16 @@ GaugeMetric createGaugeMetric(const string& name, int64_t what,
 ValueMetric createValueMetric(const string& name, const AtomMatcher& what, int valueField,
                               const optional<int64_t>& condition, const vector<int64_t>& states);
 
+ValueMetric createValueMetric(const string& name, const AtomMatcher& what,
+                              const vector<int>& valueFields,
+                              const vector<ValueMetric::AggregationType>& aggregationTypes,
+                              const optional<int64_t>& condition, const vector<int64_t>& states);
+
+HistogramBinConfig createGeneratedBinConfig(int id, float min, float max, int count,
+                                            HistogramBinConfig::GeneratedBins::Strategy strategy);
+
+HistogramBinConfig createExplicitBinConfig(int id, const std::vector<float>& bins);
+
 KllMetric createKllMetric(const string& name, const AtomMatcher& what, int kllField,
                           const optional<int64_t>& condition);
 
@@ -409,26 +420,30 @@ void CreateNoValuesLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs)
 AStatsEvent* makeUidStatsEvent(int atomId, int64_t eventTimeNs, int uid, int data1, int data2);
 
 AStatsEvent* makeUidStatsEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
-                               const vector<int>& data2);
+                               const vector<int>& data2) __INTRODUCED_IN(__ANDROID_API_T__);
 
 std::shared_ptr<LogEvent> makeUidLogEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
                                           int data2);
 
 std::shared_ptr<LogEvent> makeUidLogEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
-                                          const vector<int>& data2);
+                                          const vector<int>& data2)
+        __INTRODUCED_IN(__ANDROID_API_T__);
 
 shared_ptr<LogEvent> makeExtraUidsLogEvent(int atomId, int64_t eventTimeNs, int uid1, int data1,
                                            int data2, const std::vector<int>& extraUids);
 
 std::shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
-                                                  const std::vector<int>& uids);
+                                                  const std::vector<int>& uids)
+        __INTRODUCED_IN(__ANDROID_API_T__);
 
 shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
-                                             const vector<int>& uids, int data1, int data2);
+                                             const vector<int>& uids, int data1, int data2)
+        __INTRODUCED_IN(__ANDROID_API_T__);
 
 shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
                                              const vector<int>& uids, int data1,
-                                             const vector<int>& data2);
+                                             const vector<int>& data2)
+        __INTRODUCED_IN(__ANDROID_API_T__);
 
 std::shared_ptr<LogEvent> makeAttributionLogEvent(int atomId, int64_t eventTimeNs,
                                                   const vector<int>& uids,
@@ -574,7 +589,8 @@ void fillStatsEventWithSampleValue(AStatsEvent* statsEvent, uint8_t typeId);
 SocketLossInfo createSocketLossInfo(int32_t uid, int32_t atomId);
 
 // helper API to create STATS_SOCKET_LOSS_REPORTED LogEvent
-std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t lossAtomId);
+std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t lossAtomId)
+        __INTRODUCED_IN(__ANDROID_API_T__);
 
 // Create a statsd log event processor upon the start time in seconds, config and key.
 sp<StatsLogProcessor> CreateStatsLogProcessor(
@@ -792,6 +808,11 @@ inline bool isAtLeastSFuncTrue() {
 
 inline bool isAtLeastSFuncFalse() {
     return false;
+}
+
+inline bool isAtLeastT() {
+    const static bool isAtLeastT = android::modules::sdklevel::IsAtLeastT();
+    return isAtLeastT;
 }
 
 inline std::string getServerFlagFuncTrue(const std::string& flagNamespace,

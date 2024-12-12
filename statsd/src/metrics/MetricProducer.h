@@ -213,6 +213,7 @@ public:
     enum class LostAtomType {
         kWhat = 0,
         kCondition,
+        kState,
     };
 
     void onMatchedLogEventLost(int32_t atomId, DataCorruptedReason reason, LostAtomType atomType) {
@@ -239,14 +240,20 @@ public:
                         const HashableDimensionKey& primaryKey, const FieldValue& oldState,
                         const FieldValue& newState){};
 
+    void onStateEventLost(int32_t atomId, DataCorruptedReason reason) override {
+        std::lock_guard<std::mutex> lock(mMutex);
+        onMatchedLogEventLostLocked(atomId, reason, LostAtomType::kState);
+    }
+
     // Output the metrics data to [protoOutput]. All metrics reports end with the same timestamp.
     // This method clears all the past buckets.
     void onDumpReport(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
                       const bool erase_data, const DumpLatency dumpLatency,
-                      std::set<string>* str_set, android::util::ProtoOutputStream* protoOutput) {
+                      std::set<string>* str_set, std::set<int32_t>& usedUids,
+                      android::util::ProtoOutputStream* protoOutput) {
         std::lock_guard<std::mutex> lock(mMutex);
         onDumpReportLocked(dumpTimeNs, include_current_partial_bucket, erase_data, dumpLatency,
-                           str_set, protoOutput);
+                           str_set, usedUids, protoOutput);
     }
 
     virtual optional<InvalidConfigReason> onConfigUpdatedLocked(
@@ -444,7 +451,7 @@ protected:
     virtual void onDumpReportLocked(const int64_t dumpTimeNs,
                                     const bool include_current_partial_bucket,
                                     const bool erase_data, const DumpLatency dumpLatency,
-                                    std::set<string>* str_set,
+                                    std::set<string>* str_set, std::set<int32_t>& usedUids,
                                     android::util::ProtoOutputStream* protoOutput) = 0;
     virtual void clearPastBucketsLocked(const int64_t dumpTimeNs) = 0;
     virtual void prepareFirstBucketLocked(){};
@@ -519,7 +526,7 @@ protected:
 
     // The time when this metric producer was first created. The end time for the current bucket
     // can be computed from this based on mCurrentBucketNum.
-    int64_t mTimeBaseNs;
+    const int64_t mTimeBaseNs;
 
     // Start time may not be aligned with the start of statsd if there is an app upgrade in the
     // middle of a bucket.
@@ -609,8 +616,9 @@ protected:
      *
      * @return DataCorruptionSeverity
      */
-    virtual DataCorruptionSeverity determineCorruptionSeverity(DataCorruptedReason reason,
-                                                               LostAtomType atomType) const {
+    virtual DataCorruptionSeverity determineCorruptionSeverity(int32_t /*atomId*/,
+                                                               DataCorruptedReason /*reason*/,
+                                                               LostAtomType /*atomType*/) const {
         return DataCorruptionSeverity::kNone;
     };
 
@@ -621,6 +629,7 @@ protected:
 
     size_t mTotalDataSize = 0;
 
+    friend class SocketLossInfoTest;
     FRIEND_TEST(CountMetricE2eTest, TestSlicedState);
     FRIEND_TEST(CountMetricE2eTest, TestSlicedStateWithMap);
     FRIEND_TEST(CountMetricE2eTest, TestMultipleSlicedStates);
@@ -657,8 +666,6 @@ protected:
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState_WithDimensions);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState_WithIncorrectDimensions);
     FRIEND_TEST(ValueMetricE2eTest, TestInitialConditionChanges);
-
-    FRIEND_TEST(SocketLossInfoTest, PropagationTest);
 
     FRIEND_TEST(MetricsManagerUtilTest, TestInitialConditions);
     FRIEND_TEST(MetricsManagerUtilTest, TestSampledMetrics);

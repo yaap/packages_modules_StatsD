@@ -37,6 +37,10 @@ class EventMetricE2eTest : public ::testing::Test {
     void TearDown() override {
         FlagProvider::getInstance().resetOverrides();
     }
+
+public:
+    void doTestRepeatedFieldsAndEmptyArrays();
+    void doTestMatchRepeatedFieldPositionFirst();
 };
 
 TEST_F(EventMetricE2eTest, TestEventMetricDataAggregated) {
@@ -102,7 +106,7 @@ TEST_F(EventMetricE2eTest, TestEventMetricDataAggregated) {
     EXPECT_EQ(data.atom().wakelock_state_changed().tag(), "wl2");
 }
 
-TEST_F(EventMetricE2eTest, TestRepeatedFieldsAndEmptyArrays) {
+TEST_F_GUARDED(EventMetricE2eTest, TestRepeatedFieldsAndEmptyArrays, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -193,7 +197,7 @@ TEST_F(EventMetricE2eTest, TestRepeatedFieldsAndEmptyArrays) {
     EXPECT_THAT(atom.repeated_enum_field(), ElementsAreArray(enumArray));
 }
 
-TEST_F(EventMetricE2eTest, TestMatchRepeatedFieldPositionFirst) {
+TEST_F_GUARDED(EventMetricE2eTest, TestMatchRepeatedFieldPositionFirst, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedStateFirstOnAtomMatcher =

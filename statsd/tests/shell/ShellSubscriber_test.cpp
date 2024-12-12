@@ -309,8 +309,8 @@ protected:
         configBytes = protoToBytes(getPulledConfig());
 
         // Used to call pullAndSendHeartbeatsIfNeeded directly without depending on sleep.
-        shellSubscriberClient = std::move(ShellSubscriberClient::create(
-                configBytes, callback, /* startTimeSec= */ 0, uidMap, pullerManager));
+        shellSubscriberClient = ShellSubscriberClient::create(
+                configBytes, callback, /* startTimeSec= */ 0, uidMap, pullerManager);
     }
 
     unique_ptr<ShellSubscriberClient> shellSubscriberClient;

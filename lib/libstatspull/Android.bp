@@ -68,13 +68,20 @@ cc_library_shared {
         "test_com.android.os.statsd",
     ],
     min_sdk_version: "30",
-
+    static_libs: [
+        "statsd_flags_c_lib",
+    ],
     stl: "libc++_static",
 }
 
 cc_library_headers {
     name: "libstatspull_headers",
     export_include_dirs: ["include"],
+}
+
+filegroup {
+    name: "libstatspull_test_default_map",
+    srcs: ["libstatspull_test_default.map"],
 }
 
 // Note: These unit tests only test PullAtomMetadata and subscriptions
@@ -98,12 +105,12 @@ cc_test {
     shared_libs: [
         "libstatspull",
         "libstatssocket",
-        "libbase",
         "libbinder",
         "libutils",
         "liblog",
     ],
     static_libs: [
+        "libbase",
         "libgmock",
         "libstatsgtestmatchers",
         "libstatslog_statsdtest",
@@ -114,6 +121,15 @@ cc_test {
         "mts-statsd",
     ],
     test_config: "libstatspull_test.xml",
+
+    // This test runs on older platform versions, so many libraries (such as libbase and libc++)
+    // need to be linked statically. The test also needs to be linked with a version script to
+    // ensure that the statically-linked library isn't exported from the executable, where it
+    // would override the shared libraries that the platform itself uses.
+    // See http://b/333438055 for an example of what goes wrong when libc++ is partially exported
+    // from an executable.
+    version_script: ":libstatspull_test_default_map",
+    stl: "libc++_static",
 
     //TODO(b/153588990): Remove when the build system properly separates
     //32bit and 64bit architectures.

@@ -36,7 +36,7 @@ public:
      * @return true if atom have been written into the socket successfully
      * @return false if atom have been written into the socket with an error
      */
-    void dumpAtomsLossStats(bool forceDump = false);
+    void dumpAtomsLossStats(bool forceDump = false) __INTRODUCED_IN(__ANDROID_API_T__);
 
     ~StatsSocketLossReporter();
 

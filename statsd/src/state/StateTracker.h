@@ -39,6 +39,8 @@ public:
     // the log event and comparing the old and new states.
     void onLogEvent(const LogEvent& event);
 
+    void onLogEventLost(DataCorruptedReason reason);
+
     // Adds new listeners to set of StateListeners. If a listener is already
     // registered, it is ignored.
     void registerListener(const wp<StateListener>& listener);

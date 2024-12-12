@@ -19,6 +19,7 @@
 #include <private/android_filesystem_config.h>
 #include <stdio.h>
 
+#include <numeric>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -34,6 +35,7 @@
 #include "src/state/StateManager.h"
 #include "src/statsd_config.pb.h"
 #include "tests/metrics/metrics_test_helper.h"
+#include "tests/metrics/parsing_utils/parsing_test_utils.h"
 #include "tests/statsd_test_util.h"
 
 using namespace testing;
@@ -51,46 +53,6 @@ namespace os {
 namespace statsd {
 
 namespace {
-const int kConfigId = 12345;
-const ConfigKey kConfigKey(0, kConfigId);
-const long timeBaseSec = 1000;
-const long kAlertId = 3;
-
-sp<UidMap> uidMap = new UidMap();
-sp<StatsPullerManager> pullerManager = new StatsPullerManager();
-sp<AlarmMonitor> anomalyAlarmMonitor;
-sp<AlarmMonitor> periodicAlarmMonitor;
-sp<ConfigMetadataProvider> configMetadataProvider;
-unordered_map<int, vector<int>> allTagIdsToMatchersMap;
-vector<sp<AtomMatchingTracker>> allAtomMatchingTrackers;
-unordered_map<int64_t, int> atomMatchingTrackerMap;
-vector<sp<ConditionTracker>> allConditionTrackers;
-unordered_map<int64_t, int> conditionTrackerMap;
-vector<sp<MetricProducer>> allMetricProducers;
-unordered_map<int64_t, int> metricProducerMap;
-vector<sp<AnomalyTracker>> allAnomalyTrackers;
-unordered_map<int64_t, int> alertTrackerMap;
-vector<sp<AlarmTracker>> allAlarmTrackers;
-unordered_map<int, vector<int>> conditionToMetricMap;
-unordered_map<int, vector<int>> trackerToMetricMap;
-unordered_map<int, vector<int>> trackerToConditionMap;
-unordered_map<int, vector<int>> activationAtomTrackerToMetricMap;
-unordered_map<int, vector<int>> deactivationAtomTrackerToMetricMap;
-vector<int> metricsWithActivation;
-map<int64_t, uint64_t> stateProtoHashes;
-set<int64_t> noReportMetricIds;
-
-optional<InvalidConfigReason> initConfig(const StatsdConfig& config) {
-    // initStatsdConfig returns nullopt if config is valid
-    return initStatsdConfig(
-            kConfigKey, config, uidMap, pullerManager, anomalyAlarmMonitor, periodicAlarmMonitor,
-            timeBaseSec, timeBaseSec, configMetadataProvider, allTagIdsToMatchersMap,
-            allAtomMatchingTrackers, atomMatchingTrackerMap, allConditionTrackers,
-            conditionTrackerMap, allMetricProducers, metricProducerMap, allAnomalyTrackers,
-            allAlarmTrackers, conditionToMetricMap, trackerToMetricMap, trackerToConditionMap,
-            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap, alertTrackerMap,
-            metricsWithActivation, stateProtoHashes, noReportMetricIds);
-}
 
 StatsdConfig buildCircleMatchers() {
     StatsdConfig config;
@@ -363,30 +325,7 @@ StatsdConfig buildConfigWithDifferentPredicates() {
     return config;
 }
 
-class MetricsManagerUtilTest : public ::testing::Test {
-public:
-    void SetUp() override {
-        allTagIdsToMatchersMap.clear();
-        allAtomMatchingTrackers.clear();
-        atomMatchingTrackerMap.clear();
-        allConditionTrackers.clear();
-        conditionTrackerMap.clear();
-        allMetricProducers.clear();
-        metricProducerMap.clear();
-        allAnomalyTrackers.clear();
-        allAlarmTrackers.clear();
-        conditionToMetricMap.clear();
-        trackerToMetricMap.clear();
-        trackerToConditionMap.clear();
-        activationAtomTrackerToMetricMap.clear();
-        deactivationAtomTrackerToMetricMap.clear();
-        alertTrackerMap.clear();
-        metricsWithActivation.clear();
-        stateProtoHashes.clear();
-        noReportMetricIds.clear();
-        StateManager::getInstance().clear();
-    }
-};
+using MetricsManagerUtilTest = InitConfigTest;
 
 struct DimLimitTestCase {
     int configLimit;
@@ -1123,7 +1062,8 @@ TEST_F(MetricsManagerUtilTest, TestValueMetricValueFieldHasPositionAll) {
     metric->set_id(metricId);
     metric->set_what(1);
 
-    metric->mutable_value_field()->set_position(ALL);
+    metric->mutable_value_field()->add_child()->set_field(2);
+    metric->mutable_value_field()->mutable_child(0)->set_position(ALL);
 
     EXPECT_EQ(initConfig(config),
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_VALUE_FIELD_HAS_POSITION_ALL,
@@ -2453,6 +2393,138 @@ TEST_F(MetricsManagerUtilTest, TestCombinationMatcherWithStringReplace) {
     EXPECT_EQ(actualInvalidConfigReason->reason,
               INVALID_CONFIG_REASON_MATCHER_COMBINATION_WITH_STRING_REPLACE);
     EXPECT_THAT(actualInvalidConfigReason->matcherIds, ElementsAre(222));
+}
+
+TEST_F(MetricsManagerUtilTest, TestNumericValueMetricMissingHistogramBinConfigSingleAggType) {
+    StatsdConfig config = createHistogramStatsdConfig();
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(
+                      INVALID_CONFIG_REASON_VALUE_METRIC_HIST_COUNT_DNE_HIST_BIN_CONFIGS_COUNT,
+                      config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest, TestNumericValueMetricMissingHistogramBinConfigMultipleAggTypes) {
+    StatsdConfig config = createHistogramStatsdConfig();
+    config.mutable_value_metric(0)->clear_aggregation_type();
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::SUM);
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::HISTOGRAM);
+    config.mutable_value_metric(0)->mutable_value_field()->add_child()->set_field(2);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(
+                      INVALID_CONFIG_REASON_VALUE_METRIC_HIST_COUNT_DNE_HIST_BIN_CONFIGS_COUNT,
+                      config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest, TestNumericValueMetricExtraHistogramBinConfig) {
+    StatsdConfig config = createExplicitHistogramStatsdConfig({5, 10, 12});
+    *config.mutable_value_metric(0)->add_histogram_bin_configs() =
+            createExplicitBinConfig(/* id */ 1, /* bins */ {5, 10, 20});
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(
+                      INVALID_CONFIG_REASON_VALUE_METRIC_HIST_COUNT_DNE_HIST_BIN_CONFIGS_COUNT,
+                      config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest, TestNumericValueMetricHistogramMultipleValueFields) {
+    StatsdConfig config = createExplicitHistogramStatsdConfig({5, 10, 12});
+    config.mutable_value_metric(0)->mutable_value_field()->add_child()->set_field(2);
+
+    EXPECT_EQ(initConfig(config), nullopt);
+}
+
+TEST_F(MetricsManagerUtilTest, TestNumericValueMetricHistogramWithUploadThreshold) {
+    StatsdConfig config = createExplicitHistogramStatsdConfig({5, 10, 12});
+    config.mutable_value_metric(0)->mutable_threshold()->set_lt_float(1.0);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_WITH_UPLOAD_THRESHOLD,
+                                  config.value_metric(0).id()));
+
+    clearData();
+    config.mutable_value_metric(0)->clear_aggregation_type();
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::HISTOGRAM);
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::SUM);
+    config.mutable_value_metric(0)->mutable_value_field()->add_child()->set_field(2);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_WITH_UPLOAD_THRESHOLD,
+                                  config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest,
+       TestValueMetricValueFieldHasPositionAllWithStatsdAggregatedHistogram) {
+    StatsdConfig config = createExplicitHistogramStatsdConfig({5, 10, 12});
+    config.mutable_value_metric(0)->mutable_value_field()->mutable_child(0)->set_position(ALL);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_VALUE_FIELD_HAS_POSITION_ALL,
+                                  config.value_metric(0).id()));
+
+    clearData();
+    config.mutable_value_metric(0)->clear_aggregation_type();
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::HISTOGRAM);
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::SUM);
+    config.mutable_value_metric(0)->mutable_value_field()->add_child()->set_field(2);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_VALUE_FIELD_HAS_POSITION_ALL,
+                                  config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest,
+       TestValueMetricValueFieldHasNoPositionAllWithClientAggregatedHistogram) {
+    StatsdConfig config = createHistogramStatsdConfig();
+    config.mutable_value_metric(0)->add_histogram_bin_configs()->set_id(1);
+    config.mutable_value_metric(0)
+            ->mutable_histogram_bin_configs(0)
+            ->mutable_client_aggregated_bins();
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(
+                      INVALID_CONFIG_REASON_VALUE_METRIC_HIST_CLIENT_AGGREGATED_NO_POSITION_ALL,
+                      config.value_metric(0).id()));
+}
+
+TEST_F(MetricsManagerUtilTest,
+       TestValueMetricValueFieldHasPositionAllWithClientAggregatedHistogram) {
+    StatsdConfig config = createHistogramStatsdConfig();
+    config.mutable_value_metric(0)->add_histogram_bin_configs()->set_id(1);
+    config.mutable_value_metric(0)
+            ->mutable_histogram_bin_configs(0)
+            ->mutable_client_aggregated_bins();
+    config.mutable_value_metric(0)->mutable_value_field()->mutable_child(0)->set_position(ALL);
+
+    EXPECT_EQ(initConfig(config), nullopt);
+}
+
+TEST_F(MetricsManagerUtilTest, TestValueMetricHistogramWithValueDirectionNotIncreasing) {
+    StatsdConfig config = createHistogramStatsdConfig();
+    config.mutable_value_metric(0)->mutable_value_field()->mutable_child(0)->set_position(ALL);
+    config.mutable_value_metric(0)->add_histogram_bin_configs()->set_id(1);
+    config.mutable_value_metric(0)
+            ->mutable_histogram_bin_configs(0)
+            ->mutable_client_aggregated_bins();
+    config.mutable_value_metric(0)->set_value_direction(ValueMetric::DECREASING);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_INVALID_VALUE_DIRECTION,
+                                  config.value_metric(0).id()));
+
+    clearData();
+    config.mutable_value_metric(0)->clear_aggregation_type();
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::SUM);
+    config.mutable_value_metric(0)->add_aggregation_types(ValueMetric::HISTOGRAM);
+    config.mutable_value_metric(0)->mutable_value_field()->mutable_child(0)->clear_position();
+    config.mutable_value_metric(0)->mutable_value_field()->add_child()->set_field(2);
+    config.mutable_value_metric(0)->mutable_value_field()->mutable_child(1)->set_position(ALL);
+    config.mutable_value_metric(0)->set_value_direction(ValueMetric::ANY);
+
+    EXPECT_EQ(initConfig(config),
+              InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_INVALID_VALUE_DIRECTION,
+                                  config.value_metric(0).id()));
 }
 
 }  // namespace statsd

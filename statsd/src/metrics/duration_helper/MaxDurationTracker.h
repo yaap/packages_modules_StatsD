@@ -84,6 +84,7 @@ private:
 
     FRIEND_TEST(MaxDurationTrackerTest, TestSimpleMaxDuration);
     FRIEND_TEST(MaxDurationTrackerTest, TestCrossBucketBoundary);
+    FRIEND_TEST(MaxDurationTrackerTest, TestMaxDurationNestedWithCondition);
     FRIEND_TEST(MaxDurationTrackerTest, TestMaxDurationWithCondition);
     FRIEND_TEST(MaxDurationTrackerTest, TestStopAll);
     FRIEND_TEST(MaxDurationTrackerTest, TestAnomalyDetection);

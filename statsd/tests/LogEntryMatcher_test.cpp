@@ -108,16 +108,16 @@ void makeBoolLogEvent(LogEvent* logEvent, const int32_t atomId, const int64_t ti
     parseStatsEventToLogEvent(statsEvent, logEvent);
 }
 
-void makeRepeatedIntLogEvent(LogEvent* logEvent, const int32_t atomId,
-                             const vector<int>& intArray) {
+void makeRepeatedIntLogEvent(LogEvent* logEvent, const int32_t atomId, const vector<int>& intArray)
+        __INTRODUCED_IN(__ANDROID_API_T__) {
     AStatsEvent* statsEvent = AStatsEvent_obtain();
     AStatsEvent_setAtomId(statsEvent, atomId);
     AStatsEvent_writeInt32Array(statsEvent, intArray.data(), intArray.size());
     parseStatsEventToLogEvent(statsEvent, logEvent);
 }
 
-void makeRepeatedUidLogEvent(LogEvent* logEvent, const int32_t atomId,
-                             const vector<int>& intArray) {
+void makeRepeatedUidLogEvent(LogEvent* logEvent, const int32_t atomId, const vector<int>& intArray)
+        __INTRODUCED_IN(__ANDROID_API_T__) {
     AStatsEvent* statsEvent = AStatsEvent_obtain();
     AStatsEvent_setAtomId(statsEvent, atomId);
     AStatsEvent_writeInt32Array(statsEvent, intArray.data(), intArray.size());
@@ -126,7 +126,8 @@ void makeRepeatedUidLogEvent(LogEvent* logEvent, const int32_t atomId,
 }
 
 void makeRepeatedStringLogEvent(LogEvent* logEvent, const int32_t atomId,
-                                const vector<string>& stringArray) {
+                                const vector<string>& stringArray)
+        __INTRODUCED_IN(__ANDROID_API_T__) {
     vector<const char*> cStringArray(stringArray.size());
     for (int i = 0; i < cStringArray.size(); i++) {
         cStringArray[i] = stringArray[i].c_str();
@@ -424,7 +425,7 @@ TEST(AtomMatcherTest, TestUidFieldMatcher) {
     EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event2).matched);
 }
 
-TEST(AtomMatcherTest, TestRepeatedUidFieldMatcher) {
+TEST_GUARDED(AtomMatcherTest, TestRepeatedUidFieldMatcher, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     UidData uidData;
@@ -689,7 +690,7 @@ TEST(AtomMatcherTest, TestStringMatcher) {
     EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestIntMatcher_EmptyRepeatedField) {
+TEST_GUARDED(AtomMatcherTest, TestIntMatcher_EmptyRepeatedField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.
@@ -718,7 +719,7 @@ TEST(AtomMatcherTest, TestIntMatcher_EmptyRepeatedField) {
     EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestIntMatcher_RepeatedIntField) {
+TEST_GUARDED(AtomMatcherTest, TestIntMatcher_RepeatedIntField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.
@@ -760,7 +761,7 @@ TEST(AtomMatcherTest, TestIntMatcher_RepeatedIntField) {
     EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestLtIntMatcher_RepeatedIntField) {
+TEST_GUARDED(AtomMatcherTest, TestLtIntMatcher_RepeatedIntField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.
@@ -808,7 +809,7 @@ TEST(AtomMatcherTest, TestLtIntMatcher_RepeatedIntField) {
     EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestStringMatcher_RepeatedStringField) {
+TEST_GUARDED(AtomMatcherTest, TestStringMatcher_RepeatedStringField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.
@@ -853,7 +854,7 @@ TEST(AtomMatcherTest, TestStringMatcher_RepeatedStringField) {
     EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestEqAnyStringMatcher_RepeatedStringField) {
+TEST_GUARDED(AtomMatcherTest, TestEqAnyStringMatcher_RepeatedStringField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.
@@ -910,7 +911,7 @@ TEST(AtomMatcherTest, TestEqAnyStringMatcher_RepeatedStringField) {
     EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event).matched);
 }
 
-TEST(AtomMatcherTest, TestNeqAnyStringMatcher_RepeatedStringField) {
+TEST_GUARDED(AtomMatcherTest, TestNeqAnyStringMatcher_RepeatedStringField, __ANDROID_API_T__) {
     sp<UidMap> uidMap = new UidMap();
 
     // Set up the log event.

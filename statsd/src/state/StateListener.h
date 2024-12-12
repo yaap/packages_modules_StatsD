@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <src/guardrail/stats_log_enums.pb.h>
 #include <utils/RefBase.h>
 
 #include "HashableDimensionKey.h"
@@ -47,6 +48,12 @@ public:
     virtual void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
                                 const HashableDimensionKey& primaryKey, const FieldValue& oldState,
                                 const FieldValue& newState) = 0;
+
+    /**
+     * Interface for handling a state event lost.
+     */
+    virtual void onStateEventLost(int32_t atomId, DataCorruptedReason reason) {
+    }
 };
 
 }  // namespace statsd

@@ -46,11 +46,14 @@ constexpr int64_t kAtomsLogTimeNs = kBucketStartTimeNs + 10;
 constexpr int64_t kReportRequestTimeNs = kBucketStartTimeNs + 100;
 
 constexpr int32_t kAppUid = AID_APP_START + 1;
-constexpr int32_t kAtomId = 2;
 constexpr int32_t kInterestAtomId = 3;
 constexpr int32_t kNotInterestedMetricId = 3;
-constexpr int32_t kInterestedMetricId = 4;
 constexpr int32_t kUnusedAtomId = kInterestAtomId + 100;
+
+const string kInterestAtomMatcherName = "CUSTOM_EVENT" + std::to_string(kInterestAtomId);
+const string kInterestedMetricName = "EVENT_METRIC_INTERESTED_IN_" + kInterestAtomMatcherName;
+
+const int64_t kInterestedMetricId = StringToId(kInterestedMetricName);
 
 const string kAppName = "TestApp";
 const set<int32_t> kAppUids = {kAppUid, kAppUid + 10000};
@@ -61,36 +64,29 @@ StatsdConfig buildGoodEventConfig() {
     config.set_id(kConfigId);
 
     {
-        AtomMatcher* eventMatcher = config.add_atom_matcher();
-        eventMatcher->set_id(StringToId("SCREEN_IS_ON"));
-        SimpleAtomMatcher* simpleAtomMatcher = eventMatcher->mutable_simple_atom_matcher();
-        simpleAtomMatcher->set_atom_id(2 /*SCREEN_STATE_CHANGE*/);
-
-        EventMetric* metric = config.add_event_metric();
-        metric->set_id(kNotInterestedMetricId);
-        metric->set_what(StringToId("SCREEN_IS_ON"));
+        auto atomMatcher = CreateSimpleAtomMatcher("SCREEN_IS_ON", SCREEN_STATE_ATOM_ID);
+        *config.add_atom_matcher() = atomMatcher;
+        *config.add_event_metric() =
+                createEventMetric("EVENT_METRIC_SCREEN_IS_ON", atomMatcher.id(), std::nullopt);
     }
 
     {
-        const int64_t matcherId = StringToId("CUSTOM_EVENT" + std::to_string(kInterestAtomId));
-        AtomMatcher* eventMatcher = config.add_atom_matcher();
-        eventMatcher->set_id(matcherId);
-        SimpleAtomMatcher* simpleAtomMatcher = eventMatcher->mutable_simple_atom_matcher();
-        simpleAtomMatcher->set_atom_id(kInterestAtomId);
-
-        EventMetric* metric = config.add_event_metric();
-        metric->set_id(kInterestedMetricId);
-        metric->set_what(matcherId);
+        auto atomMatcher = CreateSimpleAtomMatcher(kInterestAtomMatcherName, kInterestAtomId);
+        *config.add_atom_matcher() = atomMatcher;
+        auto eventMetric = createEventMetric(kInterestedMetricName, atomMatcher.id(), std::nullopt);
+        *config.add_event_metric() = eventMetric;
+        EXPECT_EQ(eventMetric.id(), kInterestedMetricId);
     }
 
     return config;
 }
 
-ConfigMetricsReport getMetricsReport(MetricsManager& metricsManager) {
+ConfigMetricsReport getMetricsReport(MetricsManager& metricsManager, int64_t reportRequestTs) {
     ProtoOutputStream output;
-    metricsManager.onDumpReport(kReportRequestTimeNs, kReportRequestTimeNs,
+    set<int32_t> usedUids;
+    metricsManager.onDumpReport(reportRequestTs, reportRequestTs,
                                 /*include_current_partial_bucket*/ true, /*erase_data*/ true,
-                                /*dumpLatency*/ NO_TIME_CONSTRAINTS, nullptr, &output);
+                                /*dumpLatency*/ NO_TIME_CONSTRAINTS, nullptr, usedUids, &output);
 
     ConfigMetricsReport metricsReport;
     outputStreamToProto(&output, &metricsReport);
@@ -136,7 +132,7 @@ protected:
 
         // Test parametrized on allowed_atom (true/false)
         if (isAtomAllowedFromAnyUid()) {
-            config.add_whitelisted_atom_ids(kAtomId);
+            config.add_whitelisted_atom_ids(SCREEN_STATE_ATOM_ID);
             config.add_whitelisted_atom_ids(kInterestAtomId);
         }
 
@@ -175,6 +171,12 @@ protected:
     bool isAtomLoggingAllowed() const {
         return isAtomAllowedFromAnyUid() || isAtomFromAllowedUid();
     }
+
+public:
+    void doPropagationTest() __INTRODUCED_IN(__ANDROID_API_T__);
+    void doTestNotifyOnlyInterestedMetrics() __INTRODUCED_IN(__ANDROID_API_T__);
+    void doTestNotifyInterestedMetricsWithNewLoss() __INTRODUCED_IN(__ANDROID_API_T__);
+    void doTestDoNotNotifyInterestedMetricsIfNoUpdate() __INTRODUCED_IN(__ANDROID_API_T__);
 };
 
 INSTANTIATE_TEST_SUITE_P(
@@ -192,7 +194,7 @@ INSTANTIATE_TEST_SUITE_P(
             return std::get<0>(info.param).label + std::get<1>(info.param).label;
         });
 
-TEST_P(SocketLossInfoTest, PropagationTest) {
+TEST_P_GUARDED(SocketLossInfoTest, PropagationTest, __ANDROID_API_T__) {
     LogEvent eventOfInterest(kAppUid /* uid */, 0 /* pid */);
     CreateNoValuesLogEvent(&eventOfInterest, kInterestAtomId /* atom id */, 0 /* timestamp */);
     EXPECT_EQ(mMetricsManager->checkLogCredentials(eventOfInterest), isAtomLoggingAllowed());
@@ -215,18 +217,18 @@ TEST_P(SocketLossInfoTest, PropagationTest) {
             EXPECT_EQ(metricProducer->mDataCorruptedDueToSocketLoss !=
                               MetricProducer::DataCorruptionSeverity::kNone,
                       isAtomLoggingAllowed());
-            continue;
+        } else {
+            EXPECT_EQ(metricProducer->mDataCorruptedDueToSocketLoss,
+                      MetricProducer::DataCorruptionSeverity::kNone);
         }
-        EXPECT_EQ(metricProducer->mDataCorruptedDueToSocketLoss,
-                  MetricProducer::DataCorruptionSeverity::kNone);
     }
 }
 
-TEST_P(SocketLossInfoTest, TestNotifyOnlyInterestedMetrics) {
+TEST_P_GUARDED(SocketLossInfoTest, TestNotifyOnlyInterestedMetrics, __ANDROID_API_T__) {
     const auto eventSocketLossReported = createSocketLossInfoLogEvent(kAppUid, kUnusedAtomId);
 
     mMetricsManager->onLogEvent(*eventSocketLossReported.get());
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     EXPECT_EQ(metricsReport.metrics_size(), 2);
     EXPECT_THAT(metricsReport.metrics(),
                 Each(Property(&StatsLogReport::data_corrupted_reason_size, 0)));
@@ -234,67 +236,67 @@ TEST_P(SocketLossInfoTest, TestNotifyOnlyInterestedMetrics) {
     const auto usedEventSocketLossReported = createSocketLossInfoLogEvent(kAppUid, kInterestAtomId);
     mMetricsManager->onLogEvent(*usedEventSocketLossReported.get());
 
-    metricsReport = getMetricsReport(*mMetricsManager);
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 100);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId && isAtomLoggingAllowed()) {
-            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_SOCKET_LOSS);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 }
 
-TEST_P(SocketLossInfoTest, TestNotifyInterestedMetricsWithNewLoss) {
+TEST_P_GUARDED(SocketLossInfoTest, TestNotifyInterestedMetricsWithNewLoss, __ANDROID_API_T__) {
     auto usedEventSocketLossReported = createSocketLossInfoLogEvent(kAppUid, kInterestAtomId);
     mMetricsManager->onLogEvent(*usedEventSocketLossReported.get());
 
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId && isAtomLoggingAllowed()) {
-            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_SOCKET_LOSS);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 
     // new socket loss event as result event metric should be notified about loss again
     usedEventSocketLossReported = createSocketLossInfoLogEvent(kAppUid, kInterestAtomId);
     mMetricsManager->onLogEvent(*usedEventSocketLossReported.get());
 
-    metricsReport = getMetricsReport(*mMetricsManager);
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 100);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId && isAtomLoggingAllowed()) {
-            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_SOCKET_LOSS);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 }
 
-TEST_P(SocketLossInfoTest, TestDoNotNotifyInterestedMetricsIfNoUpdate) {
+TEST_P_GUARDED(SocketLossInfoTest, TestDoNotNotifyInterestedMetricsIfNoUpdate, __ANDROID_API_T__) {
     auto usedEventSocketLossReported = createSocketLossInfoLogEvent(kAppUid, kInterestAtomId);
     mMetricsManager->onLogEvent(*usedEventSocketLossReported.get());
 
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId && isAtomLoggingAllowed()) {
-            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_SOCKET_LOSS);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 
     // no more dropped events as result event metric should not be notified about loss events
 
-    metricsReport = getMetricsReport(*mMetricsManager);
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 100);
     EXPECT_EQ(metricsReport.metrics_size(), 2);
     EXPECT_THAT(metricsReport.metrics(),
                 Each(Property(&StatsLogReport::data_corrupted_reason_size, 0)));
@@ -309,15 +311,13 @@ protected:
 
         sp<UidMap> uidMap;
         sp<StatsPullerManager> pullerManager = new StatsPullerManager();
-        sp<AlarmMonitor> anomalyAlarmMonitor;
-        sp<AlarmMonitor> periodicAlarmMonitor;
 
         // there will be one event metric interested in kInterestAtomId
         StatsdConfig config = buildGoodEventConfig();
 
-        mMetricsManager = std::make_shared<MetricsManager>(
-                kConfigKey, config, kTimeBaseSec, kTimeBaseSec, uidMap, pullerManager,
-                anomalyAlarmMonitor, periodicAlarmMonitor);
+        mMetricsManager =
+                std::make_shared<MetricsManager>(kConfigKey, config, kTimeBaseSec, kTimeBaseSec,
+                                                 uidMap, pullerManager, nullptr, nullptr);
 
         EXPECT_TRUE(mMetricsManager->isConfigValid());
     }
@@ -335,18 +335,19 @@ TEST_F(DataCorruptionQueueOverflowTest, TestNotifyOnlyInterestedMetrics) {
                                                       /*isSkipped*/ false);
 
     EXPECT_TRUE(mMetricsManager->mQueueOverflowAtomsStats.empty());
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
-    ASSERT_EQ(mMetricsManager->mQueueOverflowAtomsStats.size(), 1);
-    EXPECT_EQ(mMetricsManager->mQueueOverflowAtomsStats[kInterestAtomId], 1);
+    EXPECT_THAT(mMetricsManager->mQueueOverflowAtomsStats,
+                UnorderedElementsAre(std::make_pair(kInterestAtomId, 1),
+                                     std::make_pair(kUnusedAtomId, 1)));
 
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId) {
-            ASSERT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 }
 
@@ -354,36 +355,36 @@ TEST_F(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss) 
     StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
                                                       /*isSkipped*/ false);
 
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     ASSERT_EQ(mMetricsManager->mQueueOverflowAtomsStats.size(), 1);
     EXPECT_EQ(mMetricsManager->mQueueOverflowAtomsStats[kInterestAtomId], 1);
 
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId) {
-            ASSERT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 
     // new dropped event as result event metric should be notified about loss events
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs + 100, kInterestAtomId,
+    StatsdStats::getInstance().noteEventQueueOverflow(kReportRequestTimeNs + 100, kInterestAtomId,
                                                       /*isSkipped*/ false);
 
-    metricsReport = getMetricsReport(*mMetricsManager);
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 200);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     ASSERT_EQ(mMetricsManager->mQueueOverflowAtomsStats.size(), 1);
     EXPECT_EQ(mMetricsManager->mQueueOverflowAtomsStats[kInterestAtomId], 2);
 
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId) {
-            ASSERT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 }
 
@@ -391,28 +392,179 @@ TEST_F(DataCorruptionQueueOverflowTest, TestDoNotNotifyInterestedMetricsIfNoUpda
     StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
                                                       /*isSkipped*/ false);
 
-    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager);
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
     ASSERT_EQ(mMetricsManager->mQueueOverflowAtomsStats.size(), 1);
     EXPECT_EQ(mMetricsManager->mQueueOverflowAtomsStats[kInterestAtomId], 1);
 
     for (const auto& statsLogReport : metricsReport.metrics()) {
         if (statsLogReport.metric_id() == kInterestedMetricId) {
-            ASSERT_EQ(statsLogReport.data_corrupted_reason_size(), 1);
-            EXPECT_EQ(statsLogReport.data_corrupted_reason(0), DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
-            continue;
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
         }
-        EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
     }
 
     // no more dropped events as result event metric should not be notified about loss events
 
-    metricsReport = getMetricsReport(*mMetricsManager);
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 100);
     ASSERT_EQ(mMetricsManager->mQueueOverflowAtomsStats.size(), 1);
     EXPECT_EQ(mMetricsManager->mQueueOverflowAtomsStats[kInterestAtomId], 1);
     EXPECT_EQ(metricsReport.metrics_size(), 2);
     EXPECT_THAT(metricsReport.metrics(),
                 Each(Property(&StatsLogReport::data_corrupted_reason_size, 0)));
+}
+
+TEST_F(DataCorruptionQueueOverflowTest, TestDoNotNotifyNewInterestedMetricsIfNoUpdate) {
+    const int32_t kNewInterestAtomId = kUnusedAtomId + 1;
+
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
+                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kNewInterestAtomId,
+                                                      /*isSkipped*/ false);
+
+    ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
+    ASSERT_EQ(metricsReport.metrics_size(), 2);
+    EXPECT_THAT(mMetricsManager->mQueueOverflowAtomsStats,
+                UnorderedElementsAre(std::make_pair(kInterestAtomId, 1),
+                                     std::make_pair(kNewInterestAtomId, 1)));
+
+    for (const auto& statsLogReport : metricsReport.metrics()) {
+        if (statsLogReport.metric_id() == kInterestedMetricId) {
+            EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                        ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+        } else {
+            EXPECT_EQ(statsLogReport.data_corrupted_reason_size(), 0);
+        }
+    }
+
+    // adding 2 more metrics interested in atoms to update existing config
+    // new metrics should not be updated with loss atom info from queue overflow
+    // since atom loss events happen before metrics were added
+    {
+        StatsdConfig config = buildGoodEventConfig();
+        const int64_t matcherId = StringToId(kInterestAtomMatcherName);
+        *config.add_event_metric() =
+                createEventMetric("EVENT_METRIC_FOR_EXISTING_ATOM", matcherId, std::nullopt);
+
+        // adding new metric which is interested on unused atom before
+        // for which lost event was detected
+        auto atomMatcher = CreateSimpleAtomMatcher("NewTestMatcher", kNewInterestAtomId);
+        *config.add_atom_matcher() = atomMatcher;
+        *config.add_event_metric() =
+                createEventMetric("EVENT_METRIC_FOR_NEW_ATOM", atomMatcher.id(), std::nullopt);
+
+        mMetricsManager->updateConfig(config, kReportRequestTimeNs + 100,
+                                      kReportRequestTimeNs + 100, nullptr, nullptr);
+    }
+
+    // no more dropped events as result event metric should not be notified about loss events
+
+    metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 200);
+    EXPECT_THAT(mMetricsManager->mQueueOverflowAtomsStats,
+                UnorderedElementsAre(std::make_pair(kInterestAtomId, 1),
+                                     std::make_pair(kNewInterestAtomId, 1)));
+    EXPECT_EQ(metricsReport.metrics_size(), 4);
+    EXPECT_THAT(metricsReport.metrics(),
+                Each(Property(&StatsLogReport::data_corrupted_reason_size, 0)));
+}
+
+TEST_GUARDED(DataCorruptionTest, TestStateLostPropagation, __ANDROID_API_T__) {
+    // Initialize config with state and count metric
+    StatsdConfig config;
+
+    auto syncStartMatcher = CreateSyncStartAtomMatcher();
+    *config.add_atom_matcher() = syncStartMatcher;
+
+    auto state = CreateScreenState();
+    *config.add_state() = state;
+
+    // Create count metric that slices by screen state.
+    auto countMetric = config.add_count_metric();
+    countMetric->set_id(kNotInterestedMetricId);
+    countMetric->set_what(syncStartMatcher.id());
+    countMetric->set_bucket(TimeUnit::FIVE_MINUTES);
+    countMetric->add_slice_by_state(state.id());
+
+    // Initialize StatsLogProcessor.
+    const uint64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.count_metric(0).bucket()) * 1000000LL;
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+    auto processor =
+            CreateStatsLogProcessor(kBucketStartTimeNs, kBucketStartTimeNs, config, cfgKey);
+
+    // Check that CountMetricProducer was initialized correctly.
+    ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
+    sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
+    EXPECT_TRUE(metricsManager->isConfigValid());
+
+    // Check that StateTrackers were initialized correctly.
+    EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
+    EXPECT_EQ(1, StateManager::getInstance().getListenersCount(SCREEN_STATE_ATOM_ID));
+
+    auto usedEventSocketLossReported =
+            createSocketLossInfoLogEvent(AID_SYSTEM, SCREEN_STATE_ATOM_ID);
+    processor->OnLogEvent(usedEventSocketLossReported.get());
+
+    ConfigMetricsReport metricsReport = getMetricsReport(*metricsManager, kReportRequestTimeNs);
+    ASSERT_EQ(metricsReport.metrics_size(), 1);
+    const auto& statsLogReport = metricsReport.metrics(0);
+    EXPECT_THAT(statsLogReport.data_corrupted_reason(), ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+}
+
+TEST(DataCorruptionTest, TestStateLostFromQueueOverflowPropagation) {
+    // Initialize config with state and count metric
+    StatsdConfig config;
+
+    auto syncStartMatcher = CreateSyncStartAtomMatcher();
+    *config.add_atom_matcher() = syncStartMatcher;
+
+    auto state = CreateScreenState();
+    *config.add_state() = state;
+
+    // Create count metric that slices by screen state.
+    auto countMetric = config.add_count_metric();
+    countMetric->set_id(kNotInterestedMetricId);
+    countMetric->set_what(syncStartMatcher.id());
+    countMetric->set_bucket(TimeUnit::FIVE_MINUTES);
+    countMetric->add_slice_by_state(state.id());
+
+    // Initialize StatsLogProcessor.
+    const uint64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.count_metric(0).bucket()) * 1000000LL;
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+    auto processor =
+            CreateStatsLogProcessor(kBucketStartTimeNs, kBucketStartTimeNs, config, cfgKey);
+
+    // Check that CountMetricProducer was initialized correctly.
+    ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
+    sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
+    EXPECT_TRUE(metricsManager->isConfigValid());
+
+    // Check that StateTrackers were initialized correctly.
+    EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
+    EXPECT_EQ(1, StateManager::getInstance().getListenersCount(SCREEN_STATE_ATOM_ID));
+
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, SCREEN_STATE_ATOM_ID,
+                                                      /*isSkipped*/ false);
+
+    vector<uint8_t> buffer;
+    ConfigMetricsReportList reports;
+    processor->onDumpReport(cfgKey, kBucketStartTimeNs + bucketSizeNs * 2 + 1, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    ASSERT_GT(buffer.size(), 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    ASSERT_EQ(1, reports.reports_size());
+    const ConfigMetricsReport metricsReport = reports.reports(0);
+    ASSERT_EQ(metricsReport.metrics_size(), 1);
+    const auto& statsLogReport = metricsReport.metrics(0);
+    EXPECT_THAT(statsLogReport.data_corrupted_reason(),
+                ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
 }
 
 }  // namespace statsd

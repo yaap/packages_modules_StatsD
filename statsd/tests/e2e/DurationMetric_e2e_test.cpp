@@ -1566,7 +1566,7 @@ TEST(DurationMetricE2eTest, TestUploadThreshold) {
     EXPECT_EQ(baseTimeNs + bucketSizeNs * 2, data.bucket_info(0).end_bucket_elapsed_nanos());
 }
 
-TEST(DurationMetricE2eTest, TestConditionOnRepeatedEnumField) {
+TEST_GUARDED(DurationMetricE2eTest, TestConditionOnRepeatedEnumField, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher repeatedStateFirstOffAtomMatcher = CreateTestAtomRepeatedStateFirstOffAtomMatcher();

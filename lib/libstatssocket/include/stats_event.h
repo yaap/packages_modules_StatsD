@@ -42,6 +42,14 @@
  * order that they are defined in the atom.
  */
 
+#ifndef __ANDROID_API_T__
+#define __ANDROID_API_T__ 33
+#endif
+
+#ifndef __INTRODUCED_IN
+#define __INTRODUCED_IN(api_level)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __CPLUSPLUS

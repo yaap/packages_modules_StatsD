@@ -89,6 +89,7 @@ public:
         const FieldMatcher& dimensionsInWhat;
         const vector<Matcher>& fieldMatchers;
         const vector<ValueMetric::AggregationType> aggregationTypes;
+        const std::vector<std::optional<const BinStarts>> binStartsList;
     };
 
     struct ConditionOptions {
@@ -156,7 +157,7 @@ protected:
 
     void onDumpReportLocked(const int64_t dumpTimeNs, const bool includeCurrentPartialBucket,
                             const bool eraseData, const DumpLatency dumpLatency,
-                            std::set<string>* strSet,
+                            std::set<string>* strSet, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
 
     struct DumpProtoFields {

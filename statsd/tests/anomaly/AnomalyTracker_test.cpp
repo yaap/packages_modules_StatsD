@@ -76,8 +76,8 @@ int64_t getBucketValue(const std::shared_ptr<DimToValMap>& bucket,
 // Returns true if keys in trueList are detected as anomalies and keys in falseList are not.
 bool detectAnomaliesPass(AnomalyTracker& tracker, int64_t bucketNum,
                          const std::shared_ptr<DimToValMap>& currentBucket,
-                         const std::set<const MetricDimensionKey>& trueList,
-                         const std::set<const MetricDimensionKey>& falseList) {
+                         const std::set<MetricDimensionKey>& trueList,
+                         const std::set<MetricDimensionKey>& falseList) {
     for (const MetricDimensionKey& key : trueList) {
         if (!tracker.detectAnomaly(bucketNum, key, getBucketValue(currentBucket, key))) {
             return false;

@@ -15,8 +15,11 @@
  */
 
 #include "stats_event.h"
+
 #include <gtest/gtest.h>
 #include <utils/SystemClock.h>
+
+#include "sdk_guard_util.h"
 
 // Keep in sync with stats_event.c. Consider moving to separate header file to avoid duplication.
 /* ERRORS */
@@ -277,7 +280,7 @@ TEST(StatsEventTest, TestNullByteArrays) {
     AStatsEvent_release(event);
 }
 
-TEST(StatsEventTest, TestAllArrays) {
+TEST_GUARDED(StatsEventTest, TestAllArrays, __ANDROID_API_T__) {
     uint32_t atomId = 100;
 
     uint8_t numElements = 3;
@@ -427,7 +430,7 @@ TEST(StatsEventTest, TestFieldAnnotations) {
     AStatsEvent_release(event);
 }
 
-TEST(StatsEventTest, TestArrayFieldAnnotations) {
+TEST_GUARDED(StatsEventTest, TestArrayFieldAnnotations, __ANDROID_API_T__) {
     uint32_t atomId = 100;
 
     // array annotation info
@@ -695,7 +698,7 @@ TEST(StatsEventTest, TestAttributionChainTooLongError) {
     EXPECT_EQ(errors & ERROR_ATTRIBUTION_CHAIN_TOO_LONG, ERROR_ATTRIBUTION_CHAIN_TOO_LONG);
 }
 
-TEST(StatsEventTest, TestListTooLongError) {
+TEST_GUARDED(StatsEventTest, TestListTooLongError, __ANDROID_API_T__) {
     uint32_t atomId = 100;
     uint8_t numElements = 128;
     int32_t int32Array[128] = {1};

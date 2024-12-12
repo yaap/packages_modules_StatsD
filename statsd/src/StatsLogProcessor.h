@@ -329,6 +329,15 @@ private:
 
     bool validateAppBreadcrumbEvent(const LogEvent& event) const;
 
+    /**
+     * Notifies metrics only when new queue overflow happens since previous request
+     * Performs QueueOverflowAtomsStatsMap tracking via managing stats local copy
+     * The assumption is that QueueOverflowAtomsStatsMap is collected over time, and that
+     * none of atom id counters have disappeared (which is StatsdStats logic until it explicitly
+     * reset, which should not be happen during statsd service lifetime)
+     */
+    void processQueueOverflowStatsLocked();
+
     // Function used to send a broadcast so that receiver for the config key can call getData
     // to retrieve the stored data.
     std::function<bool(const ConfigKey& key)> mSendBroadcast;
@@ -366,7 +375,12 @@ private:
 
     bool mPrintAllLogs = false;
 
+    StatsdStats::QueueOverflowAtomsStatsMap mQueueOverflowAtomsStats;
+
+    friend class GuardedDataCorruptionTestTestStateLostPropagation;
     friend class StatsLogProcessorTestRestricted;
+    friend class ValueMetricHistogramE2eTestClientAggregatedPulledHistogram;
+
     FRIEND_TEST(StatsLogProcessorTest, TestOutOfOrderLogs);
     FRIEND_TEST(StatsLogProcessorTest, TestRateLimitByteSize);
     FRIEND_TEST(StatsLogProcessorTest, TestRateLimitBroadcast);
@@ -493,6 +507,8 @@ private:
     FRIEND_TEST(StringReplaceE2eTest, TestPulledDimension);
     FRIEND_TEST(StringReplaceE2eTest, TestPulledWhat);
     FRIEND_TEST(StringReplaceE2eTest, TestMultipleMatchersForAtom);
+
+    FRIEND_TEST(DataCorruptionTest, TestStateLostFromQueueOverflowPropagation);
 };
 
 }  // namespace statsd

@@ -47,6 +47,8 @@ using ConditionLinks = google::protobuf::RepeatedPtrField<MetricConditionLink>;
 
 using StateLinks = google::protobuf::RepeatedPtrField<MetricStateLink>;
 
+using BinStarts = std::vector<float>;
+
 struct Empty {};
 
 inline bool isAtLeastS() {

@@ -246,6 +246,61 @@ TEST(MaxDurationTrackerTest, TestMaxDurationWithCondition) {
     EXPECT_EQ((int64_t)(13LL * NS_PER_SEC), item[0].mDuration);
 }
 
+TEST(MaxDurationTrackerTest, TestMaxDurationNestedWithCondition) {
+    const HashableDimensionKey conditionDimKey = key1;
+
+    sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+
+    ConditionKey conditionKey1;
+    MetricDimensionKey eventKey = getMockedMetricDimensionKey(TagId, 1, "1");
+    conditionKey1[StringToId("APP_BACKGROUND")] = conditionDimKey;
+
+    /**
+     * The test sequence is to confirm that max duration is updated
+     * only when nested predicated is completely stopped
+     * If report dump happens while predicate is paused - no max duration is reported
+     */
+    int64_t bucketStartTimeNs = 10000000000;
+    int64_t bucketEndTimeNs = bucketStartTimeNs + bucketSizeNs;
+    int64_t event1StartTimeNs = bucketStartTimeNs + 10 * NS_PER_SEC;
+    int64_t conditionStart1Ns = event1StartTimeNs;
+    int64_t event2StartTimeNs = bucketStartTimeNs + 30 * NS_PER_SEC;
+    int64_t conditionStop1Ns = bucketStartTimeNs + 50 * NS_PER_SEC;
+    int64_t conditionStart2Ns = bucketStartTimeNs + 60 * NS_PER_SEC;
+    int64_t event2StopTimeNs = bucketStartTimeNs + 100 * NS_PER_SEC;
+    int64_t dumpReport1TimeNs = bucketStartTimeNs + 110 * NS_PER_SEC;
+    int64_t event1StopTimeNs = bucketStartTimeNs + 130 * NS_PER_SEC;
+    int64_t dumpReport2TimeNs = bucketStartTimeNs + 150 * NS_PER_SEC;
+
+    int64_t metricId = 1;
+    MaxDurationTracker tracker(kConfigKey, metricId, eventKey, wizard, 1, /*nesting*/ true,
+                               bucketStartTimeNs, 0, bucketStartTimeNs, bucketSizeNs, true, false,
+                               {});
+
+    tracker.noteStart(key1, false, event1StartTimeNs, conditionKey1,
+                      StatsdStats::kDimensionKeySizeHardLimitMin);
+    tracker.noteConditionChanged(key1, true, conditionStart1Ns);
+    tracker.noteStart(key1, true, event2StartTimeNs, conditionKey1,
+                      StatsdStats::kDimensionKeySizeHardLimitMin);
+    // will update lastDuration
+    tracker.noteConditionChanged(key1, false, conditionStop1Ns);
+    tracker.noteConditionChanged(key1, true, conditionStart2Ns);
+    // must not update maxDuration - since nested predicate is not finished yet
+    tracker.noteStop(key1, event2StopTimeNs, false);
+
+    unordered_map<MetricDimensionKey, vector<DurationBucket>> buckets;
+    tracker.flushIfNeeded(dumpReport1TimeNs, emptyThreshold, &buckets);
+    ASSERT_EQ(0U, buckets.size());
+
+    // must update maxDuration - since nested predicate is finished
+    tracker.noteStop(key1, event1StopTimeNs, false);
+    tracker.flushIfNeeded(dumpReport2TimeNs, emptyThreshold, &buckets);
+    ASSERT_EQ(1U, buckets.size());
+    vector<DurationBucket> item = buckets.begin()->second;
+    ASSERT_EQ(1UL, item.size());
+    EXPECT_EQ((int64_t)(110LL * NS_PER_SEC), item[0].mDuration);
+}
+
 TEST(MaxDurationTrackerTest, TestAnomalyDetection) {
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
 

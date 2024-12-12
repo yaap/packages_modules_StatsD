@@ -31,7 +31,9 @@ StatsSocketLossReporter::~StatsSocketLossReporter() {
     // due to:
     // - cool down timer was active
     // - no input atoms to trigger loss info dump after cooldown timer expired
-    dumpAtomsLossStats(true);
+    if (__builtin_available(android __ANDROID_API_T__, *)) {
+        dumpAtomsLossStats(true);
+    }
 }
 
 StatsSocketLossReporter& StatsSocketLossReporter::getInstance() {

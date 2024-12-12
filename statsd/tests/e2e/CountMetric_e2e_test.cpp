@@ -1153,7 +1153,7 @@ TEST(CountMetricE2eTest, TestUploadThreshold) {
                         3);
 }
 
-TEST(CountMetricE2eTest, TestRepeatedFieldsAndEmptyArrays) {
+TEST_GUARDED(CountMetricE2eTest, TestRepeatedFieldsAndEmptyArrays, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1220,7 +1220,7 @@ TEST(CountMetricE2eTest, TestRepeatedFieldsAndEmptyArrays) {
                         2);
 }
 
-TEST(CountMetricE2eTest, TestMatchRepeatedFieldPositionAny) {
+TEST_GUARDED(CountMetricE2eTest, TestMatchRepeatedFieldPositionAny, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedStateAnyOnAtomMatcher =
@@ -1285,7 +1285,7 @@ TEST(CountMetricE2eTest, TestMatchRepeatedFieldPositionAny) {
                         2);
 }
 
-TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionFirst) {
+TEST_GUARDED(CountMetricE2eTest, TestRepeatedFieldDimension_PositionFirst, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1372,7 +1372,7 @@ TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionFirst) {
               TestAtomReported::ON);
 }
 
-TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionLast) {
+TEST_GUARDED(CountMetricE2eTest, TestRepeatedFieldDimension_PositionLast, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1450,7 +1450,7 @@ TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionLast) {
               TestAtomReported::ON);
 }
 
-TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionAll) {
+TEST_GUARDED(CountMetricE2eTest, TestRepeatedFieldDimension_PositionAll, __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1503,8 +1503,8 @@ TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionAll) {
                             FAST, &buffer);
     ASSERT_GT(buffer.size(), 0);
     EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
-    // Don't need to backfill dimension path because dimensions with position ALL are not encoded
-    // with the path format.
+    // Don't need to backfill dimension path because dimensions with position ALL are not
+    // encoded with the path format.
     backfillStringInReport(&reports);
     backfillStartEndTimestamp(&reports);
 
@@ -1555,7 +1555,8 @@ TEST(CountMetricE2eTest, TestRepeatedFieldDimension_PositionAll) {
               TestAtomReported::ON);
 }
 
-TEST(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionFirst) {
+TEST_GUARDED(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionFirst,
+             __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1669,7 +1670,8 @@ TEST(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionFirst) {
               TestAtomReported::ON);
 }
 
-TEST(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionAll) {
+TEST_GUARDED(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionAll,
+             __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher testAtomReportedAtomMatcher =
@@ -1798,7 +1800,8 @@ TEST(CountMetricE2eTest, TestMultipleRepeatedFieldDimensions_PositionAll) {
               TestAtomReported::OFF);
 }
 
-TEST(CountMetricE2eTest, TestConditionSlicedByRepeatedUidWithUidDimension) {
+TEST_GUARDED(CountMetricE2eTest, TestConditionSlicedByRepeatedUidWithUidDimension,
+             __ANDROID_API_T__) {
     StatsdConfig config;
 
     AtomMatcher uidProcessStateChangedAtomMatcher = CreateUidProcessStateChangedAtomMatcher();

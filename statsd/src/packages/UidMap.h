@@ -87,6 +87,16 @@ struct ChangeRecord {
     }
 };
 
+struct UidMapOptions {
+    bool includeVersionStrings = false;
+    bool includeInstaller = false;
+    uint8_t truncatedCertificateHashSize = 0;
+    bool omitSystemUids = false;
+    bool omitUnusedUids = false;
+    set<int32_t> usedUids = {};
+    set<string> allowlistedPackages = {};
+};
+
 const unsigned int kBytesChangeRecord = sizeof(struct ChangeRecord);
 
 // UidMap keeps track of what the corresponding app name (APK name) and version code for every uid
@@ -138,10 +148,8 @@ public:
     // Gets all snapshots and changes that have occurred since the last output.
     // If every config key has received a change or snapshot record, then this
     // record is deleted.
-    void appendUidMap(int64_t timestamp, const ConfigKey& key, const bool includeVersionStrings,
-                      const bool includeInstaller, const uint8_t truncatedCertificateHashSize,
-                      const bool omitSystemUids, std::set<string>* str_set,
-                      ProtoOutputStream* proto);
+    void appendUidMap(int64_t timestamp, const ConfigKey& key, const UidMapOptions& options,
+                      std::set<string>* str_set, ProtoOutputStream* proto);
 
     // Forces the output to be cleared. We still generate a snapshot based on the current state.
     // This results in extra data uploaded but helps us reconstruct the uid mapping on the server
@@ -158,8 +166,7 @@ public:
     //                  package info for all uids.
     // str_set: if not null, add new string to the set and write str_hash to proto
     //          if null, write string to proto.
-    void writeUidMapSnapshot(int64_t timestamp, bool includeVersionStrings, bool includeInstaller,
-                             const uint8_t truncatedCertificateHashSize, bool omitSystemUids,
+    void writeUidMapSnapshot(int64_t timestamp, const UidMapOptions& options,
                              const std::set<int32_t>& interestingUids,
                              std::map<string, int>* installerIndices, std::set<string>* str_set,
                              ProtoOutputStream* proto) const;
@@ -168,10 +175,7 @@ private:
     std::set<string> getAppNamesFromUidLocked(int32_t uid, bool returnNormalized) const;
     string normalizeAppName(const string& appName) const;
 
-    void writeUidMapSnapshotLocked(const int64_t timestamp, const bool includeVersionStrings,
-                                   const bool includeInstaller,
-                                   const uint8_t truncatedCertificateHashSize,
-                                   const bool omitSystemUids,
+    void writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOptions& options,
                                    const std::set<int32_t>& interestingUids,
                                    std::map<string, int>* installerIndices,
                                    std::set<string>* str_set, ProtoOutputStream* proto) const;

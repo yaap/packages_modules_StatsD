@@ -20,11 +20,11 @@
 #include "src/StatsLogProcessor.h"
 #include "tests/statsd_test_util.h"
 
+#ifdef __ANDROID__
+
 namespace android {
 namespace os {
 namespace statsd {
-
-#ifdef __ANDROID__
 
 namespace {
 

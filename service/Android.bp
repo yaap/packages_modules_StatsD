@@ -33,7 +33,7 @@ java_library {
         // Use the implementation library directly.
         // TODO(b/204183608): Remove when no longer necessary.
         "framework-statsd.impl",
-        "framework-configinfrastructure",
+        "framework-configinfrastructure.stubs.module_lib",
     ],
     static_libs: [
         "modules-utils-build",

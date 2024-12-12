@@ -67,7 +67,7 @@ void RestrictedEventMetricProducer::onMatchedLogEventInternalLocked(
 
 void RestrictedEventMetricProducer::onDumpReportLocked(
         const int64_t dumpTimeNs, const bool include_current_partial_bucket, const bool erase_data,
-        const DumpLatency dumpLatency, std::set<string>* str_set,
+        const DumpLatency dumpLatency, std::set<string>* str_set, std::set<int32_t>& usedUids,
         android::util::ProtoOutputStream* protoOutput) {
     VLOG("Unexpected call to onDumpReportLocked() in RestrictedEventMetricProducer");
 }

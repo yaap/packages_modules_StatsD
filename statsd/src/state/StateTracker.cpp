@@ -64,6 +64,17 @@ void StateTracker::onLogEvent(const LogEvent& event) {
     updateStateForPrimaryKey(eventTimeNs, primaryKey, newState, nested, mStateMap[primaryKey]);
 }
 
+void StateTracker::onLogEventLost(DataCorruptedReason reason) {
+    // notify listeners about lost state event
+
+    for (const auto& l : mListeners) {
+        auto sl = l.promote();
+        if (sl != nullptr) {
+            sl->onStateEventLost(mField.getTag(), reason);
+        }
+    }
+}
+
 void StateTracker::registerListener(const wp<StateListener>& listener) {
     mListeners.insert(listener);
 }

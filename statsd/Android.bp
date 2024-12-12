@@ -16,6 +16,7 @@
 
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_android_telemetry_client_infra",
 }
 
 cc_defaults {
@@ -96,12 +97,15 @@ cc_defaults {
         "src/metrics/EventMetricProducer.cpp",
         "src/metrics/RestrictedEventMetricProducer.cpp",
         "src/metrics/GaugeMetricProducer.cpp",
+        "src/metrics/HistogramValue.cpp",
         "src/metrics/KllMetricProducer.cpp",
         "src/metrics/MetricProducer.cpp",
         "src/metrics/MetricsManager.cpp",
+        "src/metrics/NumericValue.cpp",
         "src/metrics/ValueMetricProducer.cpp",
         "src/metrics/parsing_utils/config_update_utils.cpp",
         "src/metrics/parsing_utils/metrics_manager_util.cpp",
+        "src/metrics/parsing_utils/histogram_parsing_utils.cpp",
         "src/metrics/NumericValueMetricProducer.cpp",
         "src/packages/UidMap.cpp",
         "src/shell/shell_config.proto",
@@ -144,6 +148,7 @@ cc_defaults {
         "libutils",
         "server_configurable_flags",
         "statsd-aidl-ndk",
+        "statsd_flags_c_lib",
         "libsqlite_static_noicu",
     ],
     shared_libs: [
@@ -155,6 +160,7 @@ cc_defaults {
     header_libs: [
         "libgtest_prod_headers",
     ],
+    min_sdk_version: "30",
 }
 
 genrule {
@@ -268,6 +274,7 @@ cc_binary {
         "com.android.os.statsd",
         "test_com.android.os.statsd",
     ],
+    runtime_libs: ["libuprobestats_client"],
     min_sdk_version: "30",
 }
 
@@ -296,6 +303,9 @@ cc_defaults {
         "libgmock",
         "libstatslog_statsdtest",
     ],
+    header_libs: [
+        "libstatssocket_test_headers",
+    ],
     proto: {
         type: "lite",
         include_dirs: [
@@ -311,6 +321,7 @@ cc_library_static {
     defaults: ["statsd_test_defaults"],
     srcs: [
         "tests/metrics/metrics_test_helper.cpp",
+        "tests/metrics/parsing_utils/parsing_test_utils.cpp",
         "tests/statsd_test_util.cpp",
     ],
     tidy_timeout_srcs: [
@@ -321,6 +332,11 @@ cc_library_static {
 // ==============
 // statsd_test
 // ==============
+
+filegroup {
+    name: "statsd_test_default_map",
+    srcs: ["statsd_test_default.map"],
+}
 
 cc_test {
     name: "statsd_test",
@@ -342,6 +358,15 @@ cc_test {
             suffix: "32",
         },
     },
+
+    // These tests run on older platform versions, so many libraries (such as libbase and libc++)
+    // need to be linked statically. The tests also need to be linked with a version script to
+    // ensure that the statically-linked library isn't exported from the executable, where it
+    // would override the shared libraries that the platform itself uses.
+    // See http://b/333438055 for an example of what goes wrong when libc++ is partially exported
+    // from an executable.
+    version_script: ":statsd_test_default_map",
+    stl: "c++_static",
 
     require_root: true,
 
@@ -408,6 +433,7 @@ cc_test {
         "tests/e2e/RestrictedConfig_e2e_test.cpp",
         "tests/e2e/RestrictedEventMetric_e2e_test.cpp",
         "tests/e2e/StringReplace_e2e_test.cpp",
+        "tests/e2e/ValueMetric_histogram_e2e_test.cpp",
         "tests/e2e/ValueMetric_pull_e2e_test.cpp",
         "tests/e2e/WakelockDuration_e2e_test.cpp",
         "tests/external/puller_util_test.cpp",
@@ -427,12 +453,14 @@ cc_test {
         "tests/metrics/DurationMetricProducer_test.cpp",
         "tests/metrics/EventMetricProducer_test.cpp",
         "tests/metrics/GaugeMetricProducer_test.cpp",
+        "tests/metrics/HistogramValue_test.cpp",
         "tests/metrics/KllMetricProducer_test.cpp",
         "tests/metrics/MaxDurationTracker_test.cpp",
         "tests/metrics/OringDurationTracker_test.cpp",
         "tests/metrics/NumericValueMetricProducer_test.cpp",
         "tests/metrics/RestrictedEventMetricProducer_test.cpp",
         "tests/metrics/parsing_utils/config_update_utils_test.cpp",
+        "tests/metrics/parsing_utils/histogram_parsing_utils_test.cpp",
         "tests/metrics/parsing_utils/metrics_manager_util_test.cpp",
         "tests/subscriber/SubscriberReporter_test.cpp",
         "tests/DataCorruptionReason_test.cpp",
@@ -446,8 +474,8 @@ cc_test {
         "tests/StatsService_test.cpp",
         "tests/storage/StorageManager_test.cpp",
         "tests/UidMap_test.cpp",
-        "tests/utils/MultiConditionTrigger_test.cpp",
         "tests/utils/DbUtils_test.cpp",
+        "tests/utils/MultiConditionTrigger_test.cpp",
     ],
 
     static_libs: [

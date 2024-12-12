@@ -71,12 +71,9 @@ protected:
             const std::map<int, HashableDimensionKey>& statePrimaryKeys) override;
 
 private:
-
-    void onDumpReportLocked(const int64_t dumpTimeNs,
-                            const bool include_current_partial_bucket,
-                            const bool erase_data,
-                            const DumpLatency dumpLatency,
-                            std::set<string> *str_set,
+    void onDumpReportLocked(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
+                            const bool erase_data, const DumpLatency dumpLatency,
+                            std::set<string>* str_set, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
 
     void clearPastBucketsLocked(const int64_t dumpTimeNs) override;
@@ -119,6 +116,9 @@ private:
             std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
             std::vector<int>& metricsWithActivation) override;
+
+    DataCorruptionSeverity determineCorruptionSeverity(int32_t atomId, DataCorruptedReason reason,
+                                                       LostAtomType atomType) const override;
 
     std::unordered_map<MetricDimensionKey, std::vector<CountBucket>> mPastBuckets;
 

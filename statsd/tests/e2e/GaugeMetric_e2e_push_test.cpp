@@ -122,6 +122,9 @@ class GaugeMetricE2ePushedTest : public ::testing::Test {
     void TearDown() override {
         FlagProvider::getInstance().resetOverrides();
     }
+
+public:
+    void doTestRepeatedFieldsForPushedEvent();
 };
 
 TEST_F(GaugeMetricE2ePushedTest, TestMultipleFieldsForPushedEvent) {
@@ -320,7 +323,7 @@ TEST_F(GaugeMetricE2ePushedTest, TestMultipleFieldsForPushedEvent) {
     }
 }
 
-TEST_F(GaugeMetricE2ePushedTest, TestRepeatedFieldsForPushedEvent) {
+TEST_F_GUARDED(GaugeMetricE2ePushedTest, TestRepeatedFieldsForPushedEvent, __ANDROID_API_T__) {
     for (const auto& sampling_type :
          {GaugeMetric::FIRST_N_SAMPLES, GaugeMetric::RANDOM_ONE_SAMPLE}) {
         StatsdConfig config = CreateStatsdConfigForRepeatedFieldsPushedEvent(sampling_type);

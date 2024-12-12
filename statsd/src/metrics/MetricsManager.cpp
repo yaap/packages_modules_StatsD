@@ -85,7 +85,11 @@ MetricsManager::MetricsManager(const ConfigKey& key, const StatsdConfig& config,
                           config.whitelisted_atom_ids().end()),
       mShouldPersistHistory(config.persist_locally()),
       mUseV2SoftMemoryCalculation(config.statsd_config_options().use_v2_soft_memory_limit()),
-      mOmitSystemUidsInUidMap(config.statsd_config_options().omit_system_uids_in_uidmap()) {
+      mOmitSystemUidsInUidMap(config.statsd_config_options().omit_system_uids_in_uidmap()),
+      mOmitUnusedUidsInUidMap(config.statsd_config_options().omit_unused_uids_in_uidmap()),
+      mAllowlistedUidMapPackages(
+              set<string>(config.statsd_config_options().uidmap_package_allowlist().begin(),
+                          config.statsd_config_options().uidmap_package_allowlist().end())) {
     if (!isAtLeastU() && config.has_restricted_metrics_delegate_package_name()) {
         mInvalidConfigReason =
                 InvalidConfigReason(INVALID_CONFIG_REASON_RESTRICTED_METRIC_NOT_ENABLED);
@@ -200,6 +204,10 @@ bool MetricsManager::updateConfig(const StatsdConfig& config, const int64_t time
     mPackageCertificateHashSizeBytes = config.package_certificate_hash_size_bytes();
     mUseV2SoftMemoryCalculation = config.statsd_config_options().use_v2_soft_memory_limit();
     mOmitSystemUidsInUidMap = config.statsd_config_options().omit_system_uids_in_uidmap();
+    mOmitUnusedUidsInUidMap = config.statsd_config_options().omit_unused_uids_in_uidmap();
+    mAllowlistedUidMapPackages =
+            set<string>(config.statsd_config_options().uidmap_package_allowlist().begin(),
+                        config.statsd_config_options().uidmap_package_allowlist().end());
 
     // Store the sub-configs used.
     mAnnotations.clear();
@@ -479,16 +487,14 @@ void MetricsManager::dropData(const int64_t dropTimeNs) {
 void MetricsManager::onDumpReport(const int64_t dumpTimeStampNs, const int64_t wallClockNs,
                                   const bool include_current_partial_bucket, const bool erase_data,
                                   const DumpLatency dumpLatency, std::set<string>* str_set,
-                                  ProtoOutputStream* protoOutput) {
+                                  std::set<int32_t>& usedUids, ProtoOutputStream* protoOutput) {
     if (hasRestrictedMetricsDelegate()) {
         // TODO(b/268150038): report error to statsdstats
         VLOG("Unexpected call to onDumpReport in restricted metricsmanager.");
         return;
     }
 
-    vector<std::pair<int32_t, int32_t>> queueOverflowStats =
-            StatsdStats::getInstance().getQueueOverflowAtomsStats();
-    processQueueOverflowStats(queueOverflowStats);
+    processQueueOverflowStats();
 
     VLOG("=========================Metric Reports Start==========================");
     // one StatsLogReport per MetricProduer
@@ -498,10 +504,10 @@ void MetricsManager::onDumpReport(const int64_t dumpTimeStampNs, const int64_t w
                                                 FIELD_ID_METRICS);
             if (mHashStringsInReport) {
                 producer->onDumpReport(dumpTimeStampNs, include_current_partial_bucket, erase_data,
-                                       dumpLatency, str_set, protoOutput);
+                                       dumpLatency, str_set, usedUids, protoOutput);
             } else {
                 producer->onDumpReport(dumpTimeStampNs, include_current_partial_bucket, erase_data,
-                                       dumpLatency, nullptr, protoOutput);
+                                       dumpLatency, nullptr, usedUids, protoOutput);
             }
             protoOutput->end(token);
         } else {
@@ -727,7 +733,8 @@ void MetricsManager::onLogEvent(const LogEvent& event) {
 
 void MetricsManager::onLogEventLost(const SocketLossInfo& socketLossInfo) {
     // socketLossInfo stores atomId per UID - to eliminate duplicates using set
-    const set<int> uniqueLostAtomIds(socketLossInfo.atomIds.begin(), socketLossInfo.atomIds.end());
+    const unordered_set<int> uniqueLostAtomIds(socketLossInfo.atomIds.begin(),
+                                               socketLossInfo.atomIds.end());
 
     // pass lost atom id to all relevant metrics
     for (const auto lostAtomId : uniqueLostAtomIds) {
@@ -957,13 +964,13 @@ void MetricsManager::addAllAtomIds(LogEventFilter::AtomIdSet& allIds) const {
     }
 }
 
-void MetricsManager::processQueueOverflowStats(
-        const StatsdStats::QueueOverflowAtomsStats& overflowStats) {
-    assert((overflowStats.size() < mQueueOverflowAtomsStats.size()) &&
+void MetricsManager::processQueueOverflowStats() {
+    auto queueOverflowStats = StatsdStats::getInstance().getQueueOverflowAtomsStats();
+    assert((queueOverflowStats.size() < mQueueOverflowAtomsStats.size()) &&
            "StatsdStats reset unexpected");
 
-    for (const auto [atomId, count] : overflowStats) {
-        // are there new atoms dropped due to queue overflow since previous dumpReport request
+    for (const auto [atomId, count] : queueOverflowStats) {
+        // are there new atoms dropped due to queue overflow since previous request
         auto droppedAtomStatsIt = mQueueOverflowAtomsStats.find(atomId);
         if (droppedAtomStatsIt != mQueueOverflowAtomsStats.end() &&
             droppedAtomStatsIt->second == count) {
@@ -971,18 +978,9 @@ void MetricsManager::processQueueOverflowStats(
             continue;
         }
 
-        if (notifyMetricsAboutLostAtom(atomId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW) > 0) {
-            // there is at least one metric interested in the lost atom, keep track of it
-            // to update it again only if there will be more dropped atoms
-            mQueueOverflowAtomsStats[atomId] = count;
-        } else {
-            // there are no metrics interested in dropped atom
-            if (droppedAtomStatsIt != mQueueOverflowAtomsStats.end()) {
-                // but there were metrics which are interested in the atom and now they are removed
-                mQueueOverflowAtomsStats.erase(droppedAtomStatsIt);
-            }
-        }
+        notifyMetricsAboutLostAtom(atomId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
     }
+    mQueueOverflowAtomsStats = std::move(queueOverflowStats);
 }
 
 }  // namespace statsd

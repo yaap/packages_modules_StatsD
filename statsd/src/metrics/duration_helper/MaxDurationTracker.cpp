@@ -138,13 +138,14 @@ void MaxDurationTracker::noteStop(const HashableDimensionKey& key, const int64_t
         }
     }
 
-    if (duration.lastDuration > mDuration) {
-        mDuration = duration.lastDuration;
-        VLOG("Max: new max duration: %lld", (long long)mDuration);
-    }
-    // Once an atom duration ends, we erase it. Next time, if we see another atom event with the
-    // same name, they are still considered as different atom durations.
     if (duration.state == DurationState::kStopped) {
+        if (duration.lastDuration > mDuration) {
+            mDuration = duration.lastDuration;
+            VLOG("Max: new max duration: %lld", (long long)mDuration);
+        }
+
+        // Once an atom duration ends, we erase it. Next time, if we see another atom event with the
+        // same name, they are still considered as different atom durations.
         mInfos.erase(key);
     }
 }

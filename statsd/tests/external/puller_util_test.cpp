@@ -430,7 +430,7 @@ TEST(PullerUtilTest, MultipleIsolatedUidToOneHostUidAttributionChain) {
 }
 
 // Test that repeated fields are treated as non-additive fields even when marked as additive.
-TEST(PullerUtilTest, RepeatedAdditiveField) {
+TEST_GUARDED(PullerUtilTest, RepeatedAdditiveField, __ANDROID_API_T__) {
     vector<int> int32Array1 = {3, 6};
     vector<int> int32Array2 = {6, 9};
 
@@ -451,8 +451,8 @@ TEST(PullerUtilTest, RepeatedAdditiveField) {
     mapAndMergeIsolatedUidsToHostUid(data, uidMap, uidAtomTagId, additiveFields);
 
     ASSERT_EQ(2, (int)data.size());
-    // Events 1 and 3 are merged - non-additive fields, including the repeated additive field, are
-    // equal.
+    // Events 1 and 3 are merged - non-additive fields, including the repeated additive field,
+    // are equal.
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
     EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
@@ -470,7 +470,7 @@ TEST(PullerUtilTest, RepeatedAdditiveField) {
 }
 
 // Test that repeated uid events are sorted and merged correctly.
-TEST(PullerUtilTest, RepeatedUidField) {
+TEST_GUARDED(PullerUtilTest, RepeatedUidField, __ANDROID_API_T__) {
     vector<int> uidArray1 = {isolatedUid1, hostUid};
     vector<int> uidArray2 = {isolatedUid1, isolatedUid3};
     vector<int> uidArray3 = {isolatedUid1, hostUid, isolatedUid2};
@@ -542,7 +542,7 @@ TEST(PullerUtilTest, RepeatedUidField) {
 
 // Test that repeated uid events with multiple repeated non-additive fields are sorted and merged
 // correctly.
-TEST(PullerUtilTest, MultipleRepeatedFields) {
+TEST_GUARDED(PullerUtilTest, MultipleRepeatedFields, __ANDROID_API_T__) {
     vector<int> uidArray1 = {isolatedUid1, hostUid};
     vector<int> uidArray2 = {isolatedUid1, isolatedUid3};
     vector<int> uidArray3 = {isolatedUid1, hostUid, isolatedUid2};
@@ -565,7 +565,8 @@ TEST(PullerUtilTest, MultipleRepeatedFields) {
             makeRepeatedUidLogEvent(uidAtomTagId, timestamp, uidArray2, hostAdditiveData,
                                     nonAdditiveArray1),
 
-            // Event 3 {30, 20, 40}->21->{1, 2} (different repeated fields with total length equal
+            // Event 3 {30, 20, 40}->21->{1, 2} (different repeated fields with total length
+            // equal
             // to event 1, merged with event 6)
             makeRepeatedUidLogEvent(uidAtomTagId, timestamp, uidArray3, hostAdditiveData,
                                     nonAdditiveArray3),
@@ -579,7 +580,8 @@ TEST(PullerUtilTest, MultipleRepeatedFields) {
             makeRepeatedUidLogEvent(uidAtomTagId, timestamp, uidArray1, hostAdditiveData,
                                     nonAdditiveArray2),
 
-            // Event 6 {30, 20, 40}->22->{1, 2} (different repeated fields with total length equal
+            // Event 6 {30, 20, 40}->22->{1, 2} (different repeated fields with total length
+            // equal
             // to event 1, merged with event 3)
             makeRepeatedUidLogEvent(uidAtomTagId, timestamp, uidArray3, isolatedAdditiveData,
                                     nonAdditiveArray3),

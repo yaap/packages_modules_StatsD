@@ -1,0 +1,10 @@
+package: "com.android.os.statsd.flags"
+container: "com.android.os.statsd"
+
+flag {
+  name: "use_wait_for_service_api"
+  namespace: "statsd"
+  description: "This flag controls transition to AServiceManager_waitForService API"
+  bug: "347947040"
+  is_fixed_read_only: true
+}

@@ -23,6 +23,7 @@
 #include <unordered_map>
 
 #include "HashableDimensionKey.h"
+#include "logd/logevent_util.h"
 #include "packages/UidMap.h"
 #include "socket/LogEventFilter.h"
 #include "state/StateListener.h"
@@ -73,6 +74,12 @@ public:
 
     void notifyAppChanged(const string& apk, const sp<UidMap>& uidMap);
 
+    /**
+     * @brief Update State Tracker depending on #lostAtomId that it was lost due to #reason
+     * @return true if State Tracker was notified
+     */
+    bool onLogEventLost(int32_t lostAtomId, DataCorruptedReason reason);
+
     inline int getStateTrackersCount() const {
         return mStateTrackers.size();
     }
@@ -88,6 +95,9 @@ public:
     void addAllAtomIds(LogEventFilter::AtomIdSet& allIds) const;
 
 private:
+    // Notifies the correct StateTracker of lost event.
+    void handleSocketLossInfo(const SocketLossInfo& socketLossInfo);
+
     mutable std::mutex mMutex;
 
     // Maps state atom ids to StateTrackers

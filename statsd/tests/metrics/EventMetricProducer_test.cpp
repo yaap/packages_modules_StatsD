@@ -53,6 +53,14 @@ void makeLogEvent(LogEvent* logEvent, int32_t atomId, int64_t timestampNs, strin
     parseStatsEventToLogEvent(statsEvent, logEvent);
 }
 
+StatsLogReport onDumpReport(EventMetricProducer& producer, int64_t dumpTimeNs) {
+    ProtoOutputStream output;
+    set<int32_t> usedUids;
+    producer.onDumpReport(dumpTimeNs, true /*include current partial bucket*/, true /*erase data*/,
+                          FAST, nullptr, usedUids, &output);
+    return outputStreamToProto(&output);
+}
+
 }  // anonymous namespace
 
 class EventMetricProducerTest : public ::testing::Test {
@@ -89,12 +97,7 @@ TEST_F(EventMetricProducerTest, TestNoCondition) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event2);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 20, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 20);
     backfillAggregatedAtoms(&report);
     EXPECT_TRUE(report.has_event_metrics());
     ASSERT_EQ(2, report.event_metrics().data_size());
@@ -132,12 +135,7 @@ TEST_F(EventMetricProducerTest, TestEventsWithNonSlicedCondition) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event2);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 20, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 20);
     EXPECT_TRUE(report.has_event_metrics());
     backfillAggregatedAtoms(&report);
     ASSERT_EQ(1, report.event_metrics().data_size());
@@ -186,12 +184,7 @@ TEST_F(EventMetricProducerTest, TestEventsWithSlicedCondition) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event2);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 20, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 20);
     backfillAggregatedAtoms(&report);
     EXPECT_TRUE(report.has_event_metrics());
     ASSERT_EQ(1, report.event_metrics().data_size());
@@ -226,12 +219,7 @@ TEST_F(EventMetricProducerTest, TestOneAtomTagAggregatedEvents) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event4);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 50, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 50);
     EXPECT_TRUE(report.has_event_metrics());
     ASSERT_EQ(2, report.event_metrics().data_size());
 
@@ -279,12 +267,7 @@ TEST_F(EventMetricProducerTest, TestBytesFieldAggregatedEvents) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event4);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 50, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 50);
     EXPECT_TRUE(report.has_event_metrics());
     ASSERT_EQ(2, report.event_metrics().data_size());
 
@@ -328,12 +311,8 @@ TEST_F(EventMetricProducerTest, TestTwoAtomTagAggregatedEvents) {
     eventProducer.onMatchedLogEvent(1 /*matcher index*/, event3);
 
     // Check dump report content.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    eventProducer.onDumpReport(bucketStartTimeNs + 50, true /*include current partial bucket*/,
-                               true /*erase data*/, FAST, &strSet, &output);
+    StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 50);
 
-    StatsLogReport report = outputStreamToProto(&output);
     EXPECT_TRUE(report.has_event_metrics());
     ASSERT_EQ(2, report.event_metrics().data_size());
 
@@ -378,11 +357,8 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_OnDumpReport) {
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        eventProducer.onDumpReport(bucketStartTimeNs + 50, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, nullptr, &output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 50);
 
-        StatsLogReport report = outputStreamToProto(&output);
         EXPECT_TRUE(report.has_event_metrics());
         EXPECT_EQ(1, report.event_metrics().data_size());
         ASSERT_EQ(1, report.data_corrupted_reason_size());
@@ -407,12 +383,8 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_OnDumpReport) {
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        std::set<string> strSet;
-        eventProducer.onDumpReport(bucketStartTimeNs + 150, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, &strSet, &output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 150);
 
-        StatsLogReport report = outputStreamToProto(&output);
         EXPECT_TRUE(report.has_event_metrics());
         EXPECT_EQ(1, report.event_metrics().data_size());
         ASSERT_EQ(1, report.data_corrupted_reason_size());
@@ -439,12 +411,8 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_OnDumpReport) {
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        std::set<string> strSet;
-        eventProducer.onDumpReport(bucketStartTimeNs + 250, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, &strSet, &output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 250);
 
-        StatsLogReport report = outputStreamToProto(&output);
         EXPECT_TRUE(report.has_event_metrics());
         EXPECT_EQ(1, report.event_metrics().data_size());
         EXPECT_EQ(2, report.data_corrupted_reason_size());
@@ -681,11 +649,8 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_UnrecoverableLossOfCondi
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        eventProducer.onDumpReport(bucketStartTimeNs + 50, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, nullptr, &output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 50);
 
-        StatsLogReport report = outputStreamToProto(&output);
         EXPECT_TRUE(report.has_event_metrics());
         ASSERT_EQ(1, report.event_metrics().data_size());
         EXPECT_EQ(1, report.data_corrupted_reason_size());
@@ -711,11 +676,7 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_UnrecoverableLossOfCondi
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        eventProducer.onDumpReport(bucketStartTimeNs + 150, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, nullptr, &output);
-
-        StatsLogReport report = outputStreamToProto(&output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 150);
         EXPECT_TRUE(report.has_event_metrics());
         EXPECT_EQ(1, report.event_metrics().data_size());
         EXPECT_EQ(2, report.data_corrupted_reason_size());
@@ -743,11 +704,8 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_UnrecoverableLossOfCondi
 
     {
         // Check dump report content.
-        ProtoOutputStream output;
-        eventProducer.onDumpReport(bucketStartTimeNs + 150, true /*include current partial bucket*/,
-                                   true /*erase data*/, FAST, nullptr, &output);
+        StatsLogReport report = onDumpReport(eventProducer, bucketStartTimeNs + 150);
 
-        StatsLogReport report = outputStreamToProto(&output);
         EXPECT_TRUE(report.has_event_metrics());
         EXPECT_EQ(1, report.event_metrics().data_size());
         EXPECT_EQ(2, report.data_corrupted_reason_size());

@@ -175,9 +175,10 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnDumpReportNoOp) {
     producer.onMatchedLogEvent(/*matcherIndex=*/1, *event1);
     ProtoOutputStream output;
     std::set<string> strSet;
+    std::set<int32_t> usedUids;
     producer.onDumpReport(/*dumpTimeNs=*/10,
                           /*include_current_partial_bucket=*/true,
-                          /*erase_data=*/true, FAST, &strSet, &output);
+                          /*erase_data=*/true, FAST, &strSet, usedUids, &output);
 
     ASSERT_EQ(output.size(), 0);
     ASSERT_EQ(strSet.size(), 0);

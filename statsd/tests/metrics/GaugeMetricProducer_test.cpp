@@ -70,6 +70,16 @@ shared_ptr<LogEvent> makeLogEvent(int32_t atomId, int64_t timestampNs, int32_t v
     parseStatsEventToLogEvent(statsEvent, logEvent.get());
     return logEvent;
 }
+
+StatsLogReport onDumpReport(GaugeMetricProducer& producer, int64_t dumpTimeNs,
+                            DumpLatency latency = FAST) {
+    ProtoOutputStream output;
+    set<int32_t> usedUids;
+    producer.onDumpReport(dumpTimeNs, true /*include current partial bucket*/, true /*erase data*/,
+                          latency, nullptr, usedUids, &output);
+    return outputStreamToProto(&output);
+}
+
 }  // anonymous namespace
 
 // Setup for parameterized tests.
@@ -912,12 +922,7 @@ TEST(GaugeMetricProducerTest_BucketDrop, TestBucketDropWhenBucketTooSmall) {
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, triggerEvent);
 
     // Check dump report.
-    ProtoOutputStream output;
-    std::set<string> strSet;
-    gaugeProducer.onDumpReport(bucketStartTimeNs + 9000000, true /* include recent buckets */, true,
-                               FAST /* dump_latency */, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 9000000);
     EXPECT_TRUE(report.has_gauge_metrics());
     ASSERT_EQ(0, report.gauge_metrics().data_size());
     ASSERT_EQ(1, report.gauge_metrics().skipped_size());
@@ -993,13 +998,8 @@ TEST(GaugeMetricProducerTest, TestPullDimensionalSampling) {
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, triggerEvent);
 
     // Check dump report.
-    ProtoOutputStream output;
-    std::set<string> strSet;
     int64_t dumpReportTimeNs = bucketStartTimeNs + 10000000000;
-    gaugeProducer.onDumpReport(dumpReportTimeNs, true /* include current buckets */, true,
-                               NO_TIME_CONSTRAINTS /* dumpLatency */, &strSet, &output);
-
-    StatsLogReport report = outputStreamToProto(&output);
+    StatsLogReport report = onDumpReport(gaugeProducer, dumpReportTimeNs, NO_TIME_CONSTRAINTS);
     backfillDimensionPath(&report);
     backfillStartEndTimestamp(&report);
     backfillAggregatedAtoms(&report);
@@ -1020,6 +1020,148 @@ TEST(GaugeMetricProducerTest, TestPullDimensionalSampling) {
     ValidateUidDimension(data.dimensions_in_what(), tagId, 1003);
     ValidateGaugeBucketTimes(data.bucket_info(0), bucketStartTimeNs, dumpReportTimeNs,
                              {bucketStartTimeNs + 10, bucketStartTimeNs + 20});
+}
+
+TEST(GaugeMetricProducerTest, TestCorruptedDataReason_WhatLoss) {
+    StatsdConfig config;
+
+    const int tagId = 1;
+    const int triggerId = 5;
+    const int conditionId = 10;
+
+    GaugeMetric sampledGaugeMetric = createGaugeMetric(
+            "GaugePullSampled", tagId, GaugeMetric::FIRST_N_SAMPLES, nullopt, triggerId);
+    sampledGaugeMetric.set_max_pull_delay_sec(INT_MAX);
+    *config.add_gauge_metric() = sampledGaugeMetric;
+
+    sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+    sp<EventMatcherWizard> eventMatcherWizard =
+            createEventMatcherWizard(tagId, logEventMatcherIndex);
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, sampledGaugeMetric, 0 /*condition index*/, {ConditionState::kUnknown},
+            wizard, protoHash, logEventMatcherIndex, eventMatcherWizard, tagId, triggerId, tagId,
+            bucketStartTimeNs, bucketStartTimeNs, pullerManager, provider);
+
+    gaugeProducer.onMatchedLogEventLost(tagId, DATA_CORRUPTED_SOCKET_LOSS,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 50);
+        EXPECT_THAT(report.data_corrupted_reason(), ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+    }
+
+    gaugeProducer.onMatchedLogEventLost(tagId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 150);
+        EXPECT_THAT(report.data_corrupted_reason(),
+                    ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+    }
+
+    gaugeProducer.onMatchedLogEventLost(tagId, DATA_CORRUPTED_SOCKET_LOSS,
+                                        MetricProducer::LostAtomType::kWhat);
+    gaugeProducer.onMatchedLogEventLost(tagId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 250);
+        EXPECT_THAT(report.data_corrupted_reason(),
+                    ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW, DATA_CORRUPTED_SOCKET_LOSS));
+    }
+}
+
+TEST(GaugeMetricProducerTest, TestCorruptedDataReason_TriggerLoss) {
+    StatsdConfig config;
+
+    const int tagId = 1;
+    const int triggerId = 5;
+    const int conditionId = 10;
+
+    GaugeMetric sampledGaugeMetric = createGaugeMetric(
+            "GaugePullSampled", tagId, GaugeMetric::FIRST_N_SAMPLES, nullopt, triggerId);
+    sampledGaugeMetric.set_max_pull_delay_sec(INT_MAX);
+    *config.add_gauge_metric() = sampledGaugeMetric;
+
+    sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+    sp<EventMatcherWizard> eventMatcherWizard =
+            createEventMatcherWizard(tagId, logEventMatcherIndex);
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, sampledGaugeMetric, 0 /*condition index*/, {ConditionState::kUnknown},
+            wizard, protoHash, logEventMatcherIndex, eventMatcherWizard, tagId, triggerId, tagId,
+            bucketStartTimeNs, bucketStartTimeNs, pullerManager, provider);
+
+    gaugeProducer.onMatchedLogEventLost(triggerId, DATA_CORRUPTED_SOCKET_LOSS,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 50);
+        EXPECT_THAT(report.data_corrupted_reason(), ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+    }
+
+    gaugeProducer.onMatchedLogEventLost(triggerId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 150);
+        EXPECT_THAT(report.data_corrupted_reason(),
+                    ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+    }
+
+    gaugeProducer.onMatchedLogEventLost(triggerId, DATA_CORRUPTED_SOCKET_LOSS,
+                                        MetricProducer::LostAtomType::kWhat);
+    gaugeProducer.onMatchedLogEventLost(triggerId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW,
+                                        MetricProducer::LostAtomType::kWhat);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 250);
+        EXPECT_THAT(report.data_corrupted_reason(),
+                    ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW, DATA_CORRUPTED_SOCKET_LOSS));
+    }
+}
+
+TEST(GaugeMetricProducerTest, TestCorruptedDataReason_ConditionLoss) {
+    StatsdConfig config;
+
+    const int tagId = 1;
+    const int triggerId = 5;
+    const int conditionId = 10;
+
+    GaugeMetric sampledGaugeMetric = createGaugeMetric(
+            "GaugePullSampled", tagId, GaugeMetric::FIRST_N_SAMPLES, nullopt, triggerId);
+    sampledGaugeMetric.set_max_pull_delay_sec(INT_MAX);
+    *config.add_gauge_metric() = sampledGaugeMetric;
+
+    sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
+    sp<EventMatcherWizard> eventMatcherWizard =
+            createEventMatcherWizard(tagId, logEventMatcherIndex);
+    sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    GaugeMetricProducer gaugeProducer(
+            kConfigKey, sampledGaugeMetric, 0 /*condition index*/, {ConditionState::kUnknown},
+            wizard, protoHash, logEventMatcherIndex, eventMatcherWizard, tagId, triggerId, tagId,
+            bucketStartTimeNs, bucketStartTimeNs, pullerManager, provider);
+
+    gaugeProducer.onMatchedLogEventLost(conditionId, DATA_CORRUPTED_SOCKET_LOSS,
+                                        MetricProducer::LostAtomType::kCondition);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 50);
+        EXPECT_THAT(report.data_corrupted_reason(), ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+    }
+
+    gaugeProducer.onMatchedLogEventLost(conditionId, DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW,
+                                        MetricProducer::LostAtomType::kCondition);
+    {
+        // Check dump report content.
+        StatsLogReport report = onDumpReport(gaugeProducer, bucketStartTimeNs + 150);
+        EXPECT_THAT(report.data_corrupted_reason(),
+                    ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW, DATA_CORRUPTED_SOCKET_LOSS));
+    }
 }
 
 }  // namespace statsd

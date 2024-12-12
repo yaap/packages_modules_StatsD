@@ -190,6 +190,18 @@ size_t KllMetricProducer::byteSizeLocked() const {
     return totalSize;
 }
 
+MetricProducer::DataCorruptionSeverity KllMetricProducer::determineCorruptionSeverity(
+        int32_t /*atomId*/, DataCorruptedReason /*reason*/, LostAtomType atomType) const {
+    switch (atomType) {
+        case LostAtomType::kWhat:
+            return DataCorruptionSeverity::kResetOnDump;
+        case LostAtomType::kCondition:
+        case LostAtomType::kState:
+            return DataCorruptionSeverity::kUnrecoverable;
+    };
+    return DataCorruptionSeverity::kNone;
+};
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

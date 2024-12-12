@@ -103,6 +103,8 @@ public class TestDrive {
             "com.android.ondevicepersonalization.services",
             "com.google.android.ondevicepersonalization.services",
             "AID_UPROBESTATS",
+            "com.google.android.hardware.biometrics.face",
+            "com.google.android.photopicker",
     };
     private static final String[] DEFAULT_PULL_SOURCES = {
             "AID_KEYSTORE", "AID_RADIO", "AID_SYSTEM",

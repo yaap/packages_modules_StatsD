@@ -1227,13 +1227,9 @@ bool StatsdStats::hasEventQueueOverflow() const {
     return mOverflowCount != 0;
 }
 
-vector<std::pair<int32_t, int32_t>> StatsdStats::getQueueOverflowAtomsStats() const {
+StatsdStats::QueueOverflowAtomsStatsMap StatsdStats::getQueueOverflowAtomsStats() const {
     lock_guard<std::mutex> lock(mLock);
-
-    vector<std::pair<int32_t, int32_t>> atomsStats(mPushedAtomDropsStats.begin(),
-                                                   mPushedAtomDropsStats.end());
-
-    return atomsStats;
+    return mPushedAtomDropsStats;
 }
 
 bool StatsdStats::hasSocketLoss() const {
@@ -2204,6 +2200,38 @@ InvalidConfigReason createInvalidConfigReasonWithSubscriptionAndAlert(
     invalidConfigReason.subscriptionId = subscriptionId;
     invalidConfigReason.alertId = alertId;
     return invalidConfigReason;
+}
+
+void PrintTo(const InvalidConfigReason& obj, std::ostream* os) {
+    *os << "{ reason: " << obj.reason;
+    if (obj.metricId.has_value()) {
+        *os << ", metricId: " << obj.metricId.value();
+    }
+    if (obj.stateId.has_value()) {
+        *os << ", stateId: " << obj.stateId.value();
+    }
+    if (obj.alertId.has_value()) {
+        *os << ", alertId: " << obj.alertId.value();
+    }
+    if (obj.alarmId.has_value()) {
+        *os << ", alarmId: " << obj.alarmId.value();
+    }
+    if (obj.subscriptionId.has_value()) {
+        *os << ", subscriptionId: " << obj.subscriptionId.value();
+    }
+    if (!obj.matcherIds.empty()) {
+        *os << ", matcherIds: [";
+        std::copy(obj.matcherIds.begin(), obj.matcherIds.end(),
+                  std::ostream_iterator<int64_t>(*os, ", "));
+        *os << "]";
+    }
+    if (!obj.conditionIds.empty()) {
+        *os << ", conditionIds: [";
+        std::copy(obj.conditionIds.begin(), obj.conditionIds.end(),
+                  std::ostream_iterator<int64_t>(*os, ", "));
+        *os << "]";
+    }
+    *os << " }";
 }
 
 }  // namespace statsd

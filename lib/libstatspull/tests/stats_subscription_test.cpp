@@ -81,13 +81,14 @@ protected:
         }
     }
 
-    void LogTestAtomReported(int32_t intFieldValue) {
+    void LogTestAtomReported(int32_t intFieldValue) __INTRODUCED_IN(__ANDROID_API_T__) {
         const BytesField bytesField(trainExpIdsBytes.data(), trainExpIdsBytes.size());
         stats_write(TEST_ATOM_REPORTED, uids.data(), uids.size(), tags, intFieldValue,
                     /*long_field=*/2LL, /*float_field=*/3.0F,
                     /*string_field=*/string1.c_str(),
-                    /*boolean_field=*/false, /*state=*/TEST_ATOM_REPORTED__REPEATED_ENUM_FIELD__OFF,
-                    bytesField, repeatedInts, repeatedLongs, repeatedFloats, repeatedStrings,
+                    /*boolean_field=*/false,
+                    /*state=*/TEST_ATOM_REPORTED__REPEATED_ENUM_FIELD__OFF, bytesField,
+                    repeatedInts, repeatedLongs, repeatedFloats, repeatedStrings,
                     &(repeatedBool[0]), /*repeatedBoolSize=*/2, repeatedEnums);
     }
 

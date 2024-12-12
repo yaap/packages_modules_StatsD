@@ -20,6 +20,9 @@
 #include "StateManager.h"
 
 #include <private/android_filesystem_config.h>
+#include <statslog_statsd.h>
+
+#include <unordered_set>
 
 namespace android {
 namespace os {
@@ -47,10 +50,40 @@ void StateManager::onLogEvent(const LogEvent& event) {
     if (event.GetUid() == AID_ROOT ||
         (event.GetUid() >= AID_SYSTEM && event.GetUid() < AID_SHELL) ||
         mAllowedLogSources.find(event.GetUid()) != mAllowedLogSources.end()) {
-        if (mStateTrackers.find(event.GetTagId()) != mStateTrackers.end()) {
-            mStateTrackers[event.GetTagId()]->onLogEvent(event);
+        const int tagId = event.GetTagId();
+        if (tagId == util::STATS_SOCKET_LOSS_REPORTED) {
+            // Hard coded logic to handle socket loss info to highlight metric corruption reason
+            const std::optional<SocketLossInfo>& lossInfo = toSocketLossInfo(event);
+            if (lossInfo) {
+                handleSocketLossInfo(*lossInfo);
+            }
+        } else {
+            auto stateTrackersForEvent = mStateTrackers.find(tagId);
+            if (stateTrackersForEvent != mStateTrackers.end()) {
+                stateTrackersForEvent->second->onLogEvent(event);
+            }
         }
     }
+}
+
+void StateManager::handleSocketLossInfo(const SocketLossInfo& socketLossInfo) {
+    // socketLossInfo stores atomId per UID - to eliminate duplicates using set
+    const std::unordered_set<int> uniqueLostAtomIds(socketLossInfo.atomIds.begin(),
+                                                    socketLossInfo.atomIds.end());
+
+    // pass lost atom id to all relevant metrics
+    for (const auto lostAtomId : uniqueLostAtomIds) {
+        onLogEventLost(lostAtomId, DATA_CORRUPTED_SOCKET_LOSS);
+    }
+}
+
+bool StateManager::onLogEventLost(int32_t lostAtomId, DataCorruptedReason reason) {
+    auto stateTrackersIt = mStateTrackers.find(lostAtomId);
+    if (stateTrackersIt != mStateTrackers.end()) {
+        stateTrackersIt->second->onLogEventLost(reason);
+        return true;
+    }
+    return false;
 }
 
 void StateManager::registerListener(const int32_t atomId, const wp<StateListener>& listener) {

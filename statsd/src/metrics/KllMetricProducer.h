@@ -112,6 +112,9 @@ private:
     // Internal function to calculate the current used bytes.
     size_t byteSizeLocked() const override;
 
+    DataCorruptionSeverity determineCorruptionSeverity(int32_t atomId, DataCorruptedReason reason,
+                                                       LostAtomType atomType) const override;
+
     FRIEND_TEST(KllMetricProducerTest, TestByteSize);
     FRIEND_TEST(KllMetricProducerTest, TestPushedEventsWithoutCondition);
     FRIEND_TEST(KllMetricProducerTest, TestPushedEventsWithCondition);

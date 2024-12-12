@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-#define STATSD_DEBUG false  // STOPSHIP if true
 #include "Log.h"
 
-#include <android-base/file.h>
-#include <android-base/properties.h>
-#include <private/android_filesystem_config.h>
+#include <com_android_os_statsd_flags.h>
+#include <dlfcn.h>
 
 #include <string>
 
@@ -29,8 +27,48 @@ namespace android {
 namespace os {
 namespace statsd {
 
+namespace {
+typedef int (*AUprobestatsClient_startUprobestatsFn)(const uint8_t* config, int64_t size);
+
+const char kLibuprobestatsClientPath[] = "libuprobestats_client.so";
+
+AUprobestatsClient_startUprobestatsFn libInit() {
+    if (__builtin_available(android __ANDROID_API_V__, *)) {
+        void* handle = dlopen(kLibuprobestatsClientPath, RTLD_NOW | RTLD_LOCAL);
+        if (!handle) {
+            ALOGE("dlopen error: %s %s", __func__, dlerror());
+            return nullptr;
+        }
+        auto f = reinterpret_cast<AUprobestatsClient_startUprobestatsFn>(
+                dlsym(handle, "AUprobestatsClient_startUprobestats"));
+        if (!f) {
+            ALOGE("dlsym error: %s %s", __func__, dlerror());
+            return nullptr;
+        }
+        return f;
+    }
+    return nullptr;
+}
+
+namespace flags = com::android::os::statsd::flags;
+
+}  // namespace
+
 bool StartUprobeStats(const UprobestatsDetails& config) {
-    // TODO: Add an implementation.
+    if (!flags::trigger_uprobestats()) {
+        return false;
+    }
+    static AUprobestatsClient_startUprobestatsFn AUprobestatsClient_startUprobestats = libInit();
+    if (AUprobestatsClient_startUprobestats == nullptr) {
+        return false;
+    }
+    if (!config.has_config()) {
+        ALOGE("The uprobestats trace config is empty, aborting");
+        return false;
+    }
+    const std::string& cfgProto = config.config();
+    AUprobestatsClient_startUprobestats(reinterpret_cast<const uint8_t*>(cfgProto.c_str()),
+                                        cfgProto.length());
     return true;
 }
 

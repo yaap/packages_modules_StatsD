@@ -43,6 +43,7 @@ android_test {
     privileged: true,
     certificate: "platform",
     compile_multilib: "both",
+    min_sdk_version: "30",
 }
 
 cc_test_library {

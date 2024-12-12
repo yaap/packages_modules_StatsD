@@ -20,6 +20,7 @@
 #include <android-base/stringprintf.h>
 
 #include "matchers/SimpleAtomMatchingTracker.h"
+#include "metrics/parsing_utils/histogram_parsing_utils.h"
 #include "stats_event.h"
 #include "stats_util.h"
 
@@ -598,12 +599,25 @@ GaugeMetric createGaugeMetric(const string& name, const int64_t what,
 
 ValueMetric createValueMetric(const string& name, const AtomMatcher& what, const int valueField,
                               const optional<int64_t>& condition, const vector<int64_t>& states) {
+    return createValueMetric(name, what, {valueField}, /* aggregationTypes */ {}, condition,
+                             states);
+}
+
+ValueMetric createValueMetric(const string& name, const AtomMatcher& what,
+                              const vector<int>& valueFields,
+                              const vector<ValueMetric::AggregationType>& aggregationTypes,
+                              const optional<int64_t>& condition, const vector<int64_t>& states) {
     ValueMetric metric;
     metric.set_id(StringToId(name));
     metric.set_what(what.id());
     metric.set_bucket(TEN_MINUTES);
     metric.mutable_value_field()->set_field(what.simple_atom_matcher().atom_id());
-    metric.mutable_value_field()->add_child()->set_field(valueField);
+    for (int valueField : valueFields) {
+        metric.mutable_value_field()->add_child()->set_field(valueField);
+    }
+    for (const ValueMetric::AggregationType aggType : aggregationTypes) {
+        metric.add_aggregation_types(aggType);
+    }
     if (condition) {
         metric.set_condition(condition.value());
     }
@@ -611,6 +625,24 @@ ValueMetric createValueMetric(const string& name, const AtomMatcher& what, const
         metric.add_slice_by_state(state);
     }
     return metric;
+}
+
+HistogramBinConfig createGeneratedBinConfig(int id, float min, float max, int count,
+                                            HistogramBinConfig::GeneratedBins::Strategy strategy) {
+    HistogramBinConfig binConfig;
+    binConfig.set_id(id);
+    binConfig.mutable_generated_bins()->set_min(min);
+    binConfig.mutable_generated_bins()->set_max(max);
+    binConfig.mutable_generated_bins()->set_count(count);
+    binConfig.mutable_generated_bins()->set_strategy(strategy);
+    return binConfig;
+}
+
+HistogramBinConfig createExplicitBinConfig(int id, const vector<float>& bins) {
+    HistogramBinConfig binConfig;
+    binConfig.set_id(id);
+    *binConfig.mutable_explicit_bins()->mutable_bin() = {bins.begin(), bins.end()};
+    return binConfig;
 }
 
 KllMetric createKllMetric(const string& name, const AtomMatcher& what, const int kllField,
@@ -1119,13 +1151,27 @@ std::unique_ptr<LogEvent> CreateTestAtomReportedEvent(
     AStatsEvent_writeBool(statsEvent, boolField);
     AStatsEvent_writeInt32(statsEvent, enumField);
     AStatsEvent_writeByteArray(statsEvent, bytesField.data(), bytesField.size());
-    AStatsEvent_writeInt32Array(statsEvent, repeatedIntField.data(), repeatedIntField.size());
-    AStatsEvent_writeInt64Array(statsEvent, repeatedLongField.data(), repeatedLongField.size());
-    AStatsEvent_writeFloatArray(statsEvent, repeatedFloatField.data(), repeatedFloatField.size());
-    AStatsEvent_writeStringArray(statsEvent, cRepeatedStringField.data(),
-                                 repeatedStringField.size());
-    AStatsEvent_writeBoolArray(statsEvent, repeatedBoolField, repeatedBoolFieldLength);
-    AStatsEvent_writeInt32Array(statsEvent, repeatedEnumField.data(), repeatedEnumField.size());
+    if (__builtin_available(android __ANDROID_API_T__, *)) {
+        /* CreateTestAtomReportedEvent is used in CreateTestAtomReportedEventVariableRepeatedFields
+           and CreateTestAtomReportedEventWithPrimitives. Only
+           CreateTestAtomReportedEventVariableRepeatedFields writes repeated fields, so wrapping
+           this portion in a __builtin_available and
+           CreateTestAtomReportedEventVariableRepeatedFields is annotated with __INTRODUCED_IN.
+        */
+        AStatsEvent_writeInt32Array(statsEvent, repeatedIntField.data(), repeatedIntField.size());
+        AStatsEvent_writeInt64Array(statsEvent, repeatedLongField.data(), repeatedLongField.size());
+        AStatsEvent_writeFloatArray(statsEvent, repeatedFloatField.data(),
+                                    repeatedFloatField.size());
+        AStatsEvent_writeStringArray(statsEvent, cRepeatedStringField.data(),
+                                     repeatedStringField.size());
+        AStatsEvent_writeBoolArray(statsEvent, repeatedBoolField, repeatedBoolFieldLength);
+        AStatsEvent_writeInt32Array(statsEvent, repeatedEnumField.data(), repeatedEnumField.size());
+    } else if (!repeatedIntField.empty() || !repeatedLongField.empty() ||
+               !repeatedFloatField.empty() || !cRepeatedStringField.empty() ||
+               repeatedBoolFieldLength != 0 || !repeatedEnumField.empty()) {
+        ADD_FAILURE() << "CreateTestAtomReportedEvent w/ repeated fields is only available in "
+                         "Android T and above.";
+    }
 
     std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(/*uid=*/0, /*pid=*/0);
     parseStatsEventToLogEvent(statsEvent, logEvent.get());
@@ -1507,6 +1553,11 @@ sp<NumericValueMetricProducer> createNumericValueMetricProducer(
         aggregationTypes.push_back(metric.aggregation_type());
     }
 
+    ParseHistogramBinConfigsResult parseBinConfigsResult =
+            parseHistogramBinConfigs(metric, aggregationTypes);
+    const vector<optional<const BinStarts>>& binStartsList =
+            std::get<vector<optional<const BinStarts>>>(parseBinConfigsResult);
+
     sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
     const int pullAtomId = isPulled ? atomId : -1;
     return new NumericValueMetricProducer(
@@ -1514,7 +1565,8 @@ sp<NumericValueMetricProducer> createNumericValueMetricProducer(
             {timeBaseNs, startTimeNs, bucketSizeNs, metric.min_bucket_size_nanos(),
              conditionCorrectionThresholdNs, metric.split_bucket_for_app_upgrade()},
             {containsAnyPositionInDimensionsInWhat, shouldUseNestedDimensions, logEventMatcherIndex,
-             eventMatcherWizard, metric.dimensions_in_what(), fieldMatchers, aggregationTypes},
+             eventMatcherWizard, metric.dimensions_in_what(), fieldMatchers, aggregationTypes,
+             binStartsList},
             {conditionIndex, metric.links(), initialConditionCache, wizard},
             {metric.state_link(), slicedStateAtoms, stateGroupMap},
             {/*eventActivationMap=*/{}, /*eventDeactivationMap=*/{}},
@@ -2191,9 +2243,10 @@ void writeBootFlag(const string& flagName, const string& flagValue) {
 
 PackageInfoSnapshot getPackageInfoSnapshot(const sp<UidMap> uidMap) {
     ProtoOutputStream protoOutputStream;
-    uidMap->writeUidMapSnapshot(/* timestamp */ 1, /* includeVersionStrings */ true,
-                                /* includeInstaller */ true, /* certificateHashSize */ UINT8_MAX,
-                                /* omitSystemUids */ false,
+    uidMap->writeUidMapSnapshot(/* timestamp */ 1,
+                                {/* includeVersionStrings */ true,
+                                 /* includeInstaller */ true, /* certificateHashSize */ UINT8_MAX,
+                                 /* omitSystemUids */ false},
                                 /* interestingUids */ {},
                                 /* installerIndices */ nullptr, /* str_set */ nullptr,
                                 &protoOutputStream);
@@ -2297,7 +2350,15 @@ void fillStatsEventWithSampleValue(AStatsEvent* statsEvent, uint8_t typeId) {
             AStatsEvent_writeString(statsEvent, "test");
             break;
         case LIST_TYPE:
-            AStatsEvent_writeInt32Array(statsEvent, int32Array, 2);
+            if (__builtin_available(android __ANDROID_API_T__, *)) {
+                /* CAUTION: when using this function with LIST_TYPE,
+                    wrap the code in a __builtin_available or __INTRODUCED_IN w/ T.
+                 */
+                AStatsEvent_writeInt32Array(statsEvent, int32Array, 2);
+            } else {
+                ADD_FAILURE() << "fillStatsEventWithSampleValue() w/ typeId LIST_TYPE should only "
+                                 "be used on Android T or above.";
+            }
             break;
         case FLOAT_TYPE:
             AStatsEvent_writeFloat(statsEvent, 1.3f);

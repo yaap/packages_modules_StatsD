@@ -21,6 +21,8 @@
 
 #include <inttypes.h>
 
+#include <variant>
+
 #include "FieldValue.h"
 #include "condition/CombinationConditionTracker.h"
 #include "condition/SimpleConditionTracker.h"
@@ -38,6 +40,7 @@
 #include "metrics/MetricProducer.h"
 #include "metrics/NumericValueMetricProducer.h"
 #include "metrics/RestrictedEventMetricProducer.h"
+#include "metrics/parsing_utils/histogram_parsing_utils.h"
 #include "state/StateManager.h"
 #include "stats_util.h"
 
@@ -879,6 +882,43 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
                                     eventActivationMap, eventDeactivationMap)};
 }
 
+namespace {  // anonymous namespace
+bool hasClientAggregatedBins(const ValueMetric& metric, int binConfigIndex) {
+    return metric.histogram_bin_configs_size() > binConfigIndex &&
+           metric.histogram_bin_configs(binConfigIndex).has_client_aggregated_bins();
+}
+
+optional<InvalidConfigReason> validatePositionAllInValueFields(
+        const ValueMetric& metric, int binConfigIndex, ValueMetric::AggregationType aggType,
+        vector<Matcher>::iterator matchersStartIt, const vector<Matcher>::iterator& matchersEndIt) {
+    if (aggType == ValueMetric::HISTOGRAM && hasClientAggregatedBins(metric, binConfigIndex)) {
+        while (matchersStartIt != matchersEndIt) {
+            if (!matchersStartIt->hasAllPositionMatcher()) {
+                ALOGE("value_field requires position ALL for client-aggregated histograms. "
+                      "ValueMetric \"%lld\"",
+                      (long long)metric.id());
+                return InvalidConfigReason(
+                        INVALID_CONFIG_REASON_VALUE_METRIC_HIST_CLIENT_AGGREGATED_NO_POSITION_ALL,
+                        metric.id());
+            }
+            matchersStartIt++;
+        }
+        return nullopt;
+    }
+    while (matchersStartIt != matchersEndIt) {
+        if (matchersStartIt->hasAllPositionMatcher()) {
+            ALOGE("value_field with position ALL is only supported for client-aggregated "
+                  "histograms. ValueMetric \"%lld\"",
+                  (long long)metric.id());
+            return InvalidConfigReason(
+                    INVALID_CONFIG_REASON_VALUE_METRIC_VALUE_FIELD_HAS_POSITION_ALL, metric.id());
+        }
+        matchersStartIt++;
+    }
+    return nullopt;
+}
+}  // anonymous namespace
+
 optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
         const ConfigKey& key, const StatsdConfig& config, const int64_t timeBaseNs,
         const int64_t currentTimeNs, const sp<StatsPullerManager>& pullerManager,
@@ -910,13 +950,6 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
                 INVALID_CONFIG_REASON_VALUE_METRIC_MISSING_VALUE_FIELD, metric.id());
         return nullopt;
     }
-    if (HasPositionALL(metric.value_field())) {
-        ALOGE("value field with position ALL is not supported. ValueMetric \"%lld\"",
-              (long long)metric.id());
-        invalidConfigReason = InvalidConfigReason(
-                INVALID_CONFIG_REASON_VALUE_METRIC_VALUE_FIELD_HAS_POSITION_ALL, metric.id());
-        return nullopt;
-    }
     std::vector<Matcher> fieldMatchers;
     translateFieldMatcher(metric.value_field(), &fieldMatchers);
     if (fieldMatchers.size() < 1) {
@@ -927,6 +960,7 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
     }
 
     std::vector<ValueMetric::AggregationType> aggregationTypes;
+    int histogramCount = 0;
     if (!metric.aggregation_types().empty()) {
         if (metric.has_aggregation_type()) {
             invalidConfigReason = InvalidConfigReason(
@@ -941,10 +975,58 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
             return nullopt;
         }
         for (int i = 0; i < metric.aggregation_types_size(); i++) {
-            aggregationTypes.push_back(metric.aggregation_types(i));
+            const ValueMetric::AggregationType aggType = metric.aggregation_types(i);
+            aggregationTypes.push_back(aggType);
+            if (aggType == ValueMetric::HISTOGRAM) {
+                histogramCount++;
+            }
+            invalidConfigReason = validatePositionAllInValueFields(
+                    metric, histogramCount - 1, aggType, fieldMatchers.begin() + i,
+                    fieldMatchers.begin() + i + 1);
+            if (invalidConfigReason != nullopt) {
+                return nullopt;
+            }
         }
     } else {  // aggregation_type() is set or default is used.
-        aggregationTypes.push_back(metric.aggregation_type());
+        const ValueMetric::AggregationType aggType = metric.aggregation_type();
+        aggregationTypes.push_back(aggType);
+        if (aggType == ValueMetric::HISTOGRAM) {
+            histogramCount = 1;
+        }
+        invalidConfigReason = validatePositionAllInValueFields(
+                metric, 0, aggType, fieldMatchers.begin(), fieldMatchers.end());
+        if (invalidConfigReason != nullopt) {
+            return nullopt;
+        }
+    }
+
+    if (metric.histogram_bin_configs_size() != histogramCount) {
+        ALOGE("%d histogram aggregations specified but there are %d histogram_bin_configs",
+              histogramCount, metric.histogram_bin_configs_size());
+        invalidConfigReason = InvalidConfigReason(
+                INVALID_CONFIG_REASON_VALUE_METRIC_HIST_COUNT_DNE_HIST_BIN_CONFIGS_COUNT,
+                metric.id());
+        return nullopt;
+    }
+
+    if (aggregationTypes.front() == ValueMetric::HISTOGRAM && metric.has_threshold()) {
+        invalidConfigReason = InvalidConfigReason(
+                INVALID_CONFIG_REASON_VALUE_METRIC_HIST_WITH_UPLOAD_THRESHOLD, metric.id());
+        return nullopt;
+    }
+
+    if (histogramCount > 0 && metric.has_value_direction() &&
+        metric.value_direction() != ValueMetric::INCREASING) {
+        invalidConfigReason = InvalidConfigReason(
+                INVALID_CONFIG_REASON_VALUE_METRIC_HIST_INVALID_VALUE_DIRECTION, metric.id());
+        return nullopt;
+    }
+
+    ParseHistogramBinConfigsResult parseBinConfigsResult =
+            parseHistogramBinConfigs(metric, aggregationTypes);
+    if (std::holds_alternative<InvalidConfigReason>(parseBinConfigsResult)) {
+        invalidConfigReason = std::get<InvalidConfigReason>(parseBinConfigsResult);
+        return nullopt;
     }
 
     int trackerIndex;
@@ -1039,12 +1121,15 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
                     ? optional<int64_t>(metric.condition_correction_threshold_nanos())
                     : nullopt;
 
+    const vector<optional<const BinStarts>>& binStartsList =
+            std::get<vector<optional<const BinStarts>>>(parseBinConfigsResult);
     sp<MetricProducer> metricProducer = new NumericValueMetricProducer(
             key, metric, metricHash, {pullTagId, pullerManager},
             {timeBaseNs, currentTimeNs, bucketSizeNs, metric.min_bucket_size_nanos(),
              conditionCorrectionThresholdNs, getAppUpgradeBucketSplit(metric)},
             {containsAnyPositionInDimensionsInWhat, shouldUseNestedDimensions, trackerIndex,
-             matcherWizard, metric.dimensions_in_what(), fieldMatchers, aggregationTypes},
+             matcherWizard, metric.dimensions_in_what(), fieldMatchers, aggregationTypes,
+             binStartsList},
             {conditionIndex, metric.links(), initialConditionCache, wizard},
             {metric.state_link(), slicedStateAtoms, stateGroupMap},
             {eventActivationMap, eventDeactivationMap}, {dimensionSoftLimit, dimensionHardLimit},

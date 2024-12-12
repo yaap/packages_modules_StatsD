@@ -21,14 +21,15 @@
 #include <optional>
 
 #include "ValueMetricProducer.h"
+#include "metrics/NumericValue.h"
+#include "src/stats_util.h"
 
 namespace android {
 namespace os {
 namespace statsd {
 
-// TODO(b/185796344): don't use Value from FieldValue.
-using ValueBases = std::vector<std::optional<Value>>;
-class NumericValueMetricProducer : public ValueMetricProducer<Value, ValueBases> {
+using Bases = std::vector<NumericValue>;
+class NumericValueMetricProducer : public ValueMetricProducer<NumericValue, Bases> {
 public:
     NumericValueMetricProducer(const ConfigKey& key, const ValueMetric& valueMetric,
                                const uint64_t protoHash, const PullOptions& pullOptions,
@@ -81,7 +82,7 @@ private:
                                           const ConditionState newCondition,
                                           const int64_t eventTimeNs) override;
 
-    inline std::string aggregatedValueToString(const Value& value) const override {
+    inline std::string aggregatedValueToString(const NumericValue& value) const override {
         return value.toString();
     }
 
@@ -105,12 +106,12 @@ private:
     void closeCurrentBucket(const int64_t eventTimeNs,
                             const int64_t nextBucketStartTimeNs) override;
 
-    PastBucket<Value> buildPartialBucket(int64_t bucketEndTime,
-                                         std::vector<Interval>& intervals) override;
+    PastBucket<NumericValue> buildPartialBucket(int64_t bucketEndTime,
+                                                std::vector<Interval>& intervals) override;
 
     bool valuePassesThreshold(const Interval& interval) const;
 
-    Value getFinalValue(const Interval& interval) const;
+    NumericValue getFinalValue(const Interval& interval) const;
 
     void initNextSlicedBucket(int64_t nextBucketStartTimeNs) override;
 
@@ -130,13 +131,13 @@ private:
 
     bool aggregateFields(const int64_t eventTimeNs, const MetricDimensionKey& eventKey,
                          const LogEvent& event, std::vector<Interval>& intervals,
-                         ValueBases& bases) override;
+                         Bases& bases) override;
 
     void pullAndMatchEventsLocked(const int64_t timestampNs) override;
 
     DumpProtoFields getDumpProtoFields() const override;
 
-    void writePastBucketAggregateToProto(const int aggIndex, const Value& value,
+    void writePastBucketAggregateToProto(const int aggIndex, const NumericValue& value,
                                          const int sampleSize,
                                          ProtoOutputStream* const protoOutput) const override;
 
@@ -150,7 +151,10 @@ private:
         return mAggregationTypes.size() == 1 ? mAggregationTypes[0] : mAggregationTypes[index];
     }
 
-    size_t getAggregatedValueSize(const Value& value) const override;
+    // Should only be called if there is at least one HISTOGRAM in mAggregationTypes
+    const std::optional<const BinStarts>& getBinStarts(int valueFieldIndex) const;
+
+    size_t getAggregatedValueSize(const NumericValue& value) const override;
 
     bool hasAvgAggregationType(const vector<ValueMetric::AggregationType> aggregationTypes) const {
         for (const int aggType : aggregationTypes) {
@@ -160,6 +164,9 @@ private:
         }
         return false;
     }
+
+    DataCorruptionSeverity determineCorruptionSeverity(int32_t atomId, DataCorruptedReason reason,
+                                                       LostAtomType atomType) const override;
 
     const bool mUseAbsoluteValueOnReset;
 
@@ -192,6 +199,8 @@ private:
 
     // For anomaly detection.
     std::unordered_map<MetricDimensionKey, int64_t> mCurrentFullBucket;
+
+    const std::vector<std::optional<const BinStarts>> mBinStartsList;
 
     FRIEND_TEST(NumericValueMetricProducerTest, TestAnomalyDetection);
     FRIEND_TEST(NumericValueMetricProducerTest, TestBaseSetOnConditionChange);

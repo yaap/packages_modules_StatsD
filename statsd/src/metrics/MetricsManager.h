@@ -91,6 +91,16 @@ public:
 
     void dumpStates(int out, bool verbose);
 
+    // Does not set the used uids.
+    inline UidMapOptions getUidMapOptions() const {
+        return {.includeVersionStrings = mVersionStringsInReport,
+                .includeInstaller = mInstallerInReport,
+                .truncatedCertificateHashSize = mPackageCertificateHashSizeBytes,
+                .omitSystemUids = mOmitSystemUidsInUidMap,
+                .omitUnusedUids = mOmitUnusedUidsInUidMap,
+                .allowlistedPackages = mAllowlistedUidMapPackages};
+    }
+
     inline bool isInTtl(const int64_t timestampNs) const {
         return mTtlNs <= 0 || timestampNs < mTtlEndNs;
     };
@@ -98,18 +108,6 @@ public:
     inline bool hashStringInReport() const {
         return mHashStringsInReport;
     };
-
-    inline bool versionStringsInReport() const {
-        return mVersionStringsInReport;
-    };
-
-    inline bool installerInReport() const {
-        return mInstallerInReport;
-    };
-
-    inline uint8_t packageCertificateHashSizeBytes() const {
-        return mPackageCertificateHashSizeBytes;
-    }
 
     void refreshTtl(const int64_t currentTimestampNs) {
         if (mTtlNs > 0) {
@@ -136,6 +134,7 @@ public:
     virtual void onDumpReport(const int64_t dumpTimeNs, int64_t wallClockNs,
                               const bool include_current_partial_bucket, const bool erase_data,
                               const DumpLatency dumpLatency, std::set<string>* str_set,
+                              std::set<int32_t>& usedUids,
                               android::util::ProtoOutputStream* protoOutput);
 
     // Computes the total byte size of all metrics managed by a single config source.
@@ -191,10 +190,6 @@ public:
 
     inline size_t getTriggerGetDataBytes() const {
         return mTriggerGetDataBytes;
-    }
-
-    inline bool omitSystemUidsInUidMap() const {
-        return mOmitSystemUidsInUidMap;
     }
 
 private:
@@ -257,6 +252,8 @@ private:
     bool mUseV2SoftMemoryCalculation;
 
     bool mOmitSystemUidsInUidMap;
+    bool mOmitUnusedUidsInUidMap;
+    set<string> mAllowlistedUidMapPackages;
 
     // All event tags that are interesting to config metrics matchers.
     std::unordered_map<int, std::vector<int>> mTagIdsToMatchersMap;
@@ -385,15 +382,14 @@ private:
     int notifyMetricsAboutLostAtom(int32_t lostAtomId, DataCorruptedReason reason);
 
     /**
-     * @brief Updates MetricProducers with DataCorruptionReason due to queue overflow atom loss
-     *        Notifies metrics only when new queue overflow happens since previous dumpReport
-     *        Perform QueueOverflowAtomsStats tracking via managing stats local copy
-     *        The assumption is that QueueOverflowAtomsStats collected over time, and that none of
-     *        atom id counters have disappeared (which is StatsdStats logic until it explicitly
-     *        reset, which should not be happen during statsd service lifetime)
-     * @param overflowStats
+     * Updates MetricProducers with DataCorruptionReason due to queue overflow atom loss
+     * Notifies metrics only when new queue overflow happens since previous request
+     * Performs QueueOverflowAtomsStatsMap tracking via managing stats local copy
+     * The assumption is that QueueOverflowAtomsStatsMap collected over time, and that none
+     * of atom id counters have disappeared (which is StatsdStats logic until it explicitly reset,
+     * which should not be happen during statsd service lifetime)
      */
-    void processQueueOverflowStats(const StatsdStats::QueueOverflowAtomsStats& overflowStats);
+    void processQueueOverflowStats();
 
     // The memory limit in bytes for storing metrics
     size_t mMaxMetricsBytes;
@@ -405,9 +401,9 @@ private:
     // this map is not cleared during onDumpReport to preserve tracking information and avoid
     // repeated metric notification about past queue overflow lost event
     // This map represent local copy of StatsdStats::mPushedAtomDropsStats with relevant atoms ids
-    typedef std::unordered_map<int32_t, int32_t> QueueOverflowAtomsStatsMap;
-    QueueOverflowAtomsStatsMap mQueueOverflowAtomsStats;
+    StatsdStats::QueueOverflowAtomsStatsMap mQueueOverflowAtomsStats;
 
+    friend class SocketLossInfoTest;
     FRIEND_TEST(MetricConditionLinkE2eTest, TestMultiplePredicatesAndLinks);
     FRIEND_TEST(AttributionE2eTest, TestAttributionMatchAndSliceByFirstUid);
     FRIEND_TEST(AttributionE2eTest, TestAttributionMatchAndSliceByChain);
@@ -484,11 +480,10 @@ private:
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithMultipleAggTypes);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithDefaultAggType);
 
-    FRIEND_TEST(SocketLossInfoTest, PropagationTest);
-
     FRIEND_TEST(DataCorruptionQueueOverflowTest, TestNotifyOnlyInterestedMetrics);
     FRIEND_TEST(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss);
     FRIEND_TEST(DataCorruptionQueueOverflowTest, TestDoNotNotifyInterestedMetricsIfNoUpdate);
+    FRIEND_TEST(DataCorruptionQueueOverflowTest, TestDoNotNotifyNewInterestedMetricsIfNoUpdate);
 };
 
 }  // namespace statsd

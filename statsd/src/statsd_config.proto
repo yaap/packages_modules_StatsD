@@ -364,6 +364,11 @@ message GaugeMetric {
   reserved 101;
 }
 
+// Empty proto message to indicate that histogram bins are populated in the client process.
+// No additional configuration parameters are needed in this message.
+message ClientAggregatedBins {
+}
+
 message HistogramBinConfig {
   message ExplicitBins {
     repeated float bin = 1;
@@ -386,6 +391,7 @@ message HistogramBinConfig {
   oneof binning_strategy {
     GeneratedBins generated_bins = 2;
     ExplicitBins explicit_bins = 3;
+    ClientAggregatedBins client_aggregated_bins = 4;
   }
 }
 
@@ -676,6 +682,8 @@ message StatsdConfig {
   message StatsdConfigOptions {
     optional bool use_v2_soft_memory_limit = 1;
     optional bool omit_system_uids_in_uidmap = 2;
+    optional bool omit_unused_uids_in_uidmap = 3;
+    repeated string uidmap_package_allowlist = 4;
   }
 
   optional StatsdConfigOptions statsd_config_options = 30;

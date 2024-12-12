@@ -57,11 +57,9 @@ private:
             const ConditionKey& conditionKey, bool condition, const LogEvent& event,
             const std::map<int, HashableDimensionKey>& statePrimaryKeys) override;
 
-    void onDumpReportLocked(const int64_t dumpTimeNs,
-                            const bool include_current_partial_bucket,
-                            const bool erase_data,
-                            const DumpLatency dumpLatency,
-                            std::set<string> *str_set,
+    void onDumpReportLocked(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
+                            const bool erase_data, const DumpLatency dumpLatency,
+                            std::set<string>* str_set, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
     void clearPastBucketsLocked(const int64_t dumpTimeNs) override;
 
@@ -94,7 +92,7 @@ private:
 
     void dumpStatesLocked(int out, bool verbose) const override{};
 
-    DataCorruptionSeverity determineCorruptionSeverity(DataCorruptedReason reason,
+    DataCorruptionSeverity determineCorruptionSeverity(int32_t atomId, DataCorruptedReason reason,
                                                        LostAtomType atomType) const override;
 
     // Maps the field/value pairs of an atom to a list of timestamps used to deduplicate atoms.

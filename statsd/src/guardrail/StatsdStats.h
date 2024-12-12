@@ -51,6 +51,9 @@ struct InvalidConfigReason {
                (this->alarmId == other.alarmId) && (this->subscriptionId == other.subscriptionId) &&
                (this->matcherIds == other.matcherIds) && (this->conditionIds == other.conditionIds);
     }
+
+    // For better failure messages in statsd_test
+    friend void PrintTo(const InvalidConfigReason& obj, std::ostream* os);
 };
 
 typedef struct {
@@ -773,8 +776,8 @@ public:
      */
     bool hasEventQueueOverflow() const;
 
-    typedef std::vector<std::pair<int32_t, int32_t>> QueueOverflowAtomsStats;
-    QueueOverflowAtomsStats getQueueOverflowAtomsStats() const;
+    typedef std::unordered_map<int32_t, int32_t> QueueOverflowAtomsStatsMap;
+    QueueOverflowAtomsStatsMap getQueueOverflowAtomsStats() const;
 
     /**
      * Returns true if there is recorded socket loss
@@ -870,7 +873,7 @@ private:
     // Stores the number of times a pushed atom is dropped due to queue overflow event.
     // We do not expect it will happen too often so the map is preferable vs pre-allocated vector
     // The max size of the map is kMaxPushedAtomId + kMaxNonPlatformPushedAtoms.
-    std::unordered_map<int, int> mPushedAtomDropsStats;
+    QueueOverflowAtomsStatsMap mPushedAtomDropsStats;
 
     // Maps PullAtomId to its stats. The size is capped by the puller atom counts.
     std::map<int, PulledAtomStats> mPulledAtomStats;

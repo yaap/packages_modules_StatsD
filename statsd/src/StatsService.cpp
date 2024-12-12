@@ -233,7 +233,9 @@ StatsService::~StatsService() {
     onStatsdInitCompletedHandlerTermination();
     if (mEventQueue != nullptr) {
         stopReadingLogs();
-        mLogsReaderThread->join();
+        if (mLogsReaderThread != nullptr) {
+            mLogsReaderThread->join();
+        }
     }
 }
 

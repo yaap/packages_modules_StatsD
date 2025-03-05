@@ -361,6 +361,22 @@ optional<InvalidConfigReason> handleMetricWithDimensionalSampling(
     return nullopt;
 }
 
+template <typename T>
+optional<InvalidConfigReason> setUidFieldsIfNecessary(const T& metric,
+                                                      sp<MetricProducer> metricProducer) {
+    if (metric.has_uid_fields()) {
+        if (HasPositionANY(metric.uid_fields())) {
+            ALOGE("Metric %lld has position ANY in uid fields", (long long)metric.id());
+            return InvalidConfigReason(INVALID_CONFIG_REASON_UID_FIELDS_WITH_POSITION_ANY,
+                                       metric.id());
+        }
+        std::vector<Matcher> uidFields;
+        translateFieldMatcher(metric.uid_fields(), &uidFields);
+        metricProducer->setUidFields(uidFields);
+    }
+    return nullopt;
+}
+
 // Validates a metricActivation and populates state.
 // EventActivationMap and EventDeactivationMap are supplied to a MetricProducer
 //      to provide the producer with state about its activators and deactivators.
@@ -616,6 +632,10 @@ optional<sp<MetricProducer>> createCountMetricProducerAndUpdateMetadata(
         metricProducer->setSamplingInfo(samplingInfo);
     }
 
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
+    }
     return metricProducer;
 }
 
@@ -802,6 +822,11 @@ optional<sp<MetricProducer>> createDurationMetricProducerAndUpdateMetadata(
         metricProducer->setSamplingInfo(samplingInfo);
     }
 
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
+    }
+
     return metricProducer;
 }
 
@@ -872,14 +897,23 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
         return nullopt;
     }
 
+    sp<MetricProducer> metricProducer;
     if (config.has_restricted_metrics_delegate_package_name()) {
-        return {new RestrictedEventMetricProducer(
+        metricProducer = new RestrictedEventMetricProducer(
                 key, metric, conditionIndex, initialConditionCache, wizard, metricHash, timeBaseNs,
-                configMetadataProvider, eventActivationMap, eventDeactivationMap)};
+                configMetadataProvider, eventActivationMap, eventDeactivationMap);
+    } else {
+        metricProducer = new EventMetricProducer(
+                key, metric, conditionIndex, initialConditionCache, wizard, metricHash, timeBaseNs,
+                configMetadataProvider, eventActivationMap, eventDeactivationMap);
     }
-    return {new EventMetricProducer(key, metric, conditionIndex, initialConditionCache, wizard,
-                                    metricHash, timeBaseNs, configMetadataProvider,
-                                    eventActivationMap, eventDeactivationMap)};
+
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
+    }
+
+    return metricProducer;
 }
 
 namespace {  // anonymous namespace
@@ -1145,6 +1179,11 @@ optional<sp<MetricProducer>> createNumericValueMetricProducerAndUpdateMetadata(
         metricProducer->setSamplingInfo(samplingInfo);
     }
 
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
+    }
+
     return metricProducer;
 }
 
@@ -1303,6 +1342,11 @@ optional<sp<MetricProducer>> createKllMetricProducerAndUpdateMetadata(
             return nullopt;
         }
         metricProducer->setSamplingInfo(samplingInfo);
+    }
+
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
     }
 
     return metricProducer;
@@ -1476,6 +1520,11 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
             return nullopt;
         }
         metricProducer->setSamplingInfo(samplingInfo);
+    }
+
+    invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
+    if (invalidConfigReason.has_value()) {
+        return nullopt;
     }
 
     return metricProducer;

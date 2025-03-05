@@ -63,7 +63,7 @@ java_test_host {
         "device-tests",
         "mts-statsd",
     ],
-    data: [
+    device_common_data: [
         ":StatsdFrameworkTestApp",
         ":StatsdFrameworkTestAppNoPermission",
     ],

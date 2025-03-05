@@ -419,13 +419,13 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::onDumpReportLocked(
         if (mShouldUseNestedDimensions) {
             uint64_t dimensionToken =
                     protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_DIMENSION_IN_WHAT);
-            writeDimensionToProto(metricDimensionKey.getDimensionKeyInWhat(), strSet, usedUids,
-                                  protoOutput);
+            writeDimensionToProto(metricDimensionKey.getDimensionKeyInWhat(), mUidFields, strSet,
+                                  usedUids, protoOutput);
             protoOutput->end(dimensionToken);
         } else {
             writeDimensionLeafNodesToProto(metricDimensionKey.getDimensionKeyInWhat(),
-                                           FIELD_ID_DIMENSION_LEAF_IN_WHAT, strSet, usedUids,
-                                           protoOutput);
+                                           FIELD_ID_DIMENSION_LEAF_IN_WHAT, mUidFields, strSet,
+                                           usedUids, protoOutput);
         }
 
         // Then fill slice_by_state.

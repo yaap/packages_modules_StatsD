@@ -209,10 +209,6 @@ protected:
         }
     }
 
-    void setEventKey(const MetricDimensionKey& eventKey) {
-        mEventKey = eventKey;
-    }
-
     bool durationPassesThreshold(const optional<UploadThreshold>& uploadThreshold,
                                  int64_t duration) {
         if (duration <= 0) {

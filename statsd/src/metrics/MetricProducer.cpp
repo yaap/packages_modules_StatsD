@@ -464,6 +464,15 @@ size_t MetricProducer::computeOverheadSizeLocked(const bool hasPastBuckets,
             overheadSize += sizeof(int32_t) * mDimensionsInWhat.size();
         }
     }
+
+    const int32_t dataCorruptedReasonsCount =
+            (mDataCorruptedDueToQueueOverflow != DataCorruptionSeverity::kNone) +
+            (mDataCorruptedDueToSocketLoss != DataCorruptionSeverity::kNone);
+    if (dataCorruptedReasonsCount > 0) {
+        // adding extra int32 to account for the array length
+        overheadSize += (dataCorruptedReasonsCount + 1) * sizeof(int32_t);
+    }
+
     return overheadSize;
 }
 

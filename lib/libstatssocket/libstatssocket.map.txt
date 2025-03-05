@@ -23,3 +23,13 @@ LIBSTATSSOCKET {
     local:
         *;
 };
+
+LIBSTATSSOCKET_PRIVATE {
+    global:
+        AStatsEvent_getBuffer;
+        AStatsEvent_getErrors;
+        AStatsEvent_overwriteTimestamp;
+        write_buffer_to_statsd;
+    local:
+        *;
+} LIBSTATSSOCKET;

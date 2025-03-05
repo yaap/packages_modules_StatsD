@@ -410,39 +410,39 @@ static bool getDeviceInfoInsertStmt(sqlite3* db, sqlite3_stmt** stmt, string err
     sqlite3_bind_int(*stmt, index, sdkVersion);
     ++index;
 
-    string model = GetProperty("ro.product.model", "(unknown)");
+    string model = GetProperty("ro.product.model", "unknown");
     sqlite3_bind_text(*stmt, index, model.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string product = GetProperty("ro.product.name", "(unknown)");
+    string product = GetProperty("ro.product.name", "unknown");
     sqlite3_bind_text(*stmt, index, product.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string hardware = GetProperty("ro.hardware", "(unknown)");
+    string hardware = GetProperty("ro.hardware", "unknown");
     sqlite3_bind_text(*stmt, index, hardware.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string device = GetProperty("ro.product.device", "(unknown)");
+    string device = GetProperty("ro.product.device", "unknown");
     sqlite3_bind_text(*stmt, index, device.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string osBuild = GetProperty("ro.build.id", "(unknown)");
+    string osBuild = GetProperty("ro.build.id", "unknown");
     sqlite3_bind_text(*stmt, index, osBuild.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string fingerprint = GetProperty("ro.build.fingerprint", "(unknown)");
+    string fingerprint = GetProperty("ro.build.fingerprint", "unknown");
     sqlite3_bind_text(*stmt, index, fingerprint.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string brand = GetProperty("ro.product.brand", "(unknown)");
+    string brand = GetProperty("ro.product.brand", "unknown");
     sqlite3_bind_text(*stmt, index, brand.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string manufacturer = GetProperty("ro.product.manufacturer", "(unknown)");
+    string manufacturer = GetProperty("ro.product.manufacturer", "unknown");
     sqlite3_bind_text(*stmt, index, manufacturer.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 
-    string board = GetProperty("ro.product.board", "(unknown)");
+    string board = GetProperty("ro.product.board", "unknown");
     sqlite3_bind_text(*stmt, index, board.c_str(), -1, SQLITE_TRANSIENT);
     ++index;
 

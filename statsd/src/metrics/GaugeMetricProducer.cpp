@@ -328,13 +328,13 @@ void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
         if (mShouldUseNestedDimensions) {
             uint64_t dimensionToken = protoOutput->start(
                     FIELD_TYPE_MESSAGE | FIELD_ID_DIMENSION_IN_WHAT);
-            writeDimensionToProto(dimensionKey.getDimensionKeyInWhat(), str_set, usedUids,
-                                  protoOutput);
+            writeDimensionToProto(dimensionKey.getDimensionKeyInWhat(), mUidFields, str_set,
+                                  usedUids, protoOutput);
             protoOutput->end(dimensionToken);
         } else {
             writeDimensionLeafNodesToProto(dimensionKey.getDimensionKeyInWhat(),
-                                           FIELD_ID_DIMENSION_LEAF_IN_WHAT, str_set, usedUids,
-                                           protoOutput);
+                                           FIELD_ID_DIMENSION_LEAF_IN_WHAT, mUidFields, str_set,
+                                           usedUids, protoOutput);
         }
 
         // Then fill bucket_info (GaugeBucketInfo).
@@ -361,7 +361,7 @@ void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
                             protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_ATOM_VALUE);
                     writeFieldValueTreeToStream(mAtomId,
                                                 atomDimensionKey.getAtomFieldValues().getValues(),
-                                                usedUids, protoOutput);
+                                                mUidFields, usedUids, protoOutput);
                     protoOutput->end(atomToken);
                     for (int64_t timestampNs : elapsedTimestampsNs) {
                         protoOutput->write(

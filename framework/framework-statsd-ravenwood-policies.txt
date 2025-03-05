@@ -1,0 +1,10 @@
+# Policy file for ravenwood
+
+# Auto generated class by stats_log_api_gen.
+# We could update stats_log_api_gen and add the annotation to the generated code, but
+# then we need to make sure to add "framework-annotations-lib" as a dependency to all the build
+# modules. (Or else, make an option for this.)
+class com.android.internal.statsd.StatsdStatsLog keepclass
+
+# TODO(b/375040589) Convert to the annotation after fixing the issue.
+class android.util.StatsLog keepclass

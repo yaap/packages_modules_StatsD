@@ -179,6 +179,8 @@ private:
 
     FRIEND_TEST(ConfigUpdateE2eTest, TestGaugeMetric);
     FRIEND_TEST(ConfigUpdateE2eTest, TestValueMetric);
+
+    FRIEND_TEST(StatsPullerManagerTest, TestSameAtomIsPulledInABatch);
 };
 
 }  // namespace statsd

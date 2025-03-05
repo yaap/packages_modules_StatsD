@@ -62,5 +62,4 @@ cc_test_library {
     static_libs: [
         "libbase",
     ],
-    test_for: ["com.android.os.statsd"],
 }

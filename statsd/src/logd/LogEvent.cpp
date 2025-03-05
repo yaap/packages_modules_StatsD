@@ -770,7 +770,7 @@ string LogEvent::ToString() const {
 
 void LogEvent::ToProto(ProtoOutputStream& protoOutput) const {
     set<int32_t> usedUids;
-    writeFieldValueTreeToStream(mTagId, getValues(), usedUids, &protoOutput);
+    writeFieldValueTreeToStream(mTagId, getValues(), {}, usedUids, &protoOutput);
 }
 
 bool LogEvent::hasAttributionChain(std::pair<size_t, size_t>* indexRange) const {

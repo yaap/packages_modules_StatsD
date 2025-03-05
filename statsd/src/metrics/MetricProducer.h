@@ -390,6 +390,12 @@ public:
         mSampledWhatFields.swap(samplingInfo.sampledWhatFields);
         mShardCount = samplingInfo.shardCount;
     }
+
+    void setUidFields(std::vector<Matcher> uidFields) {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mUidFields.swap(uidFields);
+    }
+
     // End: getters/setters
 protected:
     /**
@@ -602,6 +608,10 @@ protected:
 
     int mShardCount;
 
+    // For tracking uid fields in a metric. Only needed if the field is not annotated in the atom
+    // and omit_unused_uids_in_uidmap = true.
+    std::vector<Matcher> mUidFields;
+
     sp<ConfigMetadataProvider> getConfigMetadataProvider() const;
 
     wp<ConfigMetadataProvider> mConfigMetadataProvider;
@@ -669,6 +679,7 @@ protected:
 
     FRIEND_TEST(MetricsManagerUtilTest, TestInitialConditions);
     FRIEND_TEST(MetricsManagerUtilTest, TestSampledMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestUidFields);
 
     FRIEND_TEST(ConfigUpdateTest, TestUpdateMetricActivations);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateCountMetrics);

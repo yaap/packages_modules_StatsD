@@ -754,7 +754,8 @@ TEST(AtomMatcherTest, TestWriteDimensionToProto) {
 
     android::util::ProtoOutputStream protoOut;
     set<int32_t> usedUids;
-    writeDimensionToProto(dim, nullptr /* include strings */, usedUids, &protoOut);
+    writeDimensionToProto(dim, /*uidfields*/ {}, nullptr /* include strings */, usedUids,
+                          &protoOut);
 
     vector<uint8_t> outData;
     outData.resize(protoOut.size());
@@ -817,7 +818,8 @@ TEST(AtomMatcherTest, TestWriteDimensionLeafNodesToProto) {
 
     android::util::ProtoOutputStream protoOut;
     set<int32_t> usedUids;
-    writeDimensionLeafNodesToProto(dim, 1, nullptr /* include strings */, usedUids, &protoOut);
+    writeDimensionLeafNodesToProto(dim, 1, /*uidfields*/ {}, nullptr /* include strings */,
+                                   usedUids, &protoOut);
 
     vector<uint8_t> outData;
     outData.resize(protoOut.size());
@@ -860,7 +862,8 @@ TEST(AtomMatcherTest, TestWriteAtomToProto) {
 
     android::util::ProtoOutputStream protoOutput;
     set<int32_t> usedUids;
-    writeFieldValueTreeToStream(event.GetTagId(), event.getValues(), usedUids, &protoOutput);
+    writeFieldValueTreeToStream(event.GetTagId(), event.getValues(), /*uidfields*/ {}, usedUids,
+                                &protoOutput);
 
     vector<uint8_t> outData;
     outData.resize(protoOutput.size());
@@ -903,7 +906,8 @@ TEST_GUARDED(AtomMatcherTest, TestWriteAtomWithRepeatedFieldsToProto, __ANDROID_
 
     android::util::ProtoOutputStream protoOutput;
     set<int32_t> usedUids;
-    writeFieldValueTreeToStream(event->GetTagId(), event->getValues(), usedUids, &protoOutput);
+    writeFieldValueTreeToStream(event->GetTagId(), event->getValues(), /*uidfields*/ {}, usedUids,
+                                &protoOutput);
 
     vector<uint8_t> outData;
     outData.resize(protoOutput.size());

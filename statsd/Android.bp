@@ -155,7 +155,7 @@ cc_defaults {
         "libbinder_ndk",
         "libincident",
         "liblog",
-        "libstatssocket",
+        "libstatssocket#impl",
     ],
     header_libs: [
         "libgtest_prod_headers",
@@ -258,11 +258,12 @@ cc_binary {
         "-Wextra",
         "-Werror",
         "-Wno-unused-parameter",
-        // optimize for size (protobuf glop can get big)
-        "-Os",
         // "-g",
         // "-O0",
     ],
+
+    // optimize for size (protobuf glop can get big)
+    optimize_for_size: true,
 
     proto: {
         type: "lite",
@@ -484,7 +485,6 @@ cc_test {
     ],
 
     min_sdk_version: "30",
-    test_for: ["com.android.os.statsd"],
 }
 
 //#############################
@@ -510,6 +510,7 @@ cc_benchmark {
         "benchmark/loss_info_container_benchmark.cpp",
         "benchmark/string_transform_benchmark.cpp",
         "benchmark/value_metric_benchmark.cpp",
+        "benchmark/tex_metric_benchmark.cpp",
     ],
 
     cflags: [
@@ -522,7 +523,6 @@ cc_benchmark {
         "libstats_test_utils",
     ],
 
-    test_for: ["com.android.os.statsd"],
 }
 
 // ====  java proto device library (for test only)  ==============================
@@ -625,7 +625,6 @@ cc_fuzz {
         "fuzzers/statsd_service_fuzzer.cpp",
     ],
     shared_libs: [
-        "libstatssocket",
         "libvndksupport",
     ],
     cflags: [
@@ -654,9 +653,6 @@ cc_fuzz {
     ],
     srcs: [
         "fuzzers/statsd_socket_data_fuzzer.cpp",
-    ],
-    shared_libs: [
-        "libstatssocket",
     ],
     cflags: [
         "-Wall",

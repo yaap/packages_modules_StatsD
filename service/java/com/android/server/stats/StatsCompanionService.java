@@ -341,6 +341,9 @@ public class StatsCompanionService extends IStatsCompanionService.Stub {
              * waste, we ignore the REMOVE and ADD broadcasts that contain the replacing flag.
              * If we can't find the value for EXTRA_REPLACING, we default to false.
              */
+            if (intent.getAction() == null) {
+                return;
+            }
             if (!intent.getAction().equals(Intent.ACTION_PACKAGE_REPLACED)
                     && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
                 return; // Keep only replacing or normal add and remove.
@@ -473,6 +476,9 @@ public class StatsCompanionService extends IStatsCompanionService.Stub {
             /**
              * Skip immediately if intent is not relevant to device shutdown.
              */
+            if (intent.getAction() == null) {
+                return;
+            }
             if (!intent.getAction().equals(Intent.ACTION_REBOOT)
                     && !(intent.getAction().equals(Intent.ACTION_SHUTDOWN)
                     && (intent.getFlags() & Intent.FLAG_RECEIVER_FOREGROUND) != 0)) {

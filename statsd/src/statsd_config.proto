@@ -244,6 +244,8 @@ message EventMetric {
 
   optional int32 sampling_percentage = 5 [default = 100];
 
+  optional FieldMatcher uid_fields = 6;
+
   reserved 100;
   reserved 101;
 }
@@ -274,6 +276,8 @@ message CountMetric {
   optional DimensionalSamplingInfo dimensional_sampling_info = 12;
 
   optional int32 max_dimensions_per_bucket = 13;
+
+  optional FieldMatcher uid_fields = 14;
 
   reserved 100;
   reserved 101;
@@ -312,6 +316,8 @@ message DurationMetric {
   optional DimensionalSamplingInfo dimensional_sampling_info = 13;
 
   optional int32 max_dimensions_per_bucket = 14;
+
+  optional FieldMatcher uid_fields = 15;
 
   reserved 100;
   reserved 101;
@@ -359,6 +365,8 @@ message GaugeMetric {
   optional int32 sampling_percentage = 17 [default = 100];
 
   optional int32 pull_probability = 18 [default = 100];
+
+  optional FieldMatcher uid_fields = 19;
 
   reserved 100;
   reserved 101;
@@ -464,6 +472,8 @@ message ValueMetric {
 
   optional int32 max_dimensions_per_bucket = 24;
 
+  optional FieldMatcher uid_fields = 27;
+
   reserved 100;
   reserved 101;
 }
@@ -494,6 +504,8 @@ message KllMetric {
   optional DimensionalSamplingInfo dimensional_sampling_info = 12;
 
   optional int32 max_dimensions_per_bucket = 13;
+
+  optional FieldMatcher uid_fields = 14;
 
   reserved 100;
   reserved 101;

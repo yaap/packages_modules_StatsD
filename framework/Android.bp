@@ -94,6 +94,7 @@ java_sdk_library {
         "//packages/modules/StatsD/framework/test:__subpackages__",
         "//packages/modules/StatsD/tests/utils:__pkg__",
         "//packages/modules/StatsD/service:__subpackages__",
+        "//frameworks/base/ravenwood",
     ],
 
     apex_available: [
@@ -103,6 +104,14 @@ java_sdk_library {
     min_sdk_version: "30",
 }
 
+filegroup {
+    name: "framework-statsd-ravenwood-policies",
+    srcs: [
+        "framework-statsd-ravenwood-policies.txt",
+    ],
+    visibility: ["//frameworks/base/ravenwood"],
+}
+
 // JNI library for StatsLog.write
 cc_library_shared {
     name: "libstats_jni",
@@ -110,7 +119,7 @@ cc_library_shared {
     header_libs: ["libnativehelper_header_only"],
     shared_libs: [
         "liblog",  // Has a stable abi - should not be copied into apex.
-        "libstatssocket",
+        "libstatssocket#impl",
     ],
     stl: "libc++_static",
     cflags: [

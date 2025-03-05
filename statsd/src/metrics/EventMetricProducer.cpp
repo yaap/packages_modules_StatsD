@@ -195,8 +195,8 @@ void EventMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
 
         uint64_t atomToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_ATOM);
         writeFieldValueTreeToStream(atomDimensionKey.getAtomTag(),
-                                    atomDimensionKey.getAtomFieldValues().getValues(), usedUids,
-                                    protoOutput);
+                                    atomDimensionKey.getAtomFieldValues().getValues(), mUidFields,
+                                    usedUids, protoOutput);
         protoOutput->end(atomToken);
         for (int64_t timestampNs : elapsedTimestampsNs) {
             protoOutput->write(FIELD_TYPE_INT64 | FIELD_COUNT_REPEATED | FIELD_ID_ATOM_TIMESTAMPS,

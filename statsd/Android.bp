@@ -258,12 +258,11 @@ cc_binary {
         "-Wextra",
         "-Werror",
         "-Wno-unused-parameter",
+        // optimize for size (protobuf glop can get big)
+        "-Os",
         // "-g",
         // "-O0",
     ],
-
-    // optimize for size (protobuf glop can get big)
-    optimize_for_size: true,
 
     proto: {
         type: "lite",

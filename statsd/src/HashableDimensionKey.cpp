@@ -227,15 +227,21 @@ bool filterPrimaryKey(const std::vector<FieldValue>& values, HashableDimensionKe
     return num_matches > 0;
 }
 
-void filterGaugeValues(const std::vector<Matcher>& matcherFields,
-                       const std::vector<FieldValue>& values, std::vector<FieldValue>* output) {
+vector<FieldValue> filterValues(const std::vector<Matcher>& matcherFields,
+                                const std::vector<FieldValue>& values, bool omitMatches) {
+    if (matcherFields.empty()) {
+        return values;
+    }
+
+    vector<FieldValue> output;
     for (const auto& field : matcherFields) {
         for (const auto& value : values) {
-            if (value.mField.matches(field)) {
-                output->push_back(value);
+            if (value.mField.matches(field) ^ omitMatches) {
+                output.push_back(value);
             }
         }
     }
+    return output;
 }
 
 void getDimensionForCondition(const std::vector<FieldValue>& eventValues,

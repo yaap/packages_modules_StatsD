@@ -642,15 +642,14 @@ public class AtomTests {
         StatsLogStatsdCts.write(StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED, uids, tags, 42,
                 Long.MAX_VALUE, 3.14f, "This is a basic test!", false,
                 StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED__STATE__ON, testAtomNestedMsg,
-                int32Array,
-                int64Array, floatArray, stringArray, boolArray, enumArray);
+                int32Array, int64Array, floatArray, stringArray, boolArray, enumArray, int32Array,
+                int32Array, int32Array);
 
         // All nulls. Should get dropped since cts app is not in the attribution chain.
         StatsLogStatsdCts.write(StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED, null, null, 0, 0,
                 0f, null,
                 false, StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED__STATE__ON, null, null, null,
-                null,
-                null, null, null);
+                null, null, null, null, null, null, null);
 
         // Null tag in attribution chain.
         int[] uids2 = {9999, appInfo.uid};
@@ -658,23 +657,22 @@ public class AtomTests {
         StatsLogStatsdCts.write(StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED, uids2, tags2, 100,
                 Long.MIN_VALUE, -2.5f, "Test null uid", true,
                 StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED__STATE__UNKNOWN, testAtomNestedMsg,
-                int32Array,
-                int64Array, floatArray, stringArray, boolArray, enumArray);
+                int32Array, int64Array, floatArray, stringArray, boolArray, enumArray, int32Array,
+                int32Array, int32Array);
 
         // Non chained non-null
         StatsLogStatsdCts.write_non_chained(StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED,
                 appInfo.uid,
                 "tag1", -256, -1234567890L, 42.01f, "Test non chained", true,
                 StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED__STATE__OFF, testAtomNestedMsg,
-                new int[0],
-                new long[0], new float[0], new String[0], new boolean[0], new int[0]);
+                new int[0], new long[0], new float[0], new String[0], new boolean[0], new int[0],
+                new int[0], new int[0], new int[0]);
 
         // Non chained all null
         StatsLogStatsdCts.write_non_chained(StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED,
                 appInfo.uid, null,
                 0, 0, 0f, null, true, StatsLogStatsdCts.TEST_EXTENSION_ATOM_REPORTED__STATE__OFF,
-                null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
     }
 
     @Test

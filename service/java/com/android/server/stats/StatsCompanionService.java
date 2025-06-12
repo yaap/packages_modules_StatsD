@@ -274,6 +274,12 @@ public class StatsCompanionService extends IStatsCompanionService.Stub {
                     Log.e(TAG, "Failed to send uid map to statsd");
                 } catch (IOException e) {
                     Log.e(TAG, "Failed to close the read side of the pipe.", e);
+                } catch (RuntimeException e) {
+                    if (e.getCause() != null && e.getCause() instanceof IOException) {
+                        Log.e(TAG, "Failed to flush write side of the pipe.", e);
+                    } else {
+                        throw e;
+                    }
                 }
                 if (DEBUG) {
                     Log.d(TAG, "Sent data for " + numRecords + " apps");

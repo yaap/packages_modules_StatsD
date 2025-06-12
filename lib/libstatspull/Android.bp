@@ -28,6 +28,7 @@ cc_defaults {
         "stats_subscription.cpp",
         "stats_provider.cpp",
         "stats_pull_atom_callback.cpp",
+        "utils.cpp",
     ],
     cflags: [
         "-Wall",
@@ -65,10 +66,7 @@ cc_library_shared {
             "30",
         ],
     },
-    apex_available: [
-        "com.android.os.statsd",
-        "test_com.android.os.statsd",
-    ],
+    apex_available: ["com.android.os.statsd"],
     min_sdk_version: "30",
     static_libs: [
         "statsd_flags_c_lib",
@@ -79,6 +77,11 @@ cc_library_shared {
 cc_library_headers {
     name: "libstatspull_headers",
     export_include_dirs: ["include"],
+    apex_available: [
+        "com.android.uprobestats",
+        "//apex_available:platform",
+    ],
+    min_sdk_version: "30",
 }
 
 filegroup {

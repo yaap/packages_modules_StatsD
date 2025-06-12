@@ -687,6 +687,18 @@ std::string toHexString(const string& bytes) {
     return hex;
 }
 
+vector<Matcher> translateFieldsFilter(const FieldFilter& fieldFilter) {
+    if (!fieldFilter.has_fields() && !fieldFilter.has_omit_fields()) {
+        return {};
+    }
+
+    vector<Matcher> fieldMatchers;
+    translateFieldMatcher(
+            fieldFilter.has_fields() ? fieldFilter.fields() : fieldFilter.omit_fields(),
+            &fieldMatchers);
+    return fieldMatchers;
+}
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

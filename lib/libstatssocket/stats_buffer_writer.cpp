@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-#include "include/stats_buffer_writer.h"
+#include "stats_buffer_writer.h"
 
+#include <com_android_os_statsd_flags.h>
 #include <errno.h>
 #include <sys/time.h>
 #include <sys/uio.h>
 
+#include "logging_rate_limiter.h"
 #include "stats_buffer_writer_impl.h"
 #include "stats_buffer_writer_queue.h"
 #include "statsd_writer.h"
@@ -27,6 +29,8 @@
 static const uint32_t kStatsEventTag = 1937006964;
 
 extern struct android_log_transport_write statsdLoggerWrite;
+
+namespace flags = com::android::os::statsd::flags;
 
 static int __write_to_statsd_init(struct iovec* vec, size_t nr);
 static int (*__write_to_statsd)(struct iovec* vec, size_t nr) = __write_to_statsd_init;
@@ -54,17 +58,39 @@ int stats_log_is_closed() {
     return statsdLoggerWrite.isClosed && (*statsdLoggerWrite.isClosed)();
 }
 
+bool can_log_atom(uint32_t atomId) {
+    // Below values should be justified with experiments, as of now idea is to
+    // allow to fill 10% of socket buffer at max (max_dgram_qlen == 2400) within 100ms.
+    // This allows to fill entire buffer within a second.
+    // Higher frequency considered as abnormality
+    constexpr int32_t kLogFrequencyThreshold = 240;
+    constexpr int32_t kLoggingFrequencyWindowMs = 100;
+
+    static LoggingRateLimiter<RealTimeClock> rateLimiter(kLogFrequencyThreshold,
+                                                         kLoggingFrequencyWindowMs);
+    return rateLimiter.canLogAtom(atomId);
+}
+
 int write_buffer_to_statsd(void* buffer, size_t size, uint32_t atomId) {
-    const int kQueueOverflowErrorCode = 1;
+    constexpr int kQueueOverflowErrorCode = 1;
+    constexpr int kLoggingRateLimitExceededErrorCode = 2;
+
     if (should_write_via_queue(atomId)) {
-        const bool ret = write_buffer_to_statsd_queue(buffer, size, atomId);
+        const bool ret =
+                write_buffer_to_statsd_queue(static_cast<const uint8_t*>(buffer), size, atomId);
         if (!ret) {
             // to account on the loss, note atom drop with predefined internal error code
             note_log_drop(kQueueOverflowErrorCode, atomId);
         }
         return ret;
     }
-    return write_buffer_to_statsd_impl(buffer, size, atomId, true);
+
+    if (flags::logging_rate_limit_enabled() && !can_log_atom(atomId)) {
+        note_log_drop(kLoggingRateLimitExceededErrorCode, atomId);
+        return 0;
+    }
+
+    return write_buffer_to_statsd_impl(buffer, size, atomId, /*doNoteDrop*/ true);
 }
 
 int write_buffer_to_statsd_impl(void* buffer, size_t size, uint32_t atomId, bool doNoteDrop) {

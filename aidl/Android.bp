@@ -48,10 +48,7 @@ aidl_interface {
         },
         ndk: {
             enabled: true,
-            apex_available: [
-                "com.android.os.statsd",
-                "test_com.android.os.statsd",
-            ],
+            apex_available: ["com.android.os.statsd"],
             min_sdk_version: "30",
         },
     }

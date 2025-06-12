@@ -213,7 +213,11 @@ message MetricStateLink {
 
 message FieldFilter {
   optional bool include_all = 1 [default = false];
-  optional FieldMatcher fields = 2;
+
+  oneof field_matcher {
+      FieldMatcher fields = 2;
+      FieldMatcher omit_fields = 3;
+  }
 }
 
 message UploadThreshold {
@@ -240,11 +244,17 @@ message EventMetric {
 
   optional int64 condition = 3;
 
+  repeated int64 slice_by_state = 7;
+
   repeated MetricConditionLink links = 4;
+
+  repeated MetricStateLink state_link = 8;
 
   optional int32 sampling_percentage = 5 [default = 100];
 
   optional FieldMatcher uid_fields = 6;
+
+  optional FieldFilter fields_filter = 9;
 
   reserved 100;
   reserved 101;
@@ -334,6 +344,8 @@ message GaugeMetric {
 
   optional int64 condition = 4;
 
+  repeated int64 slice_by_state = 20;
+
   optional FieldMatcher dimensions_in_what = 5;
 
   optional FieldMatcher dimensions_in_condition = 8 [deprecated = true];
@@ -341,6 +353,8 @@ message GaugeMetric {
   optional TimeUnit bucket = 6;
 
   repeated MetricConditionLink links = 7;
+
+  repeated MetricStateLink state_link = 21;
 
   enum SamplingType {
     RANDOM_ONE_SAMPLE = 1;

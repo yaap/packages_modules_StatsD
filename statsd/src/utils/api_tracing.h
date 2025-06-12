@@ -19,3 +19,9 @@
 #define ATRACE_TAG ATRACE_TAG_APP
 
 #include <utils/Trace.h>
+
+// Use the local value to turn on/off atrace logs.
+// The advantage is that in production compiler can remove the logging code if the local
+// STATSD_DEBUG/VERBOSE is false.
+#define ATRACE_CALL_DEBUG(...) \
+    if (STATSD_DEBUG) ATRACE_CALL(__VA_ARGS__);

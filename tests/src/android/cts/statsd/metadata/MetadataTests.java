@@ -22,6 +22,7 @@ import android.cts.statsd.metric.MetricsUtils;
 import android.cts.statsdatom.lib.AtomTestUtils;
 import android.cts.statsdatom.lib.ConfigUtils;
 import android.cts.statsdatom.lib.DeviceUtils;
+import android.platform.test.annotations.RequiresFlagsEnabled;
 
 import com.android.compatibility.common.util.ApiLevelUtil;
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
@@ -33,14 +34,18 @@ import com.android.os.StatsLog.StatsdStatsReport.ConfigStats;
 import com.android.os.StatsLog.StatsdStatsReport.LogLossStats;
 import com.android.os.StatsLog.StatsdStatsReport.SocketLossStats.LossStatsPerUid;
 import com.android.os.StatsLog.StatsdStatsReport.SocketLossStats.LossStatsPerUid.AtomIdLossStats;
+import com.android.os.statsd.flags.Flags;
 import com.android.tradefed.log.LogUtil;
+import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.util.RunUtil;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
 
 import java.util.HashSet;
 
-/**
- * Statsd Metadata tests.
- */
+/** Statsd Metadata tests. */
+@RunWith(DeviceJUnit4ClassRunner.class)
 public class MetadataTests extends MetadataTestCase {
 
     private static final String TAG = "Statsd.MetadataTests";
@@ -48,6 +53,7 @@ public class MetadataTests extends MetadataTestCase {
     private static final int SHELL_UID = 2000;
 
     // Tests that the statsd config is reset after the specified ttl.
+    @Test
     public void testConfigTtl() throws Exception {
         final int TTL_TIME_SEC = 8;
         StatsdConfig.Builder config = getBaseConfig();
@@ -118,12 +124,14 @@ public class MetadataTests extends MetadataTestCase {
     }
 
     private static final int LIB_STATS_SOCKET_QUEUE_OVERFLOW_ERROR_CODE = 1;
+    private static final int LIB_STATS_SOCKET_RATE_LIMIT_ERROR_CODE = 2;
     private static final int EVENT_STORM_ITERATIONS_COUNT = 10;
 
     /**
      * Tests that logging many atoms back to back potentially leads to socket overflow and data
      * loss. And if it happens the corresponding info is propagated to statsd stats
      */
+    @Test
     public void testAtomLossInfoCollection() throws Exception {
         DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
                 ".StatsdStressLogging", "testLogAtomsBackToBack");
@@ -139,6 +147,7 @@ public class MetadataTests extends MetadataTestCase {
         // atom of interest
         for (LogLossStats lossStats : report.getDetectedLogLossList()) {
             if (lossStats.getLastTag() == Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER) {
+
                 return;
             }
         }
@@ -158,9 +167,54 @@ public class MetadataTests extends MetadataTestCase {
         org.junit.Assert.fail("Socket loss detected but no info about atom of interest");
     }
 
+    /** Tests logging rate limiting applied by libstatssocket */
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_LOGGING_RATE_LIMIT_ENABLED)
+    public void testSocketRateLimiting() throws Exception {
+        DeviceUtils.runDeviceTests(
+                getDevice(),
+                MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
+                ".StatsdStressLogging",
+                "testLogAtomsBackToBack");
+
+        StatsdStatsReport report = getStatsdStatsReport();
+        assertThat(report).isNotNull();
+
+        if (report.getDetectedLogLossList().size() == 0) {
+            return;
+        }
+        // it can be the case that system throughput is sufficient to overcome the
+        // simulated event storm, but if loss happens report can contain information about
+        // atom of interest
+        for (LogLossStats lossStats : report.getDetectedLogLossList()) {
+            if (lossStats.getLastTag() == Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER) {
+                assertThat(lossStats.getLastError())
+                        .isEqualTo(LIB_STATS_SOCKET_RATE_LIMIT_ERROR_CODE);
+                return;
+            }
+        }
+
+        if (report.getSocketLossStats() == null) {
+            return;
+        }
+        // if many atoms were lost the information in DetectedLogLoss can be overwritten
+        // looking into alternative stats to find the information
+        for (LossStatsPerUid lossStats : report.getSocketLossStats().getLossStatsPerUidList()) {
+            for (AtomIdLossStats atomLossStats : lossStats.getAtomIdLossStatsList()) {
+                if (atomLossStats.getAtomId() == Atom.APP_BREADCRUMB_REPORTED_FIELD_NUMBER) {
+                    assertThat(atomLossStats.getError())
+                            .isEqualTo(LIB_STATS_SOCKET_RATE_LIMIT_ERROR_CODE);
+                    return;
+                }
+            }
+        }
+        org.junit.Assert.fail("Socket loss detected but no info about atom of interest");
+    }
+
     /** Tests that SystemServer logged atoms in case of loss event has error code 1. */
+    @Test
     public void testSystemServerLossErrorCode() throws Exception {
-        if (!sdkLevelAtLeast(34, "V")) {
+        if (!sdkLevelAtLeast(35, "V")) {
             return;
         }
 
@@ -231,8 +285,9 @@ public class MetadataTests extends MetadataTestCase {
     }
 
     /** Test libstatssocket logging queue atom id distribution collection */
+    @Test
     public void testAtomIdLossDistributionCollection() throws Exception {
-        if (!sdkLevelAtLeast(34, "V")) {
+        if (!sdkLevelAtLeast(35, "V")) {
             return;
         }
 

@@ -28,7 +28,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
-constexpr float UNDERFLOW_BIN_START = std::numeric_limits<float>::min();
+constexpr float UNDERFLOW_BIN_START = std::numeric_limits<float>::lowest();
 
 using ParseHistogramBinConfigsResult =
         std::variant<std::vector<std::optional<const BinStarts>>, InvalidConfigReason>;

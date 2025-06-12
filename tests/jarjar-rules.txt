@@ -1,0 +1,2 @@
+rule com.android.os.StatsLog.** com.android.os.internal.StatsLog.@0
+rule android.cts.statsdatom.lib.** android.cts.internal.statsdatom.lib.@0

@@ -24,11 +24,16 @@ MatchLogEventResult EventMatcherWizard::matchLogEvent(const LogEvent& event, int
         return {MatchingState::kNotComputed, nullptr};
     }
     std::fill(mMatcherCache.begin(), mMatcherCache.end(), MatchingState::kNotComputed);
-    std::fill(mMatcherTransformations.begin(), mMatcherTransformations.end(), nullptr);
+    // There is only one input of LogEvent - there is only one transformation instance
+    // will be produced at a time. Also there is no full support for CombinationAtomMatchingTracker
+    // transformations - see INVALID_CONFIG_REASON_MATCHER_COMBINATION_WITH_STRING_REPLACE
+    mMatcherTransformations[matcherIndex].reset();
     mAllEventMatchers[matcherIndex]->onLogEvent(event, matcherIndex, mAllEventMatchers,
                                                 mMatcherCache, mMatcherTransformations);
 
-    return {mMatcherCache[matcherIndex], mMatcherTransformations[matcherIndex]};
+    MatchLogEventResult result = {mMatcherCache[matcherIndex],
+                                  std::move(mMatcherTransformations[matcherIndex])};
+    return result;
 }
 
 }  // namespace statsd

@@ -66,6 +66,7 @@ const int FIELD_ID_DROP_TIME = 2;
 const int FIELD_ID_DIMENSION_IN_WHAT = 1;
 const int FIELD_ID_BUCKET_INFO = 3;
 const int FIELD_ID_DIMENSION_LEAF_IN_WHAT = 4;
+const int FIELD_ID_SLICE_BY_STATE = 6;
 // for GaugeBucketInfo
 const int FIELD_ID_BUCKET_NUM = 6;
 const int FIELD_ID_START_BUCKET_ELAPSED_MILLIS = 7;
@@ -74,6 +75,7 @@ const int FIELD_ID_AGGREGATED_ATOM = 9;
 // for AggregatedAtomInfo
 const int FIELD_ID_ATOM_VALUE = 1;
 const int FIELD_ID_ATOM_TIMESTAMPS = 2;
+const int FIELD_ID_AGGREGATED_STATE = 3;
 
 GaugeMetricProducer::GaugeMetricProducer(
         const ConfigKey& key, const GaugeMetric& metric, const int conditionIndex,
@@ -85,11 +87,12 @@ GaugeMetricProducer::GaugeMetricProducer(
         const wp<ConfigMetadataProvider> configMetadataProvider,
         const unordered_map<int, shared_ptr<Activation>>& eventActivationMap,
         const unordered_map<int, vector<shared_ptr<Activation>>>& eventDeactivationMap,
+        const vector<int>& slicedStateAtoms,
+        const unordered_map<int, unordered_map<int, int64_t>>& stateGroupMap,
         const size_t dimensionSoftLimit, const size_t dimensionHardLimit)
     : MetricProducer(metric.id(), key, timeBaseNs, conditionIndex, initialConditionCache, wizard,
-                     protoHash, eventActivationMap, eventDeactivationMap, /*slicedStateAtoms=*/{},
-                     /*stateGroupMap=*/{}, getAppUpgradeBucketSplit(metric),
-                     configMetadataProvider),
+                     protoHash, eventActivationMap, eventDeactivationMap, slicedStateAtoms,
+                     stateGroupMap, getAppUpgradeBucketSplit(metric), configMetadataProvider),
       mWhatMatcherIndex(whatMatcherIndex),
       mEventMatcherWizard(matcherWizard),
       mPullerManager(pullerManager),
@@ -98,6 +101,8 @@ GaugeMetricProducer::GaugeMetricProducer(
       mAtomId(atomId),
       mIsPulled(pullTagId != -1),
       mMinBucketSizeNs(metric.min_bucket_size_nanos()),
+      mFieldMatchers(translateFieldsFilter(metric.gauge_fields_filter())),
+      mOmitFields(metric.gauge_fields_filter().has_omit_fields()),
       mSamplingType(metric.sampling_type()),
       mMaxPullDelayNs(metric.max_pull_delay_sec() > 0 ? metric.max_pull_delay_sec() * NS_PER_SEC
                                                       : StatsdStats::kPullMaxDelayNs),
@@ -117,10 +122,6 @@ GaugeMetricProducer::GaugeMetricProducer(
     }
     mBucketSizeNs = bucketSizeMills * 1000000;
 
-    if (!metric.gauge_fields_filter().include_all()) {
-        translateFieldMatcher(metric.gauge_fields_filter().fields(), &mFieldMatchers);
-    }
-
     if (metric.has_dimensions_in_what()) {
         translateFieldMatcher(metric.dimensions_in_what(), &mDimensionsInWhat);
         mContainANYPositionInDimensionsInWhat = HasPositionANY(metric.dimensions_in_what());
@@ -136,6 +137,15 @@ GaugeMetricProducer::GaugeMetricProducer(
         }
         mConditionSliced = true;
     }
+
+    for (const auto& stateLink : metric.state_link()) {
+        Metric2State ms;
+        ms.stateAtomId = stateLink.state_atom_id();
+        translateFieldMatcher(stateLink.fields_in_what(), &ms.metricFields);
+        translateFieldMatcher(stateLink.fields_in_state(), &ms.stateFields);
+        mMetric2StateLinks.push_back(ms);
+    }
+
     mShouldUseNestedDimensions = ShouldUseNestedDimensions(metric.dimensions_in_what());
 
     flushIfNeededLocked(startTimeNs);
@@ -222,6 +232,14 @@ optional<InvalidConfigReason> GaugeMetricProducer::onConfigUpdatedLocked(
         pullAndMatchEventsLocked(mCurrentBucketStartTimeNs);
     }
     return nullopt;
+}
+
+void GaugeMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
+                                         const HashableDimensionKey& primaryKey,
+                                         const FieldValue& oldState, const FieldValue& newState) {
+    VLOG("GaugeMetric %lld onStateChanged time %lld, State%d, key %s, %d -> %d",
+         (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
+         oldState.mValue.int_value, newState.mValue.int_value);
 }
 
 void GaugeMetricProducer::dumpStatesLocked(int out, bool verbose) const {
@@ -335,6 +353,14 @@ void GaugeMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
             writeDimensionLeafNodesToProto(dimensionKey.getDimensionKeyInWhat(),
                                            FIELD_ID_DIMENSION_LEAF_IN_WHAT, mUidFields, str_set,
                                            usedUids, protoOutput);
+        }
+
+        // Then fill slice_by_state.
+        for (auto state : dimensionKey.getStateValuesKey().getValues()) {
+            uint64_t stateToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
+                                                     FIELD_ID_SLICE_BY_STATE);
+            writeStateToProto(state, protoOutput);
+            protoOutput->end(stateToken);
         }
 
         // Then fill bucket_info (GaugeBucketInfo).
@@ -487,21 +513,16 @@ void GaugeMetricProducer::onSlicedConditionMayChangeLocked(bool overallCondition
     }  // else: Push mode. No need to proactively pull the gauge data.
 }
 
-std::shared_ptr<vector<FieldValue>> GaugeMetricProducer::getGaugeFields(const LogEvent& event) {
-    std::shared_ptr<vector<FieldValue>> gaugeFields;
-    if (mFieldMatchers.size() > 0) {
-        gaugeFields = std::make_shared<vector<FieldValue>>();
-        filterGaugeValues(mFieldMatchers, event.getValues(), gaugeFields.get());
-    } else {
-        gaugeFields = std::make_shared<vector<FieldValue>>(event.getValues());
-    }
+vector<FieldValue> GaugeMetricProducer::getGaugeFields(const LogEvent& event) {
+    vector<FieldValue> gaugeFields = filterValues(mFieldMatchers, event.getValues(), mOmitFields);
+
     // Trim all dimension fields from output. Dimensions will appear in output report and will
     // benefit from dictionary encoding. For large pulled atoms, this can give the benefit of
     // optional repeated field.
     for (const auto& field : mDimensionsInWhat) {
-        for (auto it = gaugeFields->begin(); it != gaugeFields->end();) {
+        for (auto it = gaugeFields.begin(); it != gaugeFields.end();) {
             if (it->mField.matches(field)) {
-                it = gaugeFields->erase(it);
+                it = gaugeFields.erase(it);
             } else {
                 it++;
             }
@@ -560,7 +581,7 @@ bool GaugeMetricProducer::hitGuardRailLocked(const MetricDimensionKey& newKey) {
 void GaugeMetricProducer::onMatchedLogEventInternalLocked(
         const size_t matcherIndex, const MetricDimensionKey& eventKey,
         const ConditionKey& conditionKey, bool condition, const LogEvent& event,
-        const map<int, HashableDimensionKey>& /*statePrimaryKeys*/) {
+        const map<int, HashableDimensionKey>& statePrimaryKeys) {
     if (condition == false) {
         return;
     }
@@ -605,8 +626,8 @@ void GaugeMetricProducer::onMatchedLogEventInternalLocked(
     // Anomaly detection on gauge metric only works when there is one numeric
     // field specified.
     if (mAnomalyTrackers.size() > 0) {
-        if (gaugeAtom.mFields->size() == 1) {
-            const Value& value = gaugeAtom.mFields->begin()->mValue;
+        if (gaugeAtom.mFields.size() == 1) {
+            const Value& value = gaugeAtom.mFields.begin()->mValue;
             long gaugeVal = 0;
             if (value.getType() == INT) {
                 gaugeVal = (long)value.int_value;
@@ -626,7 +647,7 @@ void GaugeMetricProducer::updateCurrentSlicedBucketForAnomaly() {
         if (slice.second.empty()) {
             continue;
         }
-        const Value& value = slice.second.front().mFields->front().mValue;
+        const Value& value = slice.second.front().mFields.front().mValue;
         long gaugeVal = 0;
         if (value.getType() == INT) {
             gaugeVal = (long)value.int_value;
@@ -685,7 +706,7 @@ void GaugeMetricProducer::flushCurrentBucketLocked(const int64_t eventTimeNs,
         for (const auto& slice : *mCurrentSlicedBucket) {
             info.mAggregatedAtoms.clear();
             for (const GaugeAtom& atom : slice.second) {
-                AtomDimensionKey key(mAtomId, HashableDimensionKey(*atom.mFields));
+                AtomDimensionKey key(mAtomId, HashableDimensionKey(atom.mFields));
                 vector<int64_t>& elapsedTimestampsNs = info.mAggregatedAtoms[key];
                 elapsedTimestampsNs.push_back(atom.mElapsedTimestampNs);
             }

@@ -83,17 +83,23 @@ const int kSingleClient = 1;
 const int kNumClients = 11;
 
 // Utility to make an expected pulled atom shell data
-ShellData getExpectedPulledData() {
+ShellData getExpectedPulledData(bool withLoggingUid = false) {
     ShellData shellData;
     auto* atom1 = shellData.add_atom()->mutable_cpu_active_time();
     atom1->set_uid(kUid1);
     atom1->set_time_millis(kCpuTime1);
     shellData.add_elapsed_timestamp_nanos(kCpuActiveTimeEventTimestampNs);
+    if (withLoggingUid) {
+        shellData.add_logging_uid(0);
+    }
 
     auto* atom2 = shellData.add_atom()->mutable_cpu_active_time();
     atom2->set_uid(kUid2);
     atom2->set_time_millis(kCpuTime2);
     shellData.add_elapsed_timestamp_nanos(kCpuActiveTimeEventTimestampNs);
+    if (withLoggingUid) {
+        shellData.add_logging_uid(0);
+    }
 
     return shellData;
 }
@@ -125,13 +131,13 @@ vector<std::shared_ptr<LogEvent>> getPushedEvents() {
     vector<std::shared_ptr<LogEvent>> pushedList;
     // Create the LogEvent from an AStatsEvent
     std::unique_ptr<LogEvent> logEvent1 = CreateScreenStateChangedEvent(
-            1000 /*timestamp*/, ::android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+            1000 /*timestamp*/, ::android::view::DisplayStateEnum::DISPLAY_STATE_ON, kUid1);
     std::unique_ptr<LogEvent> logEvent2 = CreateScreenStateChangedEvent(
-            2000 /*timestamp*/, ::android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+            2000 /*timestamp*/, ::android::view::DisplayStateEnum::DISPLAY_STATE_OFF, kUid1);
     std::unique_ptr<LogEvent> logEvent3 = CreateBatteryStateChangedEvent(
-            3000 /*timestamp*/, BatteryPluggedStateEnum::BATTERY_PLUGGED_USB);
+            3000 /*timestamp*/, BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, kUid2);
     std::unique_ptr<LogEvent> logEvent4 = CreateBatteryStateChangedEvent(
-            4000 /*timestamp*/, BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE);
+            4000 /*timestamp*/, BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE, kUid2);
     pushedList.push_back(std::move(logEvent1));
     pushedList.push_back(std::move(logEvent2));
     pushedList.push_back(std::move(logEvent3));
@@ -716,7 +722,19 @@ TEST_F(ShellSubscriberCallbackPulledTest, testMinSleep) {
     EXPECT_THAT(sleepTimeMs, Eq(ShellSubscriberClient::kMinCallbackSleepIntervalMs));
 }
 
-TEST(ShellSubscriberTest, testPushedSubscription) {
+class ShellSubscriberTest : public testing::TestWithParam<bool> {
+public:
+    bool doCollectUids() const {
+        return GetParam();
+    }
+};
+
+INSTANTIATE_TEST_SUITE_P(ShellSubscriberTest, ShellSubscriberTest, testing::Values(false, true),
+                         [](const testing::TestParamInfo<ShellSubscriberTest::ParamType>& info) {
+                             return info.param ? "withUid" : "noUids";
+                         });
+
+TEST_P(ShellSubscriberTest, testPushedSubscription) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
@@ -725,6 +743,7 @@ TEST(ShellSubscriberTest, testPushedSubscription) {
     // create a simple config to get screen events
     ShellSubscription config;
     config.add_pushed()->set_atom_id(SCREEN_STATE_CHANGED);
+    config.set_collect_uids(doCollectUids());
 
     // this is the expected screen event atom.
     vector<ShellData> expectedData;
@@ -736,6 +755,12 @@ TEST(ShellSubscriberTest, testPushedSubscription) {
     shellData2.add_atom()->mutable_screen_state_changed()->set_state(
             ::android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
     shellData2.add_elapsed_timestamp_nanos(pushedList[1]->GetElapsedTimestampNs());
+
+    if (doCollectUids()) {
+        shellData1.add_logging_uid(kUid1);
+        shellData2.add_logging_uid(kUid1);
+    }
+
     expectedData.push_back(shellData1);
     expectedData.push_back(shellData2);
 
@@ -747,7 +772,7 @@ TEST(ShellSubscriberTest, testPushedSubscription) {
     TRACE_CALL(runShellTest, config, uidMap, pullerManager, pushedList, expectedData, kNumClients);
 }
 
-TEST(ShellSubscriberTest, testPulledSubscription) {
+TEST_P(ShellSubscriberTest, testPulledSubscription) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
@@ -770,7 +795,7 @@ TEST(ShellSubscriberTest, testPulledSubscription) {
                {getExpectedPulledData()}, kNumClients);
 }
 
-TEST(ShellSubscriberTest, testBothSubscriptions) {
+TEST_P(ShellSubscriberTest, testBothSubscriptions) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
@@ -788,6 +813,7 @@ TEST(ShellSubscriberTest, testBothSubscriptions) {
 
     ShellSubscription config = getPulledConfig();
     config.add_pushed()->set_atom_id(SCREEN_STATE_CHANGED);
+    config.set_collect_uids(doCollectUids());
 
     vector<ShellData> expectedData;
     ShellData shellData1;
@@ -798,7 +824,13 @@ TEST(ShellSubscriberTest, testBothSubscriptions) {
     shellData2.add_atom()->mutable_screen_state_changed()->set_state(
             ::android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
     shellData2.add_elapsed_timestamp_nanos(pushedList[1]->GetElapsedTimestampNs());
-    expectedData.push_back(getExpectedPulledData());
+
+    if (doCollectUids()) {
+        shellData1.add_logging_uid(pushedList[0]->GetUid());
+        shellData2.add_logging_uid(pushedList[1]->GetUid());
+    }
+
+    expectedData.push_back(getExpectedPulledData(doCollectUids()));
     expectedData.push_back(shellData1);
     expectedData.push_back(shellData2);
 
@@ -810,7 +842,7 @@ TEST(ShellSubscriberTest, testBothSubscriptions) {
     TRACE_CALL(runShellTest, config, uidMap, pullerManager, pushedList, expectedData, kNumClients);
 }
 
-TEST(ShellSubscriberTest, testMaxSizeGuard) {
+TEST_P(ShellSubscriberTest, testMaxSizeGuard) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     sp<ShellSubscriber> shellManager =
@@ -834,7 +866,7 @@ TEST(ShellSubscriberTest, testMaxSizeGuard) {
     close(fds_data[1]);
 }
 
-TEST(ShellSubscriberTest, testMaxSubscriptionsGuard) {
+TEST_P(ShellSubscriberTest, testMaxSubscriptionsGuard) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     sp<ShellSubscriber> shellManager =
@@ -843,6 +875,7 @@ TEST(ShellSubscriberTest, testMaxSubscriptionsGuard) {
     // create a simple config to get screen events
     ShellSubscription config;
     config.add_pushed()->set_atom_id(SCREEN_STATE_CHANGED);
+    config.set_collect_uids(doCollectUids());
 
     size_t bufferSize = config.ByteSize();
     vector<uint8_t> buffer(bufferSize);
@@ -884,7 +917,7 @@ TEST(ShellSubscriberTest, testMaxSubscriptionsGuard) {
     // Not closing fds_datas[i][0] because this causes writes within ShellSubscriberClient to hang
 }
 
-TEST(ShellSubscriberTest, testDifferentConfigs) {
+TEST_P(ShellSubscriberTest, testDifferentConfigs) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     sp<ShellSubscriber> shellManager =
@@ -896,7 +929,9 @@ TEST(ShellSubscriberTest, testDifferentConfigs) {
     // create a simple config to get screen events
     ShellSubscription configs[numConfigs];
     configs[0].add_pushed()->set_atom_id(SCREEN_STATE_CHANGED);
+    configs[0].set_collect_uids(doCollectUids());
     configs[1].add_pushed()->set_atom_id(PLUGGED_STATE_CHANGED);
+    configs[1].set_collect_uids(doCollectUids());
 
     vector<vector<uint8_t>> configBuffers;
     for (int i = 0; i < numConfigs; i++) {
@@ -938,6 +973,9 @@ TEST(ShellSubscriberTest, testDifferentConfigs) {
     expected1.add_atom()->mutable_screen_state_changed()->set_state(
             ::android::view::DisplayStateEnum::DISPLAY_STATE_ON);
     expected1.add_elapsed_timestamp_nanos(pushedList[0]->GetElapsedTimestampNs());
+    if (doCollectUids()) {
+        expected1.add_logging_uid(pushedList[0]->GetUid());
+    }
     EXPECT_THAT(expected1, EqShellData(actual1));
 
     ShellData actual2 = readData(fds_datas[0][0]);
@@ -945,6 +983,9 @@ TEST(ShellSubscriberTest, testDifferentConfigs) {
     expected2.add_atom()->mutable_screen_state_changed()->set_state(
             ::android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
     expected2.add_elapsed_timestamp_nanos(pushedList[1]->GetElapsedTimestampNs());
+    if (doCollectUids()) {
+        expected2.add_logging_uid(pushedList[1]->GetUid());
+    }
     EXPECT_THAT(expected2, EqShellData(actual2));
 
     // Validate Config 2, repeating the process
@@ -953,6 +994,9 @@ TEST(ShellSubscriberTest, testDifferentConfigs) {
     expected3.add_atom()->mutable_plugged_state_changed()->set_state(
             BatteryPluggedStateEnum::BATTERY_PLUGGED_USB);
     expected3.add_elapsed_timestamp_nanos(pushedList[2]->GetElapsedTimestampNs());
+    if (doCollectUids()) {
+        expected3.add_logging_uid(pushedList[2]->GetUid());
+    }
     EXPECT_THAT(expected3, EqShellData(actual3));
 
     ShellData actual4 = readData(fds_datas[1][0]);
@@ -960,12 +1004,15 @@ TEST(ShellSubscriberTest, testDifferentConfigs) {
     expected4.add_atom()->mutable_plugged_state_changed()->set_state(
             BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE);
     expected4.add_elapsed_timestamp_nanos(pushedList[3]->GetElapsedTimestampNs());
+    if (doCollectUids()) {
+        expected4.add_logging_uid(pushedList[3]->GetUid());
+    }
     EXPECT_THAT(expected4, EqShellData(actual4));
 
     // Not closing fds_datas[i][0] because this causes writes within ShellSubscriberClient to hang
 }
 
-TEST(ShellSubscriberTest, testPushedSubscriptionRestrictedEvent) {
+TEST_P(ShellSubscriberTest, testPushedSubscriptionRestrictedEvent) {
     sp<MockUidMap> uidMap = new NaggyMock<MockUidMap>();
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
 
@@ -975,6 +1022,7 @@ TEST(ShellSubscriberTest, testPushedSubscriptionRestrictedEvent) {
     // create a simple config to get screen events
     ShellSubscription config;
     config.add_pushed()->set_atom_id(10);
+    config.set_collect_uids(doCollectUids());
 
     // expect empty data
     vector<ShellData> expectedData;

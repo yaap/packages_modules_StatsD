@@ -19,6 +19,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <thread>
 
 #include "stats_event.h"
@@ -38,13 +39,17 @@ namespace {
 
 int pullTagId1 = 10101;
 int pullTagId2 = 10102;
+int pullTagIdWithoutUid = 99999;
 int uid1 = 9999;
 int uid2 = 8888;
+int unRegisteredUid1 = 7777;
+int unRegisteredUid2 = 7778;
 ConfigKey configKey(50, 12345);
 ConfigKey badConfigKey(60, 54321);
 int unregisteredUid = 98765;
 int64_t coolDownNs = NS_PER_SEC;
 int64_t timeoutNs = NS_PER_SEC / 2;
+std::atomic_int pullReceiverCounter;
 
 AStatsEvent* createSimpleEvent(int32_t atomId, int32_t value) {
     AStatsEvent* event = AStatsEvent_obtain();
@@ -99,6 +104,12 @@ public:
     }
 };
 
+class FakeAllowAllAtomsUidProvider : public PullUidProvider {
+public:
+    vector<int32_t> getPullAtomUids(int atomId) override {
+        return {uid1, uid2};
+    }
+};
 class MockPullAtomCallback : public FakePullAtomCallback {
 public:
     MockPullAtomCallback(int32_t uid, int32_t pullDurationNs = 0)
@@ -127,8 +138,14 @@ sp<StatsPullerManager> createPullerManagerAndRegister(int32_t pullDurationMs = 0
     pullerManager->RegisterPullAtomCallback(uid1, pullTagId1, coolDownNs, timeoutNs, {}, cb1);
     shared_ptr<FakePullAtomCallback> cb2 =
             SharedRefBase::make<FakePullAtomCallback>(uid2, pullDurationMs);
+    shared_ptr<FakePullAtomCallback> cb3 =
+            SharedRefBase::make<FakePullAtomCallback>(uid2, pullDurationMs);
     pullerManager->RegisterPullAtomCallback(uid2, pullTagId1, coolDownNs, timeoutNs, {}, cb2);
     pullerManager->RegisterPullAtomCallback(uid1, pullTagId2, coolDownNs, timeoutNs, {}, cb1);
+    pullerManager->RegisterPullAtomCallback(unRegisteredUid1, pullTagIdWithoutUid, coolDownNs,
+                                            timeoutNs, {}, cb3);
+    pullerManager->RegisterPullAtomCallback(unRegisteredUid2, pullTagIdWithoutUid, coolDownNs,
+                                            timeoutNs, {}, cb3);
     return pullerManager;
 }
 }  // anonymous namespace
@@ -227,6 +244,133 @@ TEST(StatsPullerManagerTest, TestSameAtomIsPulledInABatch) {
 
     // to allow async pullers to complete + some extra time
     std::this_thread::sleep_for(std::chrono::nanoseconds(pullDurationNs * 3));
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredMultipleReceivers) {
+    pullReceiverCounter.store(0);
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    sp<FakePullUidProvider> uidProvider = new FakePullUidProvider();
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_SUCCESS, _))
+            .WillRepeatedly(Invoke([]() { pullReceiverCounter++; }));
+    for (int i = 0; i < 250; i++) {
+        ConfigKey newConfigKey(uid1, i);
+        pullerManager->RegisterReceiver(pullTagId1, newConfigKey, receiver,
+                                        /*nextPullTimeNs =*/0,
+                                        /*intervalNs =*/(250 - i) * 60 * NS_PER_SEC);
+        pullerManager->RegisterPullUidProvider(newConfigKey, uidProvider);
+    }
+
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(pullReceiverCounter.load(), 250);
+
+    pullerManager->OnAlarmFired(60 * NS_PER_SEC + 100);
+    EXPECT_EQ(pullReceiverCounter.load(), 251);
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredMultiplePulls) {
+    pullReceiverCounter.store(0);
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    sp<FakeAllowAllAtomsUidProvider> uidProvider = new FakeAllowAllAtomsUidProvider();
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_SUCCESS, _))
+            .WillRepeatedly(Invoke([]() { pullReceiverCounter++; }));
+    pullerManager->RegisterPullUidProvider(configKey, uidProvider);
+    for (int i = 0; i < 250; i++) {
+        pullerManager->RegisterReceiver(pullTagId1 + i, configKey, receiver,
+                                        /*nextPullTimeNs =*/0,
+                                        /*intervalNs =*/1000);
+        shared_ptr<FakePullAtomCallback> fakeCallback =
+                SharedRefBase::make<FakePullAtomCallback>(uid1, /*pullDurationMs= */ 0);
+        pullerManager->RegisterPullAtomCallback(uid1, pullTagId1 + i, coolDownNs, timeoutNs, {},
+                                                fakeCallback);
+    }
+
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(pullReceiverCounter.load(), 250);
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredNoPullerForUidNotesPullerNotFound) {
+    StatsdStats::getInstance().reset();
+
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_FAIL, _)).Times(1);
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    sp<FakePullUidProvider> uidProvider = new FakePullUidProvider();
+    pullerManager->RegisterPullUidProvider(configKey, uidProvider);
+    pullerManager->RegisterReceiver(pullTagIdWithoutUid, configKey, receiver, /*nextPullTimeNs =*/0,
+                                    /*intervalNs =*/60 * NS_PER_SEC);
+
+    pullerManager->OnAlarmFired(100);
+    // Assert that mNextPullTime is correctly set. The #onDataPulled mock is only invoked once.
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagIdWithoutUid].pullerNotFound, 1);
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagIdWithoutUid].pullFailed, 0);
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredNoUidProviderUpdatesNextPullTime) {
+    StatsdStats::getInstance().reset();
+
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_FAIL, _)).Times(1);
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    pullerManager->RegisterReceiver(pullTagId1, configKey, receiver, /*nextPullTimeNs =*/0,
+                                    /*intervalNs =*/60 * NS_PER_SEC);
+
+    pullerManager->OnAlarmFired(100);
+    // Assert that mNextPullTime is correctly set. The #onDataPulled mock is only invoked once.
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullUidProviderNotFound, 1);
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullerNotFound, 0);
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredMultipleUidsSelectsFirstUid) {
+    pullReceiverCounter.store(0);
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_SUCCESS, _))
+            .WillRepeatedly(Invoke([]() { pullReceiverCounter++; }));
+    sp<StatsPullerManager> pullerManager = new StatsPullerManager();
+    shared_ptr<MockPullAtomCallback> cb1 =
+            SharedRefBase::make<MockPullAtomCallback>(uid1, /*=pullDurationMs=*/0);
+    shared_ptr<MockPullAtomCallback> cb2 =
+            SharedRefBase::make<MockPullAtomCallback>(uid2, /*=pullDurationMs=*/0);
+    EXPECT_CALL(*cb1, onPullAtomCalled(pullTagId1)).Times(0);
+    // We expect cb2 to be invoked because uid2 is provided before uid1 in the PullUidProvider.
+    EXPECT_CALL(*cb2, onPullAtomCalled(pullTagId1)).Times(1);
+    pullerManager->RegisterPullAtomCallback(uid1, pullTagId1, coolDownNs, timeoutNs, {}, cb1);
+    pullerManager->RegisterPullAtomCallback(uid2, pullTagId1, coolDownNs, timeoutNs, {}, cb2);
+    sp<FakePullUidProvider> uidProvider = new FakePullUidProvider();
+    pullerManager->RegisterPullUidProvider(configKey, uidProvider);
+    pullerManager->RegisterReceiver(pullTagId1, configKey, receiver, /*nextPullTimeNs =*/0,
+                                    /*intervalNs =*/1000);
+
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(pullReceiverCounter.load(), 1);
+}
+
+TEST(StatsPullerManagerTest, TestOnAlarmFiredUidsNotRegisteredInPullAtomCallback) {
+    sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
+    EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_FAIL, _)).Times(1);
+    sp<StatsPullerManager> pullerManager = new StatsPullerManager();
+    shared_ptr<MockPullAtomCallback> cb1 =
+            SharedRefBase::make<MockPullAtomCallback>(unRegisteredUid1, /*=pullDurationMs=*/0);
+    EXPECT_CALL(*cb1, onPullAtomCalled(pullTagId1)).Times(0);
+    pullerManager->RegisterPullAtomCallback(unRegisteredUid1, pullTagId1, coolDownNs, timeoutNs, {},
+                                            cb1);
+    sp<FakePullUidProvider> uidProvider = new FakePullUidProvider();
+    pullerManager->RegisterPullUidProvider(configKey, uidProvider);
+    pullerManager->RegisterReceiver(pullTagId1, configKey, receiver, /*nextPullTimeNs =*/0,
+                                    /*intervalNs =*/1000);
+
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullerNotFound, 1);
+    EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullFailed, 0);
 }
 
 }  // namespace statsd

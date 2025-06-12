@@ -26,6 +26,7 @@
 #include "PullDataReceiver.h"
 #include "PullUidProvider.h"
 #include "StatsPuller.h"
+#include "ThreadSafeQueue.h"
 #include "guardrail/StatsdStats.h"
 #include "logd/LogEvent.h"
 #include "packages/UidMap.h"
@@ -40,9 +41,9 @@ namespace statsd {
 
 typedef struct PullerKey {
     // The uid of the process that registers this puller.
-    const int uid = -1;
+    int uid = -1;
     // The atom that this puller is for.
-    const int atomTag;
+    int atomTag;
 
     bool operator<(const PullerKey& that) const {
         if (uid < that.uid) {
@@ -57,6 +58,7 @@ typedef struct PullerKey {
     bool operator==(const PullerKey& that) const {
         return uid == that.uid && atomTag == that.atomTag;
     };
+
 } PullerKey;
 
 class StatsPullerManager : public virtual RefBase {
@@ -66,6 +68,34 @@ public:
     virtual ~StatsPullerManager() {
     }
 
+    // A struct containing an atom id and a Config Key
+    typedef struct ReceiverKey {
+        const int atomTag;
+        const ConfigKey configKey;
+
+        inline bool operator<(const ReceiverKey& that) const {
+            return atomTag == that.atomTag ? configKey < that.configKey : atomTag < that.atomTag;
+        }
+    } ReceiverKey;
+
+    typedef struct {
+        int64_t nextPullTimeNs;
+        int64_t intervalNs;
+        wp<PullDataReceiver> receiver;
+    } ReceiverInfo;
+
+    typedef struct {
+        PullerKey key;
+        sp<StatsPuller> puller;
+        vector<ReceiverInfo*> receivers;
+    } PullerParams;
+
+    typedef struct {
+        PullErrorCode pullErrorCode;
+        PullerKey pullerKey;
+        std::vector<ReceiverInfo*> receiverInfo;
+        std::vector<shared_ptr<LogEvent>> data;
+    } PulledInfo;
 
     // Registers a receiver for tagId. It will be pulled on the nextPullTimeNs
     // and then every intervalNs thereafter.
@@ -123,28 +153,12 @@ public:
 
     void UnregisterPullAtomCallback(const int uid, const int32_t atomTag);
 
-    std::map<const PullerKey, sp<StatsPuller>> kAllPullAtomInfo;
+    std::map<const PullerKey, sp<StatsPuller>> mAllPullAtomInfo;
 
 private:
     const static int64_t kMinCoolDownNs = NS_PER_SEC;
     const static int64_t kMaxTimeoutNs = 10 * NS_PER_SEC;
     shared_ptr<IStatsCompanionService> mStatsCompanionService = nullptr;
-
-    // A struct containing an atom id and a Config Key
-    typedef struct ReceiverKey {
-        const int atomTag;
-        const ConfigKey configKey;
-
-        inline bool operator<(const ReceiverKey& that) const {
-            return atomTag == that.atomTag ? configKey < that.configKey : atomTag < that.atomTag;
-        }
-    } ReceiverKey;
-
-    typedef struct {
-        int64_t nextPullTimeNs;
-        int64_t intervalNs;
-        wp<PullDataReceiver> receiver;
-    } ReceiverInfo;
 
     // mapping from Receiver Key to receivers
     std::map<ReceiverKey, std::list<ReceiverInfo>> mReceivers;
@@ -158,6 +172,14 @@ private:
     bool PullLocked(int tagId, const vector<int32_t>& uids, int64_t eventTimeNs,
                     vector<std::shared_ptr<LogEvent>>* data);
 
+    bool getPullerUidsLocked(const int tagId, const ConfigKey& configKey, vector<int32_t>& uids);
+
+    void initPullerQueue(ThreadSafeQueue<PullerParams>& pullerQueue,
+                         std::queue<PulledInfo>& pulledData, int64_t elapsedTimeNs,
+                         int64_t& minNextPullTimeNs);
+
+    void onAlarmFiredSynchronous(const int64_t elapsedTimeNs, const int64_t wallClockNs,
+                                 int64_t& minNextPullTimeNs);
     // locks for data receiver and StatsCompanionService changes
     std::mutex mLock;
 
@@ -171,6 +193,7 @@ private:
     FRIEND_TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEvent_LateAlarm);
     FRIEND_TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEventsWithActivation);
     FRIEND_TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEventsNoCondition);
+    FRIEND_TEST(GaugeMetricE2ePulledTest, TestSliceByStates);
     FRIEND_TEST(ValueMetricE2eTest, TestPulledEvents);
     FRIEND_TEST(ValueMetricE2eTest, TestPulledEvents_LateAlarm);
     FRIEND_TEST(ValueMetricE2eTest, TestPulledEvents_WithActivation);

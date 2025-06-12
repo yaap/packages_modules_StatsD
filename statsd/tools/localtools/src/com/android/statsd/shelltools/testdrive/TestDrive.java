@@ -31,6 +31,7 @@ import com.android.os.StatsLog.ConfigMetricsReport;
 import com.android.os.StatsLog.ConfigMetricsReportList;
 import com.android.os.StatsLog.StatsLogReport;
 import com.android.os.framework.FrameworkExtensionAtoms;
+import com.android.os.memory.ZramExtensionAtoms;
 import com.android.os.telephony.qns.QnsExtensionAtoms;
 import com.android.statsd.shelltools.Utils;
 
@@ -105,6 +106,8 @@ public class TestDrive {
             "AID_UPROBESTATS",
             "com.google.android.hardware.biometrics.face",
             "com.google.android.photopicker",
+            "AID_MMD",
+            "com.google.android.desktop.identity.login",
     };
     private static final String[] DEFAULT_PULL_SOURCES = {
             "AID_KEYSTORE", "AID_RADIO", "AID_SYSTEM",
@@ -622,6 +625,16 @@ public class TestDrive {
                                     .setAtomId(QnsExtensionAtoms
                                             .QNS_HANDOVER_PINGPONG_FIELD_NUMBER)
                                     .addPackages("com.android.telephony.qns"))
+                    .addPullAtomPackages(
+                            PullAtomPackages.newBuilder()
+                                    .setAtomId(ZramExtensionAtoms
+                                            .ZRAM_MM_STAT_MMD_FIELD_NUMBER)
+                                    .addPackages("AID_MMD"))
+                    .addPullAtomPackages(
+                            PullAtomPackages.newBuilder()
+                                    .setAtomId(ZramExtensionAtoms
+                                            .ZRAM_BD_STAT_MMD_FIELD_NUMBER)
+                                    .addPackages("AID_MMD"))
                     .setHashStringsInMetricReport(false);
         }
     }

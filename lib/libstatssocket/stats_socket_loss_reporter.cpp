@@ -89,6 +89,9 @@ void StatsSocketLossReporter::dumpAtomsLossStats(bool forceDump) {
         // - before writing STATS_SOCKET_LOSS_REPORTED do check the timestamp to keep some delay
         return;
     }
+    // since the delay before next attempt is significantly larger than this API call
+    // duration it is ok to have correctness of timestamp in a range of 10us
+    startCooldownTimer(currentRealtimeTsNanos);
 
     // intention to hold mutex here during the stats_write() to avoid data copy overhead
     std::unique_lock<std::mutex> lock(mMutex);
@@ -122,9 +125,6 @@ void StatsSocketLossReporter::dumpAtomsLossStats(bool forceDump) {
         mFirstTsNanos.store(0, std::memory_order_relaxed);
         mLastTsNanos.store(0, std::memory_order_relaxed);
     }
-    // since the delay before next attempt is significantly larger than this API call
-    // duration it is ok to have correctness of timestamp in a range of 10us
-    startCooldownTimer(currentRealtimeTsNanos);
 }
 
 void StatsSocketLossReporter::startCooldownTimer(int64_t elapsedRealtimeNanos) {

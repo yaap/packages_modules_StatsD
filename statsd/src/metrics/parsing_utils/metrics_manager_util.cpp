@@ -838,6 +838,8 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
         vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& conditionTrackerMap,
         const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
+        const std::unordered_map<int64_t, int>& stateAtomIdMap,
+        const std::unordered_map<int64_t, std::unordered_map<int, int64_t>>& allStateGroupMaps,
         const unordered_map<int64_t, int>& metricToActivationMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
@@ -851,6 +853,18 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
                 InvalidConfigReason(INVALID_CONFIG_REASON_METRIC_MISSING_ID_OR_WHAT, metric.id());
         return nullopt;
     }
+
+    if (metric.has_fields_filter()) {
+        const FieldFilter& filter = metric.fields_filter();
+        if ((filter.has_fields() && !hasLeafNode(filter.fields())) ||
+            (filter.has_omit_fields() && !hasLeafNode(filter.omit_fields()))) {
+            ALOGW("Incorrect field filter setting in EventMetric %lld", (long long)metric.id());
+            invalidConfigReason = InvalidConfigReason(
+                    INVALID_CONFIG_REASON_METRIC_INCORRECT_FIELD_FILTER, metric.id());
+            return nullopt;
+        }
+    }
+
     int trackerIndex;
     invalidConfigReason = handleMetricWithAtomMatchingTrackers(
             metric.what(), metric.id(), metricIndex, false, allAtomMatchingTrackers,
@@ -874,6 +888,22 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
                     INVALID_CONFIG_REASON_METRIC_CONDITIONLINK_NO_CONDITION, metric.id());
             return nullopt;
         }
+    }
+
+    std::vector<int> slicedStateAtoms;
+    unordered_map<int, unordered_map<int, int64_t>> stateGroupMap;
+    if (metric.slice_by_state_size() > 0) {
+        invalidConfigReason =
+                handleMetricWithStates(config, metric.id(), metric.slice_by_state(), stateAtomIdMap,
+                                       allStateGroupMaps, slicedStateAtoms, stateGroupMap);
+        if (invalidConfigReason.has_value()) {
+            return nullopt;
+        }
+    } else if (metric.state_link_size() > 0) {
+        ALOGW("EventMetric has a MetricStateLink but doesn't have a sliced state");
+        invalidConfigReason =
+                InvalidConfigReason(INVALID_CONFIG_REASON_METRIC_STATELINK_NO_STATE, metric.id());
+        return nullopt;
     }
 
     if (metric.sampling_percentage() < 1 || metric.sampling_percentage() > 100) {
@@ -901,11 +931,13 @@ optional<sp<MetricProducer>> createEventMetricProducerAndUpdateMetadata(
     if (config.has_restricted_metrics_delegate_package_name()) {
         metricProducer = new RestrictedEventMetricProducer(
                 key, metric, conditionIndex, initialConditionCache, wizard, metricHash, timeBaseNs,
-                configMetadataProvider, eventActivationMap, eventDeactivationMap);
+                configMetadataProvider, eventActivationMap, eventDeactivationMap, slicedStateAtoms,
+                stateGroupMap);
     } else {
         metricProducer = new EventMetricProducer(
                 key, metric, conditionIndex, initialConditionCache, wizard, metricHash, timeBaseNs,
-                configMetadataProvider, eventActivationMap, eventDeactivationMap);
+                configMetadataProvider, eventActivationMap, eventDeactivationMap, slicedStateAtoms,
+                stateGroupMap);
     }
 
     invalidConfigReason = setUidFieldsIfNecessary(metric, metricProducer);
@@ -1362,6 +1394,8 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
         const unordered_map<int64_t, int>& conditionTrackerMap,
         const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
         const sp<EventMatcherWizard>& matcherWizard,
+        const std::unordered_map<int64_t, int>& stateAtomIdMap,
+        const std::unordered_map<int64_t, std::unordered_map<int, int64_t>>& allStateGroupMaps,
         const unordered_map<int64_t, int>& metricToActivationMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
@@ -1376,21 +1410,15 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
         return nullopt;
     }
 
-    if ((!metric.gauge_fields_filter().has_include_all() ||
-         (metric.gauge_fields_filter().include_all() == false)) &&
-        !hasLeafNode(metric.gauge_fields_filter().fields())) {
-        ALOGW("Incorrect field filter setting in GaugeMetric %lld", (long long)metric.id());
-        invalidConfigReason = InvalidConfigReason(
-                INVALID_CONFIG_REASON_GAUGE_METRIC_INCORRECT_FIELD_FILTER, metric.id());
-        return nullopt;
-    }
-    if ((metric.gauge_fields_filter().has_include_all() &&
-         metric.gauge_fields_filter().include_all() == true) &&
-        hasLeafNode(metric.gauge_fields_filter().fields())) {
-        ALOGW("Incorrect field filter setting in GaugeMetric %lld", (long long)metric.id());
-        invalidConfigReason = InvalidConfigReason(
-                INVALID_CONFIG_REASON_GAUGE_METRIC_INCORRECT_FIELD_FILTER, metric.id());
-        return nullopt;
+    if (metric.has_gauge_fields_filter()) {
+        const FieldFilter& filter = metric.gauge_fields_filter();
+        if ((filter.has_fields() && !hasLeafNode(filter.fields())) ||
+            (filter.has_omit_fields() && !hasLeafNode(filter.omit_fields()))) {
+            ALOGW("Incorrect field filter setting in GaugeMetric %lld", (long long)metric.id());
+            invalidConfigReason = InvalidConfigReason(
+                    INVALID_CONFIG_REASON_METRIC_INCORRECT_FIELD_FILTER, metric.id());
+            return nullopt;
+        }
     }
 
     int trackerIndex;
@@ -1448,6 +1476,22 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
                     INVALID_CONFIG_REASON_METRIC_CONDITIONLINK_NO_CONDITION, metric.id());
             return nullopt;
         }
+    }
+
+    std::vector<int> slicedStateAtoms;
+    std::unordered_map<int, std::unordered_map<int, int64_t>> stateGroupMap;
+    if (metric.slice_by_state_size() > 0) {
+        invalidConfigReason =
+                handleMetricWithStates(config, metric.id(), metric.slice_by_state(), stateAtomIdMap,
+                                       allStateGroupMaps, slicedStateAtoms, stateGroupMap);
+        if (invalidConfigReason.has_value()) {
+            return nullopt;
+        }
+    } else if (metric.state_link_size() > 0) {
+        ALOGE("GaugeMetric has a MetricStateLink but doesn't have a sliced state");
+        invalidConfigReason =
+                InvalidConfigReason(INVALID_CONFIG_REASON_METRIC_STATELINK_NO_STATE, metric.id());
+        return nullopt;
     }
 
     if (pullTagId != -1 && metric.sampling_percentage() != 100) {
@@ -1508,7 +1552,7 @@ optional<sp<MetricProducer>> createGaugeMetricProducerAndUpdateMetadata(
             key, metric, conditionIndex, initialConditionCache, wizard, metricHash, trackerIndex,
             matcherWizard, pullTagId, triggerAtomId, atomTagId, timeBaseNs, currentTimeNs,
             pullerManager, configMetadataProvider, eventActivationMap, eventDeactivationMap,
-            dimensionSoftLimit, dimensionHardLimit);
+            slicedStateAtoms, stateGroupMap, dimensionSoftLimit, dimensionHardLimit);
 
     SamplingInfo samplingInfo;
     std::vector<Matcher> dimensionsInWhat;
@@ -1797,10 +1841,10 @@ optional<InvalidConfigReason> initMetrics(
         optional<sp<MetricProducer>> producer = createEventMetricProducerAndUpdateMetadata(
                 key, config, timeBaseTimeNs, metric, metricIndex, allAtomMatchingTrackers,
                 atomMatchingTrackerMap, allConditionTrackers, conditionTrackerMap,
-                initialConditionCache, wizard, metricToActivationMap, trackerToMetricMap,
-                conditionToMetricMap, activationAtomTrackerToMetricMap,
-                deactivationAtomTrackerToMetricMap, metricsWithActivation, invalidConfigReason,
-                configMetadataProvider);
+                initialConditionCache, wizard, stateAtomIdMap, allStateGroupMaps,
+                metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
+                activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
+                metricsWithActivation, invalidConfigReason, configMetadataProvider);
         if (!producer) {
             return invalidConfigReason;
         }
@@ -1851,8 +1895,8 @@ optional<InvalidConfigReason> initMetrics(
         optional<sp<MetricProducer>> producer = createGaugeMetricProducerAndUpdateMetadata(
                 key, config, timeBaseTimeNs, currentTimeNs, pullerManager, metric, metricIndex,
                 allAtomMatchingTrackers, atomMatchingTrackerMap, allConditionTrackers,
-                conditionTrackerMap, initialConditionCache, wizard, matcherWizard,
-                metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
+                conditionTrackerMap, initialConditionCache, wizard, matcherWizard, stateAtomIdMap,
+                allStateGroupMaps, metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
                 activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
                 metricsWithActivation, invalidConfigReason, configMetadataProvider);
         if (!producer) {

@@ -24,6 +24,7 @@ apex_test {
     defaults: ["com.android.os.statsd-defaults"],
     manifest: "test_manifest.json",
     file_contexts: ":com.android.os.statsd-file_contexts",
+    apex_available_name: "com.android.os.statsd",
     // Test APEX, should never be installed
     installable: false,
 }

@@ -198,7 +198,6 @@ void ShellSubscriber::unsubscribe(const shared_ptr<IStatsSubscriptionCallback>& 
 }
 
 void ShellSubscriber::updateLogEventFilterLocked() const {
-    VLOG("ShellSubscriber: Updating allAtomIds");
     LogEventFilter::AtomIdSet allAtomIds;
     for (const auto& client : mClientSet) {
         client->addAllAtomIds(allAtomIds);

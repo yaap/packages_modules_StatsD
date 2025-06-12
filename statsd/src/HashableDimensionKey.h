@@ -227,8 +227,8 @@ bool filterPrimaryKey(const std::vector<FieldValue>& values, HashableDimensionKe
  * In contrast to the above function, this function will not do any modification to the original
  * data. Considering it as taking a snapshot on the atom event.
  */
-void filterGaugeValues(const std::vector<Matcher>& matchers, const std::vector<FieldValue>& values,
-                       std::vector<FieldValue>* output);
+std::vector<FieldValue> filterValues(const std::vector<Matcher>& matchers,
+                                     const std::vector<FieldValue>& values, bool omitMatches);
 
 void getDimensionForCondition(const std::vector<FieldValue>& eventValues,
                               const Metric2Condition& links,

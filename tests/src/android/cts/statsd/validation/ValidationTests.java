@@ -107,7 +107,7 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
     private static final boolean ENABLE_LOAD_TEST = false;
 
     public void testPartialWakelock() throws Exception {
-        if (!DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
+        if (DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
         resetBatteryStats();
         DeviceUtils.unplugDevice(getDevice());
         DeviceUtils.flushBatteryStatsHandlers(getDevice());
@@ -119,11 +119,9 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
 
         final int atomTag = Atom.WAKELOCK_STATE_CHANGED_FIELD_NUMBER;
         Set<Integer> wakelockOn = new HashSet<>(Arrays.asList(
-                WakelockStateChanged.State.ACQUIRE_VALUE,
-                WakelockStateChanged.State.CHANGE_ACQUIRE_VALUE));
+                WakelockStateChanged.State.ACQUIRE_VALUE));
         Set<Integer> wakelockOff = new HashSet<>(Arrays.asList(
-                WakelockStateChanged.State.RELEASE_VALUE,
-                WakelockStateChanged.State.CHANGE_RELEASE_VALUE));
+                WakelockStateChanged.State.RELEASE_VALUE));
 
         final String EXPECTED_TAG = "StatsdPartialWakelock";
         final WakeLockLevelEnum EXPECTED_LEVEL = WakeLockLevelEnum.PARTIAL_WAKE_LOCK;
@@ -154,7 +152,7 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
 
     @RestrictedBuildTest
     public void testPartialWakelockDuration() throws Exception {
-        if (!DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
+        if (DeviceUtils.hasFeature(getDevice(), FEATURE_AUTOMOTIVE)) return;
 
         // getUid() needs shell command via ADB. turnScreenOff() sometimes let system go to suspend.
         // ADB disconnection causes failure of getUid(). Move up here before turnScreenOff().

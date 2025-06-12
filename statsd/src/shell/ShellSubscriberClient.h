@@ -63,14 +63,6 @@ public:
             const std::shared_ptr<IStatsSubscriptionCallback>& callback, int64_t startTimeSec,
             const sp<UidMap>& uidMap, const sp<StatsPullerManager>& pullerMgr);
 
-    // Should only be called by the create() factory.
-    explicit ShellSubscriberClient(int id, int out,
-                                   const std::shared_ptr<IStatsSubscriptionCallback>& callback,
-                                   const std::vector<SimpleAtomMatcher>& pushedMatchers,
-                                   const std::vector<PullInfo>& pulledInfo, int64_t timeoutSec,
-                                   int64_t startTimeSec, const sp<UidMap>& uidMap,
-                                   const sp<StatsPullerManager>& pullerMgr);
-
     void onLogEvent(const LogEvent& event);
 
     int64_t pullAndSendHeartbeatsIfNeeded(int64_t nowSecs, int64_t nowMillis, int64_t nowNanos);
@@ -102,6 +94,18 @@ public:
     // Minimum sleep for the pull thread for callback subscriptions.
     static constexpr int64_t kMinCallbackSleepIntervalMs = 2000;  // 2 seconds.
 private:
+    // Should only be called by the create() factory which has access to implementation.
+    explicit ShellSubscriberClient(int id, int out,
+                                   const std::shared_ptr<IStatsSubscriptionCallback>& callback,
+                                   const std::vector<SimpleAtomMatcher>& pushedMatchers,
+                                   const std::vector<PullInfo>& pulledInfo, int64_t timeoutSec,
+                                   int64_t startTimeSec, const sp<UidMap>& uidMap,
+                                   const sp<StatsPullerManager>& pullerMgr);
+
+    void setCollectUids(bool doCollect) {
+        mDoCollectUids = doCollect;
+    }
+
     int64_t pullIfNeeded(int64_t nowSecs, int64_t nowMillis, int64_t nowNanos);
 
     void writePulledAtomsLocked(const vector<std::shared_ptr<LogEvent>>& data,
@@ -153,6 +157,8 @@ private:
     // Stores the total approximate encoded proto byte-size for cached Atom events in
     // mEventTimestampNs and mProtoOut.
     size_t mCacheSize;
+
+    bool mDoCollectUids = false;
 
     static constexpr int64_t kMsBetweenHeartbeats = 1000;
 

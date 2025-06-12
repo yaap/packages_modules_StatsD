@@ -14,6 +14,8 @@
 
 #include "src/guardrail/StatsdStats.h"
 
+#include <com_android_os_statsd_flags.h>
+#include <flag_macros.h>
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -43,6 +45,8 @@ using PerSubscriptionStats = StatsdStatsReport_SubscriptionStats_PerSubscription
 using std::tuple;
 using std::unordered_map;
 using std::vector;
+
+#define TEST_NS com::android::os::statsd::flags
 
 class StatsdStatsTest_GetAtomDimensionKeySizeLimit_InMap
     : public TestWithParam<tuple<int, size_t>> {};
@@ -739,9 +743,13 @@ TEST(StatsdStatsTest, TestAtomDroppedStats) {
 
     const int numDropped = 10;
     for (int i = 0; i < numDropped; i++) {
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag, false);
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag, false);
+        stats.noteAtomLogged(pushAtomTag, /*timeSec*/ 0, /*isSkipped*/ false);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag);
+        stats.noteAtomLogged(nonPlatformPushAtomTag, /*timeSec*/ 0, /*isSkipped*/ false);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag);
     }
+
+    ASSERT_EQ(2, stats.mPushedAtomDropsStats.size());
 
     StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ true);
 
@@ -789,8 +797,10 @@ TEST(StatsdStatsTest, TestAtomLoggedAndDroppedStats) {
 
     const int numDropped = 10;
     for (int i = 0; i < numDropped; i++) {
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag, false);
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag, false);
+        stats.noteAtomLogged(pushAtomTag, /*timeSec*/ 0, /*isSkipped*/ false);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag);
+        stats.noteAtomLogged(nonPlatformPushAtomTag, /*timeSec*/ 0, /*isSkipped*/ false);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag);
     }
 
     StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
@@ -857,8 +867,10 @@ TEST(StatsdStatsTest, TestAtomLoggedAndDroppedAndSkippedStats) {
 
     const int numDropped = 10;
     for (int i = 0; i < numDropped; i++) {
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag, true);
-        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag, true);
+        stats.noteAtomLogged(pushAtomTag, /*timeSec*/ 0, /*isSkipped*/ true);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, pushAtomTag);
+        stats.noteAtomLogged(nonPlatformPushAtomTag, /*timeSec*/ 0, /*isSkipped*/ true);
+        stats.noteEventQueueOverflow(/*oldestEventTimestampNs*/ 0, nonPlatformPushAtomTag);
     }
 
     StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
@@ -1206,6 +1218,239 @@ TEST_P(StatsdStatsTest_GetAtomDimensionKeySizeLimit_NotInMap, TestGetAtomDimensi
     EXPECT_EQ(
             StatsdStats::getAtomDimensionKeySizeLimits(atomId, defaultHardLimit),
             (std::pair<size_t, size_t>(StatsdStats::kDimensionKeySizeSoftLimit, defaultHardLimit)));
+}
+
+CounterStats buildCounterStats(CounterType counter, int32_t count) {
+    CounterStats msg;
+    msg.set_counter_type(counter);
+    msg.set_count(count);
+    return msg;
+}
+
+TEST(StatsdStatsTest, TestErrorStatsReport) {
+    StatsdStats stats;
+    stats.noteIllegalState(COUNTER_TYPE_UNKNOWN);
+    stats.noteIllegalState(COUNTER_TYPE_UNKNOWN);
+    stats.noteIllegalState(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED);
+    stats.noteIllegalState(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED);
+    auto report = getStatsdStatsReport(stats, /* reset stats */ false);
+
+    EXPECT_TRUE(report.has_error_stats());
+
+    vector<CounterStats> expectedCounterStats{
+            buildCounterStats(COUNTER_TYPE_UNKNOWN, 2),
+            buildCounterStats(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED, 2)};
+    EXPECT_THAT(report.error_stats().counters(),
+                UnorderedPointwise(EqCounterStats(), expectedCounterStats));
+}
+
+TEST(StatsdStatsTest, TestErrorStatsReportReset) {
+    StatsdStats stats;
+    stats.noteIllegalState(COUNTER_TYPE_UNKNOWN);
+    stats.noteIllegalState(COUNTER_TYPE_UNKNOWN);
+    stats.noteIllegalState(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED);
+    stats.noteIllegalState(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED);
+    auto report = getStatsdStatsReport(stats, /* reset stats */ true);
+
+    EXPECT_TRUE(stats.mErrorStats.empty());
+}
+
+AtomStats buildAtomStats(int32_t atomId, int32_t count) {
+    AtomStats msg;
+    msg.set_tag(atomId);
+    msg.set_count(count);
+    return msg;
+}
+
+AtomStats buildAtomStats(int32_t atomId, int32_t count, int32_t peakRate) {
+    AtomStats msg;
+    msg.set_tag(atomId);
+    msg.set_count(count);
+    msg.set_peak_rate(peakRate);
+    return msg;
+}
+
+TEST_WITH_FLAGS(StatsdStatsTest, TestLoggingRateReport,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(TEST_NS,
+                                                    enable_logging_rate_stats_collection))) {
+    StatsdStats stats;
+
+    const int32_t platformAtom = StatsdStats::kMaxPushedAtomId - 1;
+    const int32_t nonPlatformAtom = StatsdStats::kMaxPushedAtomId + 1;
+
+    const int64_t kTimeWindow = 100'000'000;  // 100ms
+
+    // test validates that peak logging rate reporting is preserved
+    // across report dump & variable logging rates across time windows
+    // example rates for 4 time windows are 1, 2, 1000, 1
+    // expectation is 1000 should be reported as peak rate starting from third
+    // time window
+
+    const int32_t samplePeakRate = 1000;
+
+    int64_t ts = 0;
+
+    stats.noteAtomLogged(platformAtom, ts, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts, false);
+    {
+        StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
+        vector<AtomStats> expectedAtomStats{buildAtomStats(platformAtom, 1, 1),
+                                            buildAtomStats(nonPlatformAtom, 1, 1)};
+        EXPECT_THAT(report.atom_stats(), UnorderedPointwise(EqAtomStats(), expectedAtomStats));
+    }
+
+    ts += kTimeWindow;
+    stats.noteAtomLogged(platformAtom, ts, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts, false);
+    stats.noteAtomLogged(platformAtom, ts + 1, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts + 1, false);
+
+    {
+        StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
+        vector<AtomStats> expectedAtomStats{buildAtomStats(platformAtom, 3, 2),
+                                            buildAtomStats(nonPlatformAtom, 3, 2)};
+        EXPECT_THAT(report.atom_stats(), UnorderedPointwise(EqAtomStats(), expectedAtomStats));
+    }
+
+    ts += kTimeWindow;
+    for (int i = 0; i < samplePeakRate; i++) {
+        stats.noteAtomLogged(platformAtom, ts + i, false);
+        stats.noteAtomLogged(nonPlatformAtom, ts + i, false);
+    }
+
+    {
+        StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
+        vector<AtomStats> expectedAtomStats{
+                buildAtomStats(platformAtom, 3 + samplePeakRate, samplePeakRate),
+                buildAtomStats(nonPlatformAtom, 3 + samplePeakRate, samplePeakRate)};
+        EXPECT_THAT(report.atom_stats(), UnorderedPointwise(EqAtomStats(), expectedAtomStats));
+    }
+
+    ts += kTimeWindow;
+    stats.noteAtomLogged(platformAtom, ts, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts, false);
+
+    {
+        StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
+        vector<AtomStats> expectedAtomStats{
+                buildAtomStats(platformAtom, 4 + samplePeakRate, samplePeakRate),
+                buildAtomStats(nonPlatformAtom, 4 + samplePeakRate, samplePeakRate)};
+        EXPECT_THAT(report.atom_stats(), UnorderedPointwise(EqAtomStats(), expectedAtomStats));
+    }
+}
+
+TEST_WITH_FLAGS(StatsdStatsTest, TestLoggingRateReportReset,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(TEST_NS,
+                                                    enable_logging_rate_stats_collection))) {
+    StatsdStats stats;
+
+    const int32_t platformAtom = StatsdStats::kMaxPushedAtomId - 1;
+    const int32_t nonPlatformAtom = StatsdStats::kMaxPushedAtomId + 1;
+
+    int64_t ts = 0;
+
+    const int64_t kTimeWindow = 100'000'000;  // 100ms
+
+    stats.noteAtomLogged(platformAtom, ts, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts, false);
+
+    stats.noteAtomLogged(platformAtom, ts + kTimeWindow, false);
+    stats.noteAtomLogged(nonPlatformAtom, ts + kTimeWindow, false);
+
+    StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ true);
+    EXPECT_TRUE(stats.mLoggingRateStats.mRateInfo.empty());
+}
+
+TEST_WITH_FLAGS(StatsdStatsTest, TestLoggingRateReportOnlyTopN,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(TEST_NS,
+                                                    enable_logging_rate_stats_collection))) {
+    StatsdStats stats;
+
+    const int platformAtomsToLog = 100;
+    const int nonPlatformAtomsToLog = 100;
+
+    const int32_t platformAtomStartId = 2;
+    const int32_t nonPlatformAtomStartId = StatsdStats::kMaxPushedAtomId + 1;
+    const int32_t expectedStats = StatsdStats::kMaxLoggingRateStatsToReport;
+
+    int64_t ts = 0;
+
+    vector<AtomStats> expectedAtomStats;
+
+    for (int i = 0; i < platformAtomsToLog; i++) {
+        const int loggingRateForAtom = (i + 1) * 10;  // max rate = 1000
+        const int atomId = platformAtomStartId + i;
+        for (int j = 0; j < loggingRateForAtom; j++) {
+            stats.noteAtomLogged(atomId, ts, false);
+        }
+        if (i < (platformAtomsToLog - (expectedStats / 2))) {
+            // going to be skipped due to only top 50 frequencies are populated
+            expectedAtomStats.push_back(buildAtomStats(atomId, loggingRateForAtom));
+        } else {
+            expectedAtomStats.push_back(
+                    buildAtomStats(atomId, loggingRateForAtom, loggingRateForAtom));
+        }
+    }
+
+    for (int i = 0; i < nonPlatformAtomsToLog; i++) {
+        const int loggingRateForAtom = (i + 1) * 10;  // max rate = 1000
+        const int atomId = nonPlatformAtomStartId + i;
+        for (int j = 0; j < loggingRateForAtom; j++) {
+            stats.noteAtomLogged(atomId, ts, false);
+        }
+        if (i < (nonPlatformAtomsToLog - (expectedStats / 2))) {
+            // going to be skipped due to only top 50 frequencies are populated
+            expectedAtomStats.push_back(buildAtomStats(atomId, loggingRateForAtom));
+        } else {
+            expectedAtomStats.push_back(
+                    buildAtomStats(atomId, loggingRateForAtom, loggingRateForAtom));
+        }
+    }
+
+    StatsdStatsReport report = getStatsdStatsReport(stats, /* reset stats */ false);
+    EXPECT_THAT(report.atom_stats(), UnorderedPointwise(EqAtomStats(), expectedAtomStats));
+}
+
+TEST_WITH_FLAGS(StatsdStatsTest, TestLoggingRate,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(TEST_NS,
+                                                    enable_logging_rate_stats_collection))) {
+    const int64_t kTimeWindow = 100'000'000;  // 100ms
+
+    LoggingRate loggingRate(/*maxStatsNum*/ 1000, kTimeWindow);
+
+    const int platformAtomsToLog = 10;
+    const int nonPlatformAtomsToLog = 10;
+
+    const int32_t platformAtomStartId = 2;
+    const int32_t nonPlatformAtomStartId = StatsdStats::kMaxPushedAtomId + 1;
+    const int32_t expectedStats = 20;
+
+    int64_t ts = 0;
+
+    for (int i = 0; i < platformAtomsToLog; i++) {
+        const int loggingRateForAtom = (i + 1) * 10;  // max rate = 100
+        for (int j = 0; j < loggingRateForAtom; j++) {
+            loggingRate.noteLogEvent(platformAtomStartId + i, ts + i);
+        }
+    }
+
+    for (int i = 0; i < nonPlatformAtomsToLog; i++) {
+        const int loggingRateForAtom = (i + 1) * 10;  // max rate = 100
+        for (int j = 0; j < loggingRateForAtom; j++) {
+            loggingRate.noteLogEvent(nonPlatformAtomStartId + i, ts + i);
+        }
+    }
+
+    auto result = loggingRate.getMaxRates(expectedStats);
+    EXPECT_EQ(expectedStats, result.size());
+
+    // reported rates should be sorted from greatest to least
+    for (int i = 1; i < expectedStats; i++) {
+        EXPECT_GE(result[i - 1].second, result[i].second);
+    }
+
+    EXPECT_EQ(100, result[0].second);
+    EXPECT_EQ(100, result[1].second);
 }
 
 }  // namespace statsd

@@ -27,6 +27,7 @@ aconfig_declarations {
     package: "com.android.os.statsd.flags",
     srcs: [
         "libstatspull_flags.aconfig",
+        "libstatssocket_flags.aconfig",
         "statsd_flags.aconfig",
     ],
 }
@@ -39,4 +40,15 @@ cc_aconfig_library {
         "com.android.os.statsd",
     ],
     host_supported: true,
+}
+
+java_aconfig_library {
+    name: "statsd_flags_java_lib-host",
+    aconfig_declarations: "statsd_aconfig_flags",
+    min_sdk_version: "30",
+    host_supported: true,
+    visibility: [
+        "//packages/modules/StatsD:__subpackages__",
+    ],
+    libs: ["fake_device_config"],
 }

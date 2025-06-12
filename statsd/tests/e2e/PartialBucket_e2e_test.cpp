@@ -88,7 +88,6 @@ StatsdConfig MakeGaugeMetricConfig(int64_t minTime) {
     auto gaugeMetric = config.add_gauge_metric();
     gaugeMetric->set_id(123456);
     gaugeMetric->set_what(pulledAtomMatcher.id());
-    gaugeMetric->mutable_gauge_fields_filter()->set_include_all(true);
     *gaugeMetric->mutable_dimensions_in_what() =
             CreateDimensions(util::SUBSYSTEM_SLEEP_STATE, {1 /* subsystem name */});
     gaugeMetric->set_bucket(FIVE_MINUTES);

@@ -25,7 +25,7 @@ package {
 cc_defaults {
     name: "libstatssocket_defaults",
     srcs: [
-        "stats_buffer_writer.c",
+        "stats_buffer_writer.cpp",
         "stats_buffer_writer_queue.cpp",
         "stats_event.c",
         "stats_socket.c",
@@ -52,6 +52,7 @@ cc_defaults {
     ],
     static_libs: [
         "libbase",
+        "statsd_flags_c_lib",
     ],
     min_sdk_version: "30",
 }
@@ -77,10 +78,7 @@ cc_library_shared {
             "30",
         ],
     },
-    apex_available: [
-        "com.android.os.statsd",
-        "test_com.android.os.statsd",
-    ],
+    apex_available: ["com.android.os.statsd"],
 }
 
 cc_library_headers {
@@ -108,6 +106,7 @@ cc_test {
     name: "libstatssocket_test",
     defaults: ["libstatssocket_defaults"],
     srcs: [
+        "tests/logging_rate_limiter_test.cpp",
         "tests/stats_event_test.cpp",
         "tests/stats_writer_test.cpp",
         "tests/stats_buffer_writer_queue_test.cpp",
@@ -130,6 +129,7 @@ cc_test {
 
     static_libs: [
         "libbase",
+        "libflagtest",
         "libgmock",
     ],
     shared_libs: [

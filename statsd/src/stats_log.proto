@@ -51,10 +51,18 @@ message StateValue {
   }
 }
 
+message AggregatedStateInfo {
+  repeated StateValue slice_by_state = 1;
+
+  repeated int64 elapsed_timestamp_nanos = 2;
+}
+
 message AggregatedAtomInfo {
     optional Atom atom = 1;
 
     repeated int64 elapsed_timestamp_nanos = 2;
+
+    repeated AggregatedStateInfo state_info = 3; // Only used when metrics have slice_by_state
 }
 
 message EventMetricData {
@@ -65,6 +73,8 @@ message EventMetricData {
   optional int64 wall_clock_timestamp_nanos = 3 [deprecated = true];
 
   optional AggregatedAtomInfo aggregated_atom_info = 4;
+
+  repeated StateValue slice_by_state = 5;
 }
 
 message CountBucketInfo {
@@ -157,6 +167,7 @@ message ValueBucketInfo {
           Histogram histogram = 5;
       }
       optional int32 sample_size = 4;
+      reserved 6;
   }
 
   repeated Value values = 9;
@@ -242,7 +253,6 @@ message GaugeBucketInfo {
 message GaugeMetricData {
   optional DimensionsValue dimensions_in_what = 1;
 
-  // Currently unsupported
   repeated StateValue slice_by_state = 6;
 
   repeated GaugeBucketInfo bucket_info = 3;
@@ -453,6 +463,11 @@ message StatsdStatsReport {
       repeated int64 condition_id = 8;
     }
 
+    message CounterStats {
+      optional CounterType counter_type = 1;
+      optional int32 count = 2;
+    }
+
     message MatcherStats {
         optional int64 id = 1;
         optional int32 matched_times = 2;
@@ -526,6 +541,7 @@ message StatsdStatsReport {
         optional int32 error_count = 3;
         optional int32 dropped_count = 4;
         optional int32 skip_count = 5;
+        optional int32 peak_rate = 6;
     }
 
     repeated AtomStats atom_stats = 7;
@@ -734,6 +750,12 @@ message StatsdStatsReport {
     }
 
     optional SocketReadStats socket_read_stats = 26;
+
+    message ErrorStats {
+        repeated CounterStats counters = 1;
+    }
+
+    optional ErrorStats error_stats = 27;
 }
 
 message AlertTriggerDetails {

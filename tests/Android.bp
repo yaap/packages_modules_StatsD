@@ -32,19 +32,20 @@ java_test_host {
         "mts-statsd",
         "mcts-statsd",
     ],
-
     libs: [
         "compatibility-host-util",
         "cts-tradefed",
         "host-libprotobuf-java-full",
-        "platformprotos",
         "tradefed",
         "truth",
     ],
     static_libs: [
+        "platformprotos",
         "core_cts_test_resources",
         "perfetto_config-full",
         "cts-statsd-atom-host-test-utils",
+        "statsd_flags_java_lib-host",
+        "flag-junit-host",
     ],
     data: [
         "**/*.pbtxt",
@@ -53,4 +54,5 @@ java_test_host {
         ":CtsStatsdApp",
         ":StatsdAtomStormApp",
     ],
+    jarjar_rules: "jarjar-rules.txt",
 }

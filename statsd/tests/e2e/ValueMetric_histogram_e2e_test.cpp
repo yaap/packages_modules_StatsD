@@ -102,7 +102,7 @@ protected:
 class ValueMetricHistogramE2eTestPushedExplicitBins : public ValueMetricHistogramE2eTest {
 protected:
     void SetUp() override {
-        StatsdConfig config = createExplicitHistogramStatsdConfig(/* bins */ {1, 7, 10, 20});
+        StatsdConfig config = createExplicitHistogramStatsdConfig(/* bins */ {-1, 7, 10, 20});
         createProcessor(config);
     }
 };
@@ -130,7 +130,7 @@ TEST_F(ValueMetricHistogramE2eTestPushedExplicitBins, TestOneEventInFirstBinAfte
 }
 
 TEST_F(ValueMetricHistogramE2eTestPushedExplicitBins, TestOneEventInOverflowAndUnderflow) {
-    logEvents({CreateTwoValueLogEvent(/* atomId */ 1, bucketStartTimeNs + 10, /* value1 */ 0,
+    logEvents({CreateTwoValueLogEvent(/* atomId */ 1, bucketStartTimeNs + 10, /* value1 */ -5,
                                       /* value2 */ 0),
                CreateTwoValueLogEvent(/* atomId */ 1, bucketStartTimeNs + 20, /* value1 */ 20,
                                       /* value2 */ 0)});
@@ -142,7 +142,7 @@ TEST_F(ValueMetricHistogramE2eTestPushedExplicitBins, TestOneEventInOverflowAndU
 }
 
 TEST_F(ValueMetricHistogramE2eTestPushedExplicitBins, TestOneEventInUnderflow) {
-    logEvents({CreateTwoValueLogEvent(/* atomId */ 1, bucketStartTimeNs + 10, /* value1 */ -1,
+    logEvents({CreateTwoValueLogEvent(/* atomId */ 1, bucketStartTimeNs + 10, /* value1 */ -2,
                                       /* value2 */ 0)});
 
     optional<ConfigMetricsReportList> reports = getReports();

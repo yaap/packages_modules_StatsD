@@ -13,34 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <cstdlib>
-#include <ctime>
+#include <benchmark/benchmark.h>
+
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "benchmark/benchmark.h"
+#include "utils.h"
 
 namespace android {
 namespace os {
 namespace statsd {
 
 namespace {
-
-std::vector<int> generateRandomIds(int count, int maxRange) {
-    std::srand(std::time(nullptr));
-
-    std::unordered_set<int> unique_values;
-
-    while (unique_values.size() <= count) {
-        unique_values.insert(std::rand() % maxRange);
-    }
-
-    std::vector<int> result(unique_values.begin(), unique_values.end());
-
-    return result;
-}
 
 const int kMaxAtomId = 100000;
 const int kMaxErrorCode = 20;

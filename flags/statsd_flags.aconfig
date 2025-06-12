@@ -2,6 +2,16 @@ package: "com.android.os.statsd.flags"
 container: "com.android.os.statsd"
 
 flag {
+  name: "parallel_pulls"
+  namespace: "statsd"
+  description: "Whether to enable parallel pulls on alarms."
+  bug: "390014362"
+  metadata {
+    purpose: PURPOSE_BUGFIX
+  }
+}
+
+flag {
   name: "trigger_uprobestats"
   namespace: "statsd"
   description: "Whether to call AUprobestatsClient_startUprobestats."
@@ -17,3 +27,10 @@ flag {
     is_fixed_read_only: true
 }
 
+flag {
+    name: "enable_logging_rate_stats_collection"
+    namespace: "statsd"
+    description: "Enables atoms logging rate distribution per atom id collection"
+    bug: "382574781"
+    is_fixed_read_only: true
+}

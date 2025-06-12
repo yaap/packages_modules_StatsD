@@ -36,4 +36,5 @@ message PulledAtomSubscription {
 message ShellSubscription {
     repeated SimpleAtomMatcher pushed = 1;
     repeated PulledAtomSubscription pulled = 2;
+    optional bool collect_uids = 3 [default = false];
 }

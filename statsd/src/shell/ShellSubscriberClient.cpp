@@ -32,6 +32,7 @@ namespace statsd {
 
 const static int FIELD_ID_SHELL_DATA__ATOM = 1;
 const static int FIELD_ID_SHELL_DATA__ELAPSED_TIMESTAMP_NANOS = 2;
+const static int FIELD_ID_SHELL_DATA__LOGGING_UID = 3;
 
 // Store next subscription ID for StatsdStats.
 // Not thread-safe; should only be accessed while holding ShellSubscriber::mMutex lock.
@@ -40,6 +41,7 @@ static int nextSubId = 0;
 struct ReadConfigResult {
     vector<SimpleAtomMatcher> pushedMatchers;
     vector<ShellSubscriberClient::PullInfo> pullInfo;
+    bool collect_uids;
 };
 
 // Read and parse single config. There should only one config in the input.
@@ -74,6 +76,8 @@ static optional<ReadConfigResult> readConfig(const vector<uint8_t>& configBytes,
         ALOGD("ShellSubscriberClient: adding matcher for pulled atom %d",
               pulled.matcher().atom_id());
     }
+
+    result.collect_uids = config.collect_uids();
 
     return result;
 }
@@ -136,9 +140,13 @@ unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
         return nullptr;
     }
 
-    return make_unique<ShellSubscriberClient>(
+    auto result = unique_ptr<ShellSubscriberClient>(new ShellSubscriberClient(
             nextSubId++, out, /*callback=*/nullptr, readConfigResult->pushedMatchers,
-            readConfigResult->pullInfo, timeoutSec, startTimeSec, uidMap, pullerMgr);
+            readConfigResult->pullInfo, timeoutSec, startTimeSec, uidMap, pullerMgr));
+    if (result != nullptr) {
+        result->setCollectUids(readConfigResult->collect_uids);
+    }
+    return result;
 }
 
 unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
@@ -168,9 +176,13 @@ unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
 
     StatsdStats::getInstance().noteSubscriptionStarted(id, readConfigResult->pushedMatchers.size(),
                                                        readConfigResult->pullInfo.size());
-    return make_unique<ShellSubscriberClient>(
+    auto result = unique_ptr<ShellSubscriberClient>(new ShellSubscriberClient(
             id, /*out=*/-1, callback, readConfigResult->pushedMatchers, readConfigResult->pullInfo,
-            /*timeoutSec=*/-1, startTimeSec, uidMap, pullerMgr);
+            /*timeoutSec=*/-1, startTimeSec, uidMap, pullerMgr));
+    if (result != nullptr) {
+        result->setCollectUids(readConfigResult->collect_uids);
+    }
+    return result;
 }
 
 bool ShellSubscriberClient::writeEventToProtoIfMatched(const LogEvent& event,
@@ -195,6 +207,13 @@ bool ShellSubscriberClient::writeEventToProtoIfMatched(const LogEvent& event,
 
     // Update byte size of cached data.
     mCacheSize += getSize(eventRef.getValues()) + sizeof(timestampNs);
+
+    if (mDoCollectUids) {
+        mProtoOut.write(util::FIELD_TYPE_INT32 | util::FIELD_COUNT_REPEATED |
+                                FIELD_ID_SHELL_DATA__LOGGING_UID,
+                        eventRef.GetUid());
+        mCacheSize += sizeof(int32_t);
+    }
 
     return true;
 }

@@ -13,11 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <benchmark/benchmark.h>
+
 #include <cstdlib>
 #include <ctime>
+#include <map>
+#include <unordered_map>
 #include <vector>
 
-#include "benchmark/benchmark.h"
+#include "utils.h"
 
 namespace android {
 namespace os {
@@ -54,6 +58,30 @@ void benchmarkStdFillForVector(std::vector<ContainerType>& vec, int capacity) {
     // Make sure the variable is not optimized away by compiler
     benchmark::DoNotOptimize(vec);
     benchmark::DoNotOptimize(resultInt);
+}
+
+template <typename ContainerType>
+void benchmarkUpdateKeyValueContainer(benchmark::State& state) {
+    const int kHashesCount = state.range(0);
+
+    ContainerType matcherStats;
+
+    auto hashIds = generateRandomHashIds(kHashesCount);
+    for (auto& v : hashIds) {
+        matcherStats[v] = 1;
+    }
+
+    int64_t result = 0;
+    while (state.KeepRunning()) {
+        for (auto& v : hashIds) {
+            matcherStats[v]++;
+        }
+        for (auto& v : hashIds) {
+            result += matcherStats[v];
+        }
+        benchmark::DoNotOptimize(result);
+        benchmark::ClobberMemory();
+    }
 }
 
 }  //  namespace
@@ -97,6 +125,16 @@ static void BM_VectorInt8StdFill(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_VectorInt8StdFill)->Args({5})->Args({10})->Args({20})->Args({50})->Args({100});
+
+static void BM_DictUpdateWithMap(benchmark::State& state) {
+    benchmarkUpdateKeyValueContainer<std::map<int64_t, int>>(state);
+}
+BENCHMARK(BM_DictUpdateWithMap)->Args({500})->Args({1000})->Args({2000});
+
+static void BM_DictUpdateWithUnorderedMap(benchmark::State& state) {
+    benchmarkUpdateKeyValueContainer<std::unordered_map<int64_t, int>>(state);
+}
+BENCHMARK(BM_DictUpdateWithUnorderedMap)->Args({500})->Args({1000})->Args({2000});
 
 }  //  namespace statsd
 }  //  namespace os

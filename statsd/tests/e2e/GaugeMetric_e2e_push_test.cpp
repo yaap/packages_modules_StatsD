@@ -46,7 +46,6 @@ StatsdConfig CreateStatsdConfigForPushedEvent(const GaugeMetric::SamplingType sa
     gaugeMetric->set_id(123456);
     gaugeMetric->set_what(atomMatcher.id());
     gaugeMetric->set_condition(isInBackgroundPredicate.id());
-    gaugeMetric->mutable_gauge_fields_filter()->set_include_all(false);
     gaugeMetric->set_sampling_type(sampling_type);
     auto fieldMatcher = gaugeMetric->mutable_gauge_fields_filter()->mutable_fields();
     fieldMatcher->set_field(util::APP_START_OCCURRED);
@@ -672,6 +671,373 @@ TEST_F(GaugeMetricE2ePushedTest, TestPushedGaugeMetricSamplingWithDimensionalSam
                              configAddedTimeNs + bucketSizeNs,
                              {60 * NS_PER_SEC, 120 * NS_PER_SEC, 150 * NS_PER_SEC, 180 * NS_PER_SEC,
                               210 * NS_PER_SEC, 300 * NS_PER_SEC});
+}
+
+TEST_F(GaugeMetricE2ePushedTest, TestPushedGaugeMetricSliceByStates) {
+    StatsdConfig config;
+    config.add_allowed_log_source("AID_ROOT");  // LogEvent defaults to UID of root.
+
+    auto syncStartMatcher = CreateSyncStartAtomMatcher();
+    *config.add_atom_matcher() = syncStartMatcher;
+
+    auto state = CreateScreenState();
+    *config.add_state() = state;
+
+    // Create gauge metric that slices by screen state.
+    GaugeMetric syncStateGaugeMetric =
+            createGaugeMetric("GaugeSyncState", syncStartMatcher.id(), GaugeMetric::FIRST_N_SAMPLES,
+                              nullopt, nullopt, {state.id()});
+    syncStateGaugeMetric.set_max_num_gauge_atoms_per_bucket(2);
+    *config.add_gauge_metric() = syncStateGaugeMetric;
+
+    const int64_t configAddedTimeNs = 10 * NS_PER_SEC;  // 0:10
+    const int64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000LL * 1000LL;
+
+    // Initialize StatsLogProcessor.
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+
+    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+
+    // Initialize log events.
+    std::vector<int> attributionUids1 = {123};
+    std::vector<string> attributionTags1 = {"App1"};
+
+    const int64_t gaugeEventTimeNs1 = configAddedTimeNs + 50 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs2 = configAddedTimeNs + 75 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs3 = configAddedTimeNs + 150 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs4 = configAddedTimeNs + 180 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs5 = configAddedTimeNs + 200 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs6 = configAddedTimeNs + 250 * NS_PER_SEC;
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs1,
+            android::view::DisplayStateEnum::DISPLAY_STATE_ON));  // 1:00
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs2, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 1:25
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs3, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 2:40
+    // Not logged since max gauge atoms have been reached
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs4, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 3:10
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs5,
+            android::view::DisplayStateEnum::DISPLAY_STATE_OFF));  // 3:30
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs6, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 4:20
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    // Check dump report.
+    uint64_t dumpTimeNs = configAddedTimeNs + bucketSizeNs;
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, dumpTimeNs, true, true, ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+
+    ConfigMetricsReport report = reports.reports(0);
+    ASSERT_EQ(report.metrics_size(), 1);
+    StatsLogReport metricReport = report.metrics(0);
+    EXPECT_EQ(metricReport.metric_id(), syncStateGaugeMetric.id());
+    EXPECT_TRUE(metricReport.has_gauge_metrics());
+    ASSERT_EQ(metricReport.gauge_metrics().data_size(), 2);
+
+    // For each GaugeMetricData, check StateValue info is correct
+    GaugeMetricData data = metricReport.gauge_metrics().data(0);
+
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+    ASSERT_EQ(data.bucket_info(0).atom_size(), 2);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs,
+                             {gaugeEventTimeNs2, gaugeEventTimeNs3});
+
+    data = metricReport.gauge_metrics().data(1);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+    ASSERT_EQ(data.bucket_info(0).atom_size(), 1);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {gaugeEventTimeNs6});
+}
+
+TEST_F(GaugeMetricE2ePushedTest, TestSlicedStateWithMap) {
+    StatsdConfig config;
+
+    auto syncStartMatcher = CreateSyncStartAtomMatcher();
+    *config.add_atom_matcher() = syncStartMatcher;
+
+    int64_t screenOnId = 4444;
+    int64_t screenOffId = 9876;
+    auto state = CreateScreenStateWithOnOffMap(screenOnId, screenOffId);
+    *config.add_state() = state;
+
+    // Create gauge metric that slices by screen state with on/off map.
+    GaugeMetric syncStateGaugeMetric =
+            createGaugeMetric("GaugeSyncStart", syncStartMatcher.id(), GaugeMetric::FIRST_N_SAMPLES,
+                              nullopt, nullopt, {state.id()});
+    *config.add_gauge_metric() = syncStateGaugeMetric;
+
+    const int64_t configAddedTimeNs = 10 * NS_PER_SEC;  // 0:10
+    const int64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000LL * 1000LL;
+
+    // Initialize StatsLogProcessor.
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+
+    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+
+    /*
+    |     1     2     3     4(minutes)
+    |-----------------------|-
+      x   x     x       x     (syncStartEvents)
+     -------------------------SCREEN_OFF events
+             |                (ScreenStateOffEvent = 1)
+         |                    (ScreenStateDozeEvent = 3)
+     -------------------------SCREEN_ON events
+       |                      (ScreenStateOnEvent = 2)
+                      |       (ScreenStateVrEvent = 5)
+
+    Based on the diagram above, a Sync Start Event querying for Screen State would return:
+    - Event 0: StateTracker::kStateUnknown
+    - Event 1: Off
+    - Event 2: Off
+    - Event 3: On
+    */
+
+    const int64_t gaugeEventTimeNs1 = configAddedTimeNs + 20 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs2 = configAddedTimeNs + 30 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs3 = configAddedTimeNs + 50 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs4 = configAddedTimeNs + 60 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs5 = configAddedTimeNs + 90 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs6 = configAddedTimeNs + 120 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs7 = configAddedTimeNs + 180 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs8 = configAddedTimeNs + 200 * NS_PER_SEC;
+    // Initialize log events
+    std::vector<int> attributionUids1 = {123};
+    std::vector<string> attributionTags1 = {"App1"};
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs1, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 0:30
+    // Event 0 Occurred
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs2,
+            android::view::DisplayStateEnum::DISPLAY_STATE_ON));  // 0:40
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs3,
+            android::view::DisplayStateEnum::DISPLAY_STATE_DOZE));  // 1:00
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs4, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 1:10
+    // Event 1 Occurred
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs5,
+            android::view::DisplayStateEnum::DISPLAY_STATE_OFF));  // 1:40
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs6, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 2:10
+    // Event 2 Occurred
+    events.push_back(CreateScreenStateChangedEvent(
+            gaugeEventTimeNs7,
+            android::view::DisplayStateEnum::DISPLAY_STATE_VR));  // 3:10
+    events.push_back(CreateSyncStartEvent(gaugeEventTimeNs8, attributionUids1, attributionTags1,
+                                          "sync_name"));  // 3:30
+    // Event 3 Occurred
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    // Check dump report.
+    uint64_t dumpTimeNs = configAddedTimeNs + bucketSizeNs;
+    vector<uint8_t> buffer;
+    ConfigMetricsReportList reports;
+    processor->onDumpReport(cfgKey, dumpTimeNs, false, true, ADB_DUMP, FAST, &buffer);
+    ASSERT_GT(buffer.size(), 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+
+    ConfigMetricsReport report = reports.reports(0);
+    ASSERT_EQ(report.metrics_size(), 1);
+    StatsLogReport metricReport = report.metrics(0);
+    EXPECT_EQ(metricReport.metric_id(), syncStateGaugeMetric.id());
+    EXPECT_TRUE(metricReport.has_gauge_metrics());
+    ASSERT_EQ(metricReport.gauge_metrics().data_size(), 3);
+
+    // For each GaugeMetricData, check StateValue info is correct
+    GaugeMetricData data = metricReport.gauge_metrics().data(0);
+
+    // StateTracker::kStateUnknown
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {gaugeEventTimeNs1});
+
+    // Off
+    data = metricReport.gauge_metrics().data(1);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).group_id(), screenOffId);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs,
+                             {gaugeEventTimeNs4, gaugeEventTimeNs6});
+
+    // On
+    data = metricReport.gauge_metrics().data(2);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).group_id(), screenOnId);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {gaugeEventTimeNs8});
+}
+
+TEST_F(GaugeMetricE2ePushedTest, TestSlicedStateWithPrimaryFields) {
+    StatsdConfig config;
+
+    auto appCrashMatcher = CreateSimpleAtomMatcher("APP_CRASH_OCCURRED", util::APP_CRASH_OCCURRED);
+    *config.add_atom_matcher() = appCrashMatcher;
+
+    auto state = CreateUidProcessState();
+    *config.add_state() = state;
+
+    // Create gauge metric that slices by uid process state.
+    GaugeMetric appCrashGaugeMetric =
+            createGaugeMetric("AppCrashReported", appCrashMatcher.id(),
+                              GaugeMetric::FIRST_N_SAMPLES, nullopt, nullopt, {state.id()});
+    *appCrashGaugeMetric.mutable_dimensions_in_what() =
+            CreateDimensions(util::APP_CRASH_OCCURRED, {1 /* uid */});
+    MetricStateLink* stateLink = appCrashGaugeMetric.add_state_link();
+    stateLink->set_state_atom_id(UID_PROCESS_STATE_ATOM_ID);
+    auto fieldsInWhat = stateLink->mutable_fields_in_what();
+    *fieldsInWhat = CreateDimensions(util::APP_CRASH_OCCURRED, {1 /*uid*/});
+    auto fieldsInState = stateLink->mutable_fields_in_state();
+    *fieldsInState = CreateDimensions(UID_PROCESS_STATE_ATOM_ID, {1 /*uid*/});
+    *config.add_gauge_metric() = appCrashGaugeMetric;
+
+    const int64_t configAddedTimeNs = 10 * NS_PER_SEC;  // 0:10
+    const int64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000LL * 1000LL;
+
+    // Initialize StatsLogProcessor.
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+
+    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+
+    /*
+    NOTE: "1" or "2" represents the uid associated with the state/app crash event
+    |    1    2    3
+    |--------------|-
+      1   1       2 1(AppCrashEvents)
+     ----------------PROCESS STATE events
+            2        (TopEvent = 1002)
+       1             (ImportantForegroundEvent = 1005)
+
+    Based on the diagram above, an AppCrashEvent querying for process state value would return:
+    - Event 0: StateTracker::kStateUnknown
+    - Event 1: Important Foreground
+    - Event 2: Top
+    - Event 3: Important Foreground
+    */
+
+    const int64_t gaugeEventTimeNs1 = configAddedTimeNs + 20 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs2 = configAddedTimeNs + 30 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs3 = configAddedTimeNs + 60 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs4 = configAddedTimeNs + 90 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs5 = configAddedTimeNs + 160 * NS_PER_SEC;
+    const int64_t gaugeEventTimeNs6 = configAddedTimeNs + 180 * NS_PER_SEC;
+    // Initialize log events
+    std::vector<std::unique_ptr<LogEvent>> events;
+    events.push_back(CreateAppCrashOccurredEvent(gaugeEventTimeNs1, 1 /*uid*/));  // 0:30
+    // Event 0 Occurred
+    events.push_back(CreateUidProcessStateChangedEvent(
+            gaugeEventTimeNs2, 1 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND));  // 0:40
+    events.push_back(CreateAppCrashOccurredEvent(gaugeEventTimeNs3, 1 /*uid*/));   // 1:10
+    // Event 1 Occurred
+    events.push_back(CreateUidProcessStateChangedEvent(
+            gaugeEventTimeNs4, 2 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_TOP));                  // 1:40
+    events.push_back(CreateAppCrashOccurredEvent(gaugeEventTimeNs5, 2 /*uid*/));  // 2:50
+    // Event 2 Occurred
+    events.push_back(CreateAppCrashOccurredEvent(gaugeEventTimeNs6, 1 /*uid*/));  // 3:10
+    // Event 3 Occurred
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    // Check dump report.
+    uint64_t dumpTimeNs = configAddedTimeNs + bucketSizeNs;
+    vector<uint8_t> buffer;
+    ConfigMetricsReportList reports;
+    processor->onDumpReport(cfgKey, dumpTimeNs, false, true, ADB_DUMP, FAST, &buffer);
+    ASSERT_GT(buffer.size(), 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+
+    ConfigMetricsReport report = reports.reports(0);
+    ASSERT_EQ(report.metrics_size(), 1);
+    StatsLogReport metricReport = report.metrics(0);
+    EXPECT_EQ(metricReport.metric_id(), appCrashGaugeMetric.id());
+    EXPECT_TRUE(metricReport.has_gauge_metrics());
+    ASSERT_EQ(metricReport.gauge_metrics().data_size(), 3);
+
+    // For each GaugeMetricData, check StateValue info is correct
+    GaugeMetricData data = metricReport.gauge_metrics().data(0);
+
+    // StateTracker::kStateUnknown
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), UID_PROCESS_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    ValidateUidDimension(data.dimensions_in_what(), util::APP_CRASH_OCCURRED, 1 /* uid */);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {gaugeEventTimeNs1});
+
+    // Important Foreground
+    data = metricReport.gauge_metrics().data(1);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), UID_PROCESS_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::app::PROCESS_STATE_IMPORTANT_FOREGROUND);
+    ValidateUidDimension(data.dimensions_in_what(), util::APP_CRASH_OCCURRED, 1 /* uid */);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs,
+                             {gaugeEventTimeNs3, gaugeEventTimeNs6});
+
+    // Top
+    data = metricReport.gauge_metrics().data(2);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), UID_PROCESS_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::app::PROCESS_STATE_TOP);
+    ValidateUidDimension(data.dimensions_in_what(), util::APP_CRASH_OCCURRED, 2 /* uid */);
+    ValidateGaugeBucketTimes(data.bucket_info(0), configAddedTimeNs,
+                             configAddedTimeNs + bucketSizeNs, {gaugeEventTimeNs5});
 }
 
 #else

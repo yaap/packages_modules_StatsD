@@ -347,7 +347,7 @@ private:
         // only decorate last position for depths with repeated fields (depth 1)
         if (depth > 0 && last[1]) f.decorateLastPos(1);
 
-        Value v = Value(value);
+        Value v(value);
         mValues.push_back(FieldValue(f, v));
     }
 

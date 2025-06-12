@@ -21,6 +21,7 @@
 
 #include "frameworks/proto_logging/stats/atoms.pb.h"
 #include "frameworks/proto_logging/stats/attribution_node.pb.h"
+#include "packages/modules/StatsD/statsd/src/guardrail/stats_log_enums.pb.h"
 #include "packages/modules/StatsD/statsd/src/shell/shell_data.pb.h"
 #include "packages/modules/StatsD/statsd/src/stats_log.pb.h"
 
@@ -234,11 +235,43 @@ TYPE_PRINTER(Atom,
 
 EQ_MATCHER(ShellData,
         REPEATED_PROPERTY_MATCHER(ShellData, atom, EqAtom),
-        REPEATED_PROPERTY_EQ(ShellData, elapsed_timestamp_nanos)
+        REPEATED_PROPERTY_EQ(ShellData, elapsed_timestamp_nanos),
+        REPEATED_PROPERTY_EQ(ShellData, logging_uid)
 );
 TYPE_PRINTER(ShellData,
         REPEATED_PROPERTY_PRINT(atom)
         REPEATED_PROPERTY_PRINT(elapsed_timestamp_nanos)
+        REPEATED_PROPERTY_PRINT(logging_uid)
+);
+
+using CounterStats = StatsdStatsReport_CounterStats;
+
+EQ_MATCHER(CounterStats,
+        PROPERTY_EQ(CounterStats, counter_type),
+        PROPERTY_EQ(CounterStats, count)
+);
+TYPE_PRINTER(CounterStats,
+        PROPERTY_PRINT(counter_type)
+        PROPERTY_PRINT(count)
+);
+
+using AtomStats = StatsdStatsReport_AtomStats;
+
+EQ_MATCHER(AtomStats,
+        PROPERTY_EQ(AtomStats, tag),
+        PROPERTY_EQ(AtomStats, count),
+        PROPERTY_EQ(AtomStats, error_count),
+        PROPERTY_EQ(AtomStats, dropped_count),
+        PROPERTY_EQ(AtomStats, skip_count),
+        PROPERTY_EQ(AtomStats, peak_rate)
+);
+TYPE_PRINTER(AtomStats,
+        PROPERTY_PRINT(tag)
+        PROPERTY_PRINT(count)
+        PROPERTY_PRINT(error_count)
+        PROPERTY_PRINT(dropped_count)
+        PROPERTY_PRINT(skip_count)
+        PROPERTY_PRINT(peak_rate)
 );
 
 // clang-format on

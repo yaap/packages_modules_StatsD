@@ -17,6 +17,8 @@
 #include <android/binder_manager.h>
 #include <stats_provider.h>
 
+#include "utils.h"
+
 using aidl::android::os::IStatsd;
 
 StatsProvider::StatsProvider(StatsProviderBinderDiedCallback callback)
@@ -31,7 +33,7 @@ std::shared_ptr<IStatsd> StatsProvider::getStatsService() {
     std::lock_guard<std::mutex> lock(mMutex);
     if (!mStatsd) {
         // Fetch statsd
-        ::ndk::SpAIBinder binder(AServiceManager_getService("stats"));
+        ::ndk::SpAIBinder binder(getStatsdBinder());
         mStatsd = IStatsd::fromBinder(binder);
         if (mStatsd) {
             AIBinder_linkToDeath(binder.get(), mDeathRecipient.get(), this);

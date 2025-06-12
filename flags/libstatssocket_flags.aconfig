@@ -1,0 +1,10 @@
+package: "com.android.os.statsd.flags"
+container: "com.android.os.statsd"
+
+flag {
+  name: "logging_rate_limit_enabled"
+  namespace: "statsd"
+  description: "This flag controls logging rate limit in listatssocket"
+  bug: "375682465"
+  is_fixed_read_only: true
+}

@@ -111,6 +111,7 @@ cc_defaults {
         "src/shell/shell_config.proto",
         "src/shell/ShellSubscriber.cpp",
         "src/shell/ShellSubscriberClient.cpp",
+        "src/socket/BaseStatsSocketListener.cpp",
         "src/socket/StatsSocketListener.cpp",
         "src/state/StateManager.cpp",
         "src/state/StateTracker.cpp",
@@ -119,6 +120,7 @@ cc_defaults {
         "src/statscompanion_util.cpp",
         "src/statsd_config.proto",
         "src/statsd_metadata.proto",
+        "src/guardrail/LoggingRate.cpp",
         "src/guardrail/stats_log_enums.proto",
         "src/StatsLogProcessor.cpp",
         "src/StatsService.cpp",
@@ -150,6 +152,7 @@ cc_defaults {
         "statsd-aidl-ndk",
         "statsd_flags_c_lib",
         "libsqlite_static_noicu",
+        "libaconfig_storage_read_api_cc",
     ],
     shared_libs: [
         "libbinder_ndk",
@@ -229,10 +232,7 @@ cc_library_static {
     generated_sources: ["statslog_statsd.cpp"],
     generated_headers: ["statslog_statsd.h"],
     export_generated_headers: ["statslog_statsd.h"],
-    apex_available: [
-        "com.android.os.statsd",
-        "test_com.android.os.statsd",
-    ],
+    apex_available: ["com.android.os.statsd"],
     min_sdk_version: "30",
     shared_libs: [
         "libstatssocket",
@@ -300,6 +300,7 @@ cc_defaults {
         "-Wno-unused-variable",
     ],
     static_libs: [
+        "libflagtest",
         "libgmock",
         "libstatslog_statsdtest",
     ],
@@ -503,19 +504,22 @@ cc_benchmark {
         "benchmark/hello_world_benchmark.cpp",
         "benchmark/log_event_benchmark.cpp",
         "benchmark/log_event_filter_benchmark.cpp",
+        "benchmark/loss_info_container_benchmark.cpp",
         "benchmark/main.cpp",
         "benchmark/on_log_event_benchmark.cpp",
         "benchmark/stats_write_benchmark.cpp",
-        "benchmark/loss_info_container_benchmark.cpp",
         "benchmark/string_transform_benchmark.cpp",
-        "benchmark/value_metric_benchmark.cpp",
         "benchmark/tex_metric_benchmark.cpp",
+        "benchmark/utils.cpp",
+        "benchmark/value_metric_benchmark.cpp",
     ],
 
     cflags: [
         // Bug: http://b/29823425 Disable -Wvarargs for Clang update to r271374
         "-Wno-varargs",
     ],
+
+    test_config: "benchmark/AndroidTest.xml",
 
     static_libs: [
         "libgtest",

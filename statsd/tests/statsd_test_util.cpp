@@ -537,12 +537,15 @@ FieldMatcher CreateAttributionUidAndOtherDimensions(const int atomId,
 }
 
 EventMetric createEventMetric(const string& name, const int64_t what,
-                              const optional<int64_t>& condition) {
+                              const optional<int64_t>& condition, const vector<int64_t>& states) {
     EventMetric metric;
     metric.set_id(StringToId(name));
     metric.set_what(what);
     if (condition) {
         metric.set_condition(condition.value());
+    }
+    for (const int64_t state : states) {
+        metric.add_slice_by_state(state);
     }
     return metric;
 }
@@ -581,7 +584,8 @@ DurationMetric createDurationMetric(const string& name, const int64_t what,
 GaugeMetric createGaugeMetric(const string& name, const int64_t what,
                               const GaugeMetric::SamplingType samplingType,
                               const optional<int64_t>& condition,
-                              const optional<int64_t>& triggerEvent) {
+                              const optional<int64_t>& triggerEvent,
+                              const vector<int64_t>& states) {
     GaugeMetric metric;
     metric.set_id(StringToId(name));
     metric.set_what(what);
@@ -593,7 +597,9 @@ GaugeMetric createGaugeMetric(const string& name, const int64_t what,
     if (triggerEvent) {
         metric.set_trigger_event(triggerEvent.value());
     }
-    metric.mutable_gauge_fields_filter()->set_include_all(true);
+    for (const int64_t state : states) {
+        metric.add_slice_by_state(state);
+    }
     return metric;
 }
 
@@ -2151,6 +2157,17 @@ void backfillAggregatedAtomsInEventMetric(StatsLogReport::EventMetricDataWrapper
             data.set_elapsed_timestamp_nanos(atomInfo->elapsed_timestamp_nanos(j));
             metricData.push_back(data);
         }
+        for (int j = 0; j < atomInfo->state_info_size(); j++) {
+            for (auto timestampNs : atomInfo->state_info(j).elapsed_timestamp_nanos()) {
+                EventMetricData data;
+                *(data.mutable_atom()) = atomInfo->atom();
+                for (auto state : atomInfo->state_info(j).slice_by_state()) {
+                    *(data.add_slice_by_state()) = state;
+                }
+                data.set_elapsed_timestamp_nanos(timestampNs);
+                metricData.push_back(data);
+            }
+        }
     }
 
     if (metricData.size() == 0) {
@@ -2228,6 +2245,32 @@ Status FakeSubsystemSleepCallback::onPullAtom(int atomTag,
         AStatsEvent_writeString(event, "subsystem_subname foo");
         AStatsEvent_writeInt64(event, /*count= */ i);
         AStatsEvent_writeInt64(event, /*time_millis= */ pullNum * pullNum * 100 + i);
+        AStatsEvent_build(event);
+        size_t size;
+        uint8_t* buffer = AStatsEvent_getBuffer(event, &size);
+
+        StatsEventParcel p;
+        // vector.assign() creates a copy, but this is inevitable unless
+        // stats_event.h/c uses a vector as opposed to a buffer.
+        p.buffer.assign(buffer, buffer + size);
+        parcels.push_back(std::move(p));
+        AStatsEvent_release(event);
+    }
+    pullNum++;
+    resultReceiver->pullFinished(atomTag, /*success=*/true, parcels);
+    return Status::ok();
+}
+
+Status FakeCpuTimeCallback::onPullAtom(int atomTag,
+                                       const shared_ptr<IPullAtomResultReceiver>& resultReceiver) {
+    // Convert stats_events into StatsEventParcels.
+    std::vector<StatsEventParcel> parcels;
+    for (int i = 1; i < 3; i++) {
+        AStatsEvent* event = AStatsEvent_obtain();
+        AStatsEvent_setAtomId(event, atomTag);
+        AStatsEvent_writeInt32(event, /*uid=*/i);
+        AStatsEvent_writeInt64(event, /*user_time_micros= */ pullNum * pullNum * 100 + i);
+        AStatsEvent_writeInt64(event, /*sys_time_micros= */ pullNum * pullNum * 100 * i);
         AStatsEvent_build(event);
         size_t size;
         uint8_t* buffer = AStatsEvent_getBuffer(event, &size);

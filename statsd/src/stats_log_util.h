@@ -130,6 +130,8 @@ void mapIsolatedUidsToHostUidInLogEvent(const sp<UidMap>& uidMap, LogEvent& even
 
 std::string toHexString(const string& bytes);
 
+std::vector<Matcher> translateFieldsFilter(const FieldFilter& fieldFilter);
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

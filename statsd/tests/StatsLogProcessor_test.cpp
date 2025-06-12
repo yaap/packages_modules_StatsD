@@ -2149,8 +2149,7 @@ TEST(StatsLogProcessorTest, TestDataCorruptedEnum) {
     StatsdConfig config = MakeConfig(true);
     sp<StatsLogProcessor> processor = CreateStatsLogProcessor(1, 1, config, cfgKey);
 
-    StatsdStats::getInstance().noteEventQueueOverflow(/*oldestEventTimestampNs=*/0, /*atomId=*/100,
-                                                      /*isSkipped=*/false);
+    StatsdStats::getInstance().noteEventQueueOverflow(/*oldestEventTimestampNs=*/0, /*atomId=*/100);
     StatsdStats::getInstance().noteLogLost(/*wallClockTimeSec=*/0, /*count=*/1, /*lastError=*/0,
                                            /*lastTag=*/0, /*uid=*/0, /*pid=*/0);
     vector<uint8_t> bytes;

@@ -605,8 +605,9 @@ void MetricsManager::onLogEvent(const LogEvent& event) {
         // This should not happen if metric config is defined for certain atom id
         const int64_t firstMatcherId =
                 mAllAtomMatchingTrackers[*matchersIt->second.begin()]->getId();
-        ALOGW("Atom %d is mistakenly skipped - there is a matcher %lld for it", tagId,
-              (long long)firstMatcherId);
+        ALOGW("Atom %d is mistakenly skipped - there is a matcher %lld for it (ts %lld)", tagId,
+              (long long)firstMatcherId, (long long)event.GetElapsedTimestampNs());
+        StatsdStats::getInstance().noteIllegalState(COUNTER_TYPE_ERROR_ATOM_FILTER_SKIPPED);
         return;
     }
 
@@ -906,6 +907,7 @@ void MetricsManager::loadMetadata(const metadata::StatsMetadata& metadata,
         const auto& it = mMetricProducerMap.find(metricId);
         if (it == mMetricProducerMap.end()) {
             ALOGE("No metricProducer found for metricId %lld", (long long)metricId);
+            continue;
         }
         mAllMetricProducers[it->second]->loadMetricMetadataFromProto(metricMetadata);
     }

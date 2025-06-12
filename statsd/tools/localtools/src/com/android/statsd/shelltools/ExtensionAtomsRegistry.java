@@ -44,6 +44,7 @@ import com.android.os.locale.LocaleAtoms;
 import com.android.os.location.LocationAtoms;
 import com.android.os.location.LocationExtensionAtoms;
 import com.android.os.media.MediaDrmAtoms;
+import com.android.os.memory.ZramExtensionAtoms;
 import com.android.os.memorysafety.MemorysafetyExtensionAtoms;
 import com.android.os.permissioncontroller.PermissioncontrollerExtensionAtoms;
 import com.android.os.providers.mediaprovider.MediaProviderAtoms;
@@ -154,5 +155,6 @@ public class ExtensionAtomsRegistry {
         UprobestatsExtensionAtoms.registerAllExtensions(extensionRegistry);
         AccessibilityExtensionAtoms.registerAllExtensions(extensionRegistry);
         BroadcastsExtensionAtoms.registerAllExtensions(extensionRegistry);
+        ZramExtensionAtoms.registerAllExtensions(extensionRegistry);
     }
 }

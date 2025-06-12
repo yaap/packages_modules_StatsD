@@ -53,7 +53,6 @@ StatsdConfig CreateStatsdConfig(const GaugeMetric::SamplingType sampling_type,
         gaugeMetric->set_condition(screenIsOffPredicate.id());
     }
     gaugeMetric->set_sampling_type(sampling_type);
-    gaugeMetric->mutable_gauge_fields_filter()->set_include_all(true);
     *gaugeMetric->mutable_dimensions_in_what() =
             CreateDimensions(ATOM_TAG, {1 /* subsystem name */});
     gaugeMetric->set_bucket(FIVE_MINUTES);
@@ -1370,6 +1369,573 @@ TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithCondition) {
              (int64_t)340 * NS_PER_SEC});
 }
 
+TEST(GaugeMetricE2ePulledTest, TestSliceByStates) {
+    StatsdConfig config =
+            CreateStatsdConfig(GaugeMetric::RANDOM_ONE_SAMPLE, /*useCondition=*/false);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+
+    auto state = CreateScreenState();
+    *config.add_state() = state;
+    gaugeMetric->add_slice_by_state(state.id());
+
+    int64_t baseTimeNs = getElapsedRealtimeNs();
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    processor->mPullerManager->ForceClearPullerCache();
+
+    // When creating the config, the gauge metric producer should register the alarm at the
+    // end of the current bucket.
+    ASSERT_EQ((size_t)1, processor->mPullerManager->mReceivers.size());
+    EXPECT_EQ(bucketSizeNs,
+              processor->mPullerManager->mReceivers.begin()->second.front().intervalNs);
+    int64_t& nextPullTimeNs =
+            processor->mPullerManager->mReceivers.begin()->second.front().nextPullTimeNs;
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First Bucket
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 55,
+                                                   android::view::DISPLAY_STATE_OFF));
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 100,
+                                                   android::view::DISPLAY_STATE_ON));
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 150,
+                                                   android::view::DISPLAY_STATE_OFF));
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    // Pulling alarm arrives on time and reset the sequential pulling alarm.
+    processor->informPullAlarmFired(nextPullTimeNs + 1);
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + (2 * bucketSizeNs) + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+    ASSERT_EQ(reports.reports(0).metrics_size(), 1);
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    EXPECT_EQ((int)gaugeMetrics.data_size(), 4);
+
+    // Data 0, StateTracker::kStateUnknown, subsystem_name_1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(data.dimensions_in_what().field(), ATOM_TAG);
+    ASSERT_EQ(data.dimensions_in_what().value_tuple().dimensions_value_size(), 1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).field(),
+              1 /* subsystem name field */);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs)});
+
+    // Data 1, DISPLAY_STATE_OFF, subsystem_name_1
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+    // Second Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 1)});
+
+    // Data 2, StateTracker::kStateUnknown, subsystem_name_2
+    data = gaugeMetrics.data(2);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_2");
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs)});
+
+    // Data 3, DISPLAY_STATE_OFF, subsystem_name_2
+    data = gaugeMetrics.data(3);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_2");
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+    // Second Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 1)});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithTriggerAndCondition) {
+    StatsdConfig config = CreateStatsdConfig(GaugeMetric::FIRST_N_SAMPLES, /*useCondition=*/false);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+
+    *config.add_atom_matcher() = CreateBatteryStateNoneMatcher();
+    *config.add_atom_matcher() = CreateBatteryStateUsbMatcher();
+    auto deviceUnpluggedPredicate = CreateDeviceUnpluggedPredicate();
+    *config.add_predicate() = deviceUnpluggedPredicate;
+    gaugeMetric->set_condition(deviceUnpluggedPredicate.id());
+
+    auto triggerEventMatcher = CreateBatterySaverModeStartAtomMatcher();
+    *config.add_atom_matcher() = triggerEventMatcher;
+    gaugeMetric->set_trigger_event(triggerEventMatcher.id());
+
+    auto state = CreateScreenState();
+    *config.add_state() = state;
+    gaugeMetric->add_slice_by_state(state.id());
+
+    int64_t baseTimeNs = getElapsedRealtimeNs();
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    processor->mPullerManager->ForceClearPullerCache();
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First Bucket
+    // Condition True
+    events.push_back(CreateBatteryStateChangedEvent(configAddedTimeNs + 10,
+                                                    BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE));
+    // State Changed - No Pull
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 50,
+                                                   android::view::DISPLAY_STATE_OFF));
+    // Trigger Event - Pull
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 100));
+    // Condition False
+    events.push_back(CreateBatteryStateChangedEvent(configAddedTimeNs + 150,
+                                                    BatteryPluggedStateEnum::BATTERY_PLUGGED_USB));
+    // State Changed - No Pull
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 200,
+                                                   android::view::DISPLAY_STATE_ON));
+    // Trigger Event - No Pull
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 250));
+    // Condition True
+    events.push_back(CreateBatteryStateChangedEvent(configAddedTimeNs + 300,
+                                                    BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE));
+
+    // Second Bucket
+    // Trigger Event - Pull
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + bucketSizeNs + 50));
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + (2 * bucketSizeNs) + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+    ASSERT_EQ(reports.reports(0).metrics_size(), 1);
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    EXPECT_EQ((int)gaugeMetrics.data_size(), 4);
+    // Data Size is 4: 2 states (DISPLAY_STATE_ON, DISPLAY_STATE_OFF) and 2 dim_in_what
+    // (subsystem_name_1, subsystem_name_2). The latter 2 entries are the same as the first 2 but
+    // for subsystem_name_2
+
+    // Data 0, DISPLAY_STATE_OFF, subsystem_name_1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(data.dimensions_in_what().field(), ATOM_TAG);
+    ASSERT_EQ(data.dimensions_in_what().value_tuple().dimensions_value_size(), 1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).field(),
+              1 /* subsystem name field */);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    ASSERT_EQ(data.slice_by_state_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).atom_id(), SCREEN_STATE_ATOM_ID);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_OFF);
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + 100)});
+
+    // Data 1, DISPLAY_STATE_ON, subsystem_name_1
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 50)});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithMapAndTrigger) {
+    StatsdConfig config = CreateStatsdConfig(GaugeMetric::FIRST_N_SAMPLES, /*useCondition=*/false);
+    auto gaugeMetric = config.mutable_gauge_metric(0);
+
+    auto triggerEventMatcher = CreateBatterySaverModeStartAtomMatcher();
+    *config.add_atom_matcher() = triggerEventMatcher;
+    gaugeMetric->set_trigger_event(triggerEventMatcher.id());
+
+    int64_t screenOnId = 4444;
+    int64_t screenOffId = 9876;
+    auto state = CreateScreenStateWithOnOffMap(screenOnId, screenOffId);
+    *config.add_state() = state;
+    gaugeMetric->add_slice_by_state(state.id());
+
+    int64_t baseTimeNs = getElapsedRealtimeNs();
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    processor->mPullerManager->ForceClearPullerCache();
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First Bucket
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 50));
+
+    events.push_back(CreateScreenStateChangedEvent(configAddedTimeNs + 100,
+                                                   android::view::DISPLAY_STATE_ON));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 110));
+
+    events.push_back(CreateScreenStateChangedEvent(
+            configAddedTimeNs + 150, android::view::DisplayStateEnum::DISPLAY_STATE_DOZE));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 160));
+
+    events.push_back(CreateScreenStateChangedEvent(
+            configAddedTimeNs + 200, android::view::DisplayStateEnum::DISPLAY_STATE_OFF));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 210));
+
+    // Second Bucket
+    events.push_back(
+            CreateScreenStateChangedEvent(configAddedTimeNs + bucketSizeNs + 10,
+                                          android::view::DisplayStateEnum::DISPLAY_STATE_VR));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + bucketSizeNs + 50));
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + (2 * bucketSizeNs) + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+    ASSERT_EQ(reports.reports(0).metrics_size(), 1);
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    EXPECT_EQ((int)gaugeMetrics.data_size(), 6);
+    // Data Size is 6: 3 states (kStateUnknown, screenOn, screenOff) and 2 dim_in_what
+    // (subsystem_name_1, subsystem_name_2). The latter 3 are same as the first 3 but for
+    // subsystem_name_2
+
+    // Data 0, StateTracker::kStateUnknown, subsystem_name_1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    // First Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + 50)});
+
+    // Data 1, State Group Screen On, subsystem_name_1
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 2);
+    EXPECT_EQ(data.slice_by_state(0).group_id(), screenOnId);
+    // First Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + 110)});
+    // Second Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(1),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 50)});
+
+    // Data 2, State Group Screen Off, subsystem_name_1
+    data = gaugeMetrics.data(2);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_str(),
+              "subsystem_name_1");
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).group_id(), screenOffId);
+    // First Bucket
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0),
+            /*startTimeNs=*/configAddedTimeNs,
+            /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+            /*eventTimesNs=*/
+            {(int64_t)(configAddedTimeNs + 160), (int64_t)(configAddedTimeNs + 210)});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithPrimaryFieldsAndTrigger) {
+    StatsdConfig config;
+    config.add_default_pull_packages("AID_ROOT");  // Fake puller is registered with root.
+    auto cpuTimePerUidMatcher =
+            CreateSimpleAtomMatcher("CpuTimePerUidMatcher", util::CPU_TIME_PER_UID);
+    *config.add_atom_matcher() = cpuTimePerUidMatcher;
+
+    auto gaugeMetric = config.add_gauge_metric();
+    gaugeMetric->set_id(metricId);
+    gaugeMetric->set_what(cpuTimePerUidMatcher.id());
+    gaugeMetric->set_sampling_type(GaugeMetric::FIRST_N_SAMPLES);
+    *gaugeMetric->mutable_dimensions_in_what() =
+            CreateDimensions(util::CPU_TIME_PER_UID, {1 /* uid */});
+    gaugeMetric->set_bucket(FIVE_MINUTES);
+    gaugeMetric->set_max_pull_delay_sec(INT_MAX);
+    config.set_hash_strings_in_metric_report(false);
+    gaugeMetric->set_split_bucket_for_app_upgrade(true);
+    gaugeMetric->set_min_bucket_size_nanos(1000);
+
+    auto triggerEventMatcher = CreateBatterySaverModeStartAtomMatcher();
+    *config.add_atom_matcher() = triggerEventMatcher;
+    gaugeMetric->set_trigger_event(triggerEventMatcher.id());
+
+    auto state = CreateUidProcessState();
+    *config.add_state() = state;
+    gaugeMetric->add_slice_by_state(state.id());
+
+    MetricStateLink* stateLink = gaugeMetric->add_state_link();
+    stateLink->set_state_atom_id(UID_PROCESS_STATE_ATOM_ID);
+    auto fieldsInWhat = stateLink->mutable_fields_in_what();
+    *fieldsInWhat = CreateDimensions(util::CPU_TIME_PER_UID, {1 /* uid */});
+    auto fieldsInState = stateLink->mutable_fields_in_state();
+    *fieldsInState = CreateDimensions(UID_PROCESS_STATE_ATOM_ID, {1 /* uid */});
+
+    int64_t baseTimeNs = getElapsedRealtimeNs();
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor = CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
+                                             SharedRefBase::make<FakeCpuTimeCallback>(),
+                                             util::CPU_TIME_PER_UID);
+    processor->mPullerManager->ForceClearPullerCache();
+
+    std::vector<std::unique_ptr<LogEvent>> events;
+    // First Bucket
+    events.push_back(CreateUidProcessStateChangedEvent(
+            configAddedTimeNs + 55, 1 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 80));
+
+    events.push_back(CreateUidProcessStateChangedEvent(
+            configAddedTimeNs + 100, 2 /*uid*/, android::app::ProcessStateEnum::PROCESS_STATE_TOP));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 150));
+
+    events.push_back(CreateUidProcessStateChangedEvent(
+            configAddedTimeNs + 200, 1 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_BACKGROUND));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + 250));
+
+    // Second Bucket
+    events.push_back(CreateUidProcessStateChangedEvent(
+            configAddedTimeNs + bucketSizeNs + 50, 1 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + bucketSizeNs + 150));
+
+    events.push_back(CreateUidProcessStateChangedEvent(
+            configAddedTimeNs + bucketSizeNs + 200, 2 /*uid*/,
+            android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + bucketSizeNs + 220));
+
+    events.push_back(
+            CreateUidProcessStateChangedEvent(configAddedTimeNs + bucketSizeNs + 250, 2 /*uid*/,
+                                              android::app::ProcessStateEnum::PROCESS_STATE_TOP));
+    events.push_back(CreateBatterySaverOnEvent(configAddedTimeNs + bucketSizeNs + 300));
+
+    // Send log events to StatsLogProcessor.
+    for (auto& event : events) {
+        processor->OnLogEvent(event.get());
+    }
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + (2 * bucketSizeNs) + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(reports.reports_size(), 1);
+    ASSERT_EQ(reports.reports(0).metrics_size(), 1);
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    EXPECT_EQ((int)gaugeMetrics.data_size(), 5);
+
+    // Data 0, PROCESS_STATE_IMPORTANT_FOREGROUND, UID 1
+    auto data = gaugeMetrics.data(0);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_int(),
+              1 /* uid value */);
+    ASSERT_EQ(data.bucket_info_size(), 2);
+    EXPECT_EQ(data.slice_by_state(0).value(),
+              android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND);
+    // First Bucket
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0),
+            /*startTimeNs=*/configAddedTimeNs,
+            /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+            /*eventTimesNs=*/
+            {(int64_t)(configAddedTimeNs + 80), (int64_t)(configAddedTimeNs + 150)});
+    // Second Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(1),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 150),
+                              (int64_t)(configAddedTimeNs + bucketSizeNs + 220),
+                              (int64_t)(configAddedTimeNs + bucketSizeNs + 300)});
+
+    // Data 1, PROCESS_STATE_IMPORTANT_BACKGROUND, UID 1
+    data = gaugeMetrics.data(1);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_int(),
+              1 /* uid value */);
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(),
+              android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_BACKGROUND);
+    // First Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + 250)});
+
+    // Data 2, StateTracker::kStateUnknown, UID 2
+    data = gaugeMetrics.data(2);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_int(),
+              2 /* uid value */);
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(), -1 /* StateTracker::kStateUnknown */);
+    // First Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs,
+                             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + 80)});
+
+    // Data 3, PROCESS_STATE_TOP, UID 2
+    data = gaugeMetrics.data(3);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_int(),
+              2 /* uid value */);
+    ASSERT_EQ(data.bucket_info_size(), 2);
+    EXPECT_EQ(data.slice_by_state(0).value(), android::app::ProcessStateEnum::PROCESS_STATE_TOP);
+    // First Bucket
+    ValidateGaugeBucketTimes(
+            data.bucket_info(0),
+            /*startTimeNs=*/configAddedTimeNs,
+            /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
+            /*eventTimesNs=*/
+            {(int64_t)(configAddedTimeNs + 150), (int64_t)(configAddedTimeNs + 250)});
+    // Second Bucket
+    ValidateGaugeBucketTimes(data.bucket_info(1),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 150),
+                              (int64_t)(configAddedTimeNs + bucketSizeNs + 300)});
+
+    // Data 4, PROCESS_STATE_IMPORTANT_FOREGROUND, UID 2
+    data = gaugeMetrics.data(4);
+    EXPECT_EQ(data.dimensions_in_what().value_tuple().dimensions_value(0).value_int(),
+              2 /* uid value */);
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    EXPECT_EQ(data.slice_by_state(0).value(),
+              android::app::ProcessStateEnum::PROCESS_STATE_IMPORTANT_FOREGROUND);
+    // Second Bucket Only
+    ValidateGaugeBucketTimes(data.bucket_info(0),
+                             /*startTimeNs=*/configAddedTimeNs + bucketSizeNs,
+                             /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
+                             /*eventTimesNs=*/
+                             {(int64_t)(configAddedTimeNs + bucketSizeNs + 220)});
+}
+
+TEST(GaugeMetricE2ePulledTest, TestFieldFilterOmit) {
+    auto config = CreateStatsdConfig(GaugeMetric::RANDOM_ONE_SAMPLE, /* useCondition */ false);
+    config.mutable_gauge_metric(0)->mutable_gauge_fields_filter()->mutable_omit_fields()->set_field(
+            ATOM_TAG);
+    config.mutable_gauge_metric(0)
+            ->mutable_gauge_fields_filter()
+            ->mutable_omit_fields()
+            ->add_child()
+            ->set_field(2);  // subsystem_subname
+    int64_t baseTimeNs = getElapsedRealtimeNs();
+    int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
+    int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
+
+    ConfigKey cfgKey;
+    auto processor =
+            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
+                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 2 + 1);
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + 3 * bucketSizeNs + 10, false, true,
+                            ADB_DUMP, FAST, &buffer);
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStringInReport(&reports);
+    backfillStartEndTimestamp(&reports);
+    backfillAggregatedAtoms(&reports);
+    ASSERT_EQ(1, reports.reports_size());
+    ASSERT_EQ(1, reports.reports(0).metrics_size());
+    StatsLogReport::GaugeMetricDataWrapper gaugeMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).gauge_metrics(), &gaugeMetrics);
+    ASSERT_GT((int)gaugeMetrics.data_size(), 1);
+
+    auto data = gaugeMetrics.data(0);
+    ASSERT_EQ(data.bucket_info_size(), 1);
+    ASSERT_EQ(data.bucket_info(0).atom_size(), 1);
+    EXPECT_FALSE(data.bucket_info(0).atom(0).subsystem_sleep_state().has_subname());
+    EXPECT_EQ(data.bucket_info(0).atom(0).subsystem_sleep_state().count(), 1);
+    EXPECT_GT(data.bucket_info(0).atom(0).subsystem_sleep_state().time_millis(), 0);
+}
 #else
 GTEST_LOG_(INFO) << "This test does nothing.\n";
 #endif

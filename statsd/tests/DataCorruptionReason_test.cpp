@@ -328,11 +328,8 @@ protected:
 };
 
 TEST_F(DataCorruptionQueueOverflowTest, TestNotifyOnlyInterestedMetrics) {
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
-                                                      /*isSkipped*/ false);
-
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kUnusedAtomId,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kUnusedAtomId);
 
     EXPECT_TRUE(mMetricsManager->mQueueOverflowAtomsStats.empty());
     ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
@@ -352,8 +349,7 @@ TEST_F(DataCorruptionQueueOverflowTest, TestNotifyOnlyInterestedMetrics) {
 }
 
 TEST_F(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss) {
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId);
 
     ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
@@ -370,8 +366,7 @@ TEST_F(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss) 
     }
 
     // new dropped event as result event metric should be notified about loss events
-    StatsdStats::getInstance().noteEventQueueOverflow(kReportRequestTimeNs + 100, kInterestAtomId,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kReportRequestTimeNs + 100, kInterestAtomId);
 
     metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs + 200);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
@@ -389,8 +384,7 @@ TEST_F(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss) 
 }
 
 TEST_F(DataCorruptionQueueOverflowTest, TestDoNotNotifyInterestedMetricsIfNoUpdate) {
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId);
 
     ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
@@ -419,10 +413,8 @@ TEST_F(DataCorruptionQueueOverflowTest, TestDoNotNotifyInterestedMetricsIfNoUpda
 TEST_F(DataCorruptionQueueOverflowTest, TestDoNotNotifyNewInterestedMetricsIfNoUpdate) {
     const int32_t kNewInterestAtomId = kUnusedAtomId + 1;
 
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId,
-                                                      /*isSkipped*/ false);
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kNewInterestAtomId,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kInterestAtomId);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, kNewInterestAtomId);
 
     ConfigMetricsReport metricsReport = getMetricsReport(*mMetricsManager, kReportRequestTimeNs);
     ASSERT_EQ(metricsReport.metrics_size(), 2);
@@ -550,8 +542,7 @@ TEST(DataCorruptionTest, TestStateLostFromQueueOverflowPropagation) {
     EXPECT_EQ(1, StateManager::getInstance().getStateTrackersCount());
     EXPECT_EQ(1, StateManager::getInstance().getListenersCount(SCREEN_STATE_ATOM_ID));
 
-    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, SCREEN_STATE_ATOM_ID,
-                                                      /*isSkipped*/ false);
+    StatsdStats::getInstance().noteEventQueueOverflow(kAtomsLogTimeNs, SCREEN_STATE_ATOM_ID);
 
     vector<uint8_t> buffer;
     ConfigMetricsReportList reports;

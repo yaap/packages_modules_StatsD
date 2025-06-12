@@ -58,6 +58,10 @@ const int FIELD_ID_AGGREGATED_ATOM = 4;
 // for AggregatedAtomInfo
 const int FIELD_ID_ATOM = 1;
 const int FIELD_ID_ATOM_TIMESTAMPS = 2;
+const int FIELD_ID_AGGREGATED_STATE = 3;
+// for AggregatedStateInfo
+const int FIELD_ID_SLICE_BY_STATE = 1;
+const int FIELD_ID_STATE_TIMESTAMPS = 2;
 
 EventMetricProducer::EventMetricProducer(
         const ConfigKey& key, const EventMetric& metric, const int conditionIndex,
@@ -71,7 +75,9 @@ EventMetricProducer::EventMetricProducer(
     : MetricProducer(metric.id(), key, startTimeNs, conditionIndex, initialConditionCache, wizard,
                      protoHash, eventActivationMap, eventDeactivationMap, slicedStateAtoms,
                      stateGroupMap, /*splitBucketForAppUpgrade=*/nullopt, configMetadataProvider),
-      mSamplingPercentage(metric.sampling_percentage()) {
+      mSamplingPercentage(metric.sampling_percentage()),
+      mFieldMatchers(translateFieldsFilter(metric.fields_filter())),
+      mOmitFields(metric.fields_filter().has_omit_fields()) {
     if (metric.links().size() > 0) {
         for (const auto& link : metric.links()) {
             Metric2Condition mc;
@@ -81,6 +87,14 @@ EventMetricProducer::EventMetricProducer(
             mMetric2ConditionLinks.push_back(mc);
         }
         mConditionSliced = true;
+    }
+
+    for (const auto& stateLink : metric.state_link()) {
+        Metric2State ms;
+        ms.stateAtomId = stateLink.state_atom_id();
+        translateFieldMatcher(stateLink.fields_in_what(), &ms.metricFields);
+        translateFieldMatcher(stateLink.fields_in_state(), &ms.stateFields);
+        mMetric2StateLinks.push_back(ms);
     }
 
     VLOG("metric %lld created. bucket size %lld start_time: %lld", (long long)mMetricId,
@@ -138,6 +152,7 @@ optional<InvalidConfigReason> EventMetricProducer::onConfigUpdatedLocked(
 
 void EventMetricProducer::dropDataLocked(const int64_t dropTimeNs) {
     mAggregatedAtoms.clear();
+    mAggAtomsAndStates.clear();
     resetDataCorruptionFlagsLocked();
     mTotalDataSize = 0;
     StatsdStats::getInstance().noteBucketDropped(mMetricId);
@@ -166,6 +181,7 @@ std::unique_ptr<std::vector<uint8_t>> serializeProtoLocked(ProtoOutputStream& pr
 
 void EventMetricProducer::clearPastBucketsLocked(const int64_t dumpTimeNs) {
     mAggregatedAtoms.clear();
+    mAggAtomsAndStates.clear();
     resetDataCorruptionFlagsLocked();
     mTotalDataSize = 0;
 }
@@ -181,11 +197,13 @@ void EventMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
     writeDataCorruptedReasons(*protoOutput, FIELD_ID_DATA_CORRUPTED_REASON,
                               mDataCorruptedDueToQueueOverflow != DataCorruptionSeverity::kNone,
                               mDataCorruptedDueToSocketLoss != DataCorruptionSeverity::kNone);
-    if (!mAggregatedAtoms.empty()) {
+    if (!mAggregatedAtoms.empty() || !mAggAtomsAndStates.empty()) {
         protoOutput->write(FIELD_TYPE_INT64 | FIELD_ID_ESTIMATED_MEMORY_BYTES,
                            (long long)byteSizeLocked());
     }
     uint64_t protoToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_EVENT_METRICS);
+    // mAggregatedAtoms used for non-state metrics.
+    // mAggregatedAtoms will be empty if states are used.
     for (const auto& [atomDimensionKey, elapsedTimestampsNs] : mAggregatedAtoms) {
         uint64_t wrapperToken =
                 protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_DATA);
@@ -205,10 +223,44 @@ void EventMetricProducer::onDumpReportLocked(const int64_t dumpTimeNs,
         protoOutput->end(aggregatedToken);
         protoOutput->end(wrapperToken);
     }
+    // mAggAtomsAndStates used for state metrics.
+    // mAggAtomsAndStates will only have entries if states are used.
+    for (const auto& [atomDimensionKey, aggregatedStates] : mAggAtomsAndStates) {
+        uint64_t wrapperToken =
+                protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_DATA);
+
+        uint64_t aggregatedToken =
+                protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_AGGREGATED_ATOM);
+
+        uint64_t atomToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_ID_ATOM);
+        writeFieldValueTreeToStream(atomDimensionKey.getAtomTag(),
+                                    atomDimensionKey.getAtomFieldValues().getValues(), mUidFields,
+                                    usedUids, protoOutput);
+        protoOutput->end(atomToken);
+        for (const auto& [stateKey, elapsedTimestampsNs] : aggregatedStates) {
+            uint64_t stateInfoToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
+                                                         FIELD_ID_AGGREGATED_STATE);
+            for (auto state : stateKey.getValues()) {
+                uint64_t stateToken = protoOutput->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
+                                                         FIELD_ID_SLICE_BY_STATE);
+                writeStateToProto(state, protoOutput);
+                protoOutput->end(stateToken);
+            }
+            for (int64_t timestampNs : elapsedTimestampsNs) {
+                protoOutput->write(
+                        FIELD_TYPE_INT64 | FIELD_COUNT_REPEATED | FIELD_ID_STATE_TIMESTAMPS,
+                        (long long)timestampNs);
+            }
+            protoOutput->end(stateInfoToken);
+        }
+        protoOutput->end(aggregatedToken);
+        protoOutput->end(wrapperToken);
+    }
 
     protoOutput->end(protoToken);
     if (erase_data) {
         mAggregatedAtoms.clear();
+        mAggAtomsAndStates.clear();
         resetDataCorruptionFlagsLocked();
         mTotalDataSize = 0;
     }
@@ -218,6 +270,14 @@ void EventMetricProducer::onConditionChangedLocked(const bool conditionMet,
                                                    const int64_t eventTime) {
     VLOG("Metric %lld onConditionChanged", (long long)mMetricId);
     mCondition = conditionMet ? ConditionState::kTrue : ConditionState::kFalse;
+}
+
+void EventMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
+                                         const HashableDimensionKey& primaryKey,
+                                         const FieldValue& oldState, const FieldValue& newState) {
+    VLOG("EventMetric %lld onStateChanged time %lld, State%d, key %s, %d -> %d",
+         (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
+         oldState.mValue.int_value, newState.mValue.int_value);
 }
 
 void EventMetricProducer::onMatchedLogEventInternalLocked(
@@ -233,10 +293,11 @@ void EventMetricProducer::onMatchedLogEventInternalLocked(
     }
 
     const int64_t elapsedTimeNs = truncateTimestampIfNecessary(event);
-    AtomDimensionKey key(event.GetTagId(), HashableDimensionKey(event.getValues()));
-
-    std::vector<int64_t>& aggregatedTimestampsNs = mAggregatedAtoms[key];
-    if (aggregatedTimestampsNs.empty()) {
+    AtomDimensionKey key(
+            event.GetTagId(),
+            HashableDimensionKey(filterValues(mFieldMatchers, event.getValues(), mOmitFields)));
+    // TODO(b/383929503): Optimize slice_by_state performance
+    if (!mAggregatedAtoms.contains(key) && !mAggAtomsAndStates.contains(key)) {
         sp<ConfigMetadataProvider> provider = getConfigMetadataProvider();
         if (provider != nullptr && provider->useV2SoftMemoryCalculation()) {
             mTotalDataSize += getFieldValuesSizeV2(key.getAtomFieldValues().getValues());
@@ -244,8 +305,21 @@ void EventMetricProducer::onMatchedLogEventInternalLocked(
             mTotalDataSize += getSize(key.getAtomFieldValues().getValues());
         }
     }
-    aggregatedTimestampsNs.push_back(elapsedTimeNs);
-    mTotalDataSize += sizeof(int64_t);  // Add the size of the event timestamp
+
+    if (eventKey.getStateValuesKey().getValues().empty()) {  // Metric does not use slice_by_state
+        mAggregatedAtoms[key].push_back(elapsedTimeNs);
+        mTotalDataSize += sizeof(int64_t);  // Add the size of the event timestamp
+    } else {                                // Metric does use slice_by_state
+        std::unordered_map<HashableDimensionKey, std::vector<int64_t>>& aggStateTimestampsNs =
+                mAggAtomsAndStates[key];
+        std::vector<int64_t>& aggTimestampsNs = aggStateTimestampsNs[eventKey.getStateValuesKey()];
+        if (aggTimestampsNs.empty()) {
+            // Add the size of the states
+            mTotalDataSize += getFieldValuesSizeV2(eventKey.getStateValuesKey().getValues());
+        }
+        aggTimestampsNs.push_back(elapsedTimeNs);
+        mTotalDataSize += sizeof(int64_t);  // Add the size of the event timestamp
+    }
 }
 
 size_t EventMetricProducer::byteSizeLocked() const {

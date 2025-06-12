@@ -18,28 +18,31 @@ package android.cts.statsd.metadata;
 
 import static com.google.common.truth.Truth.assertThat;
 
-import android.cts.statsd.atom.BufferDebug;
 import android.cts.statsd.metric.MetricsUtils;
 import android.cts.statsdatom.lib.ConfigUtils;
 import android.cts.statsdatom.lib.DeviceUtils;
 import android.cts.statsdatom.lib.ReportUtils;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.host.HostFlagsValueProvider;
 
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
 import com.android.os.AtomsProto.Atom;
 import com.android.os.StatsLog.StatsdStatsReport;
 import com.android.tradefed.build.IBuildInfo;
-import com.android.tradefed.device.CollectingByteOutputReceiver;
-import com.android.tradefed.device.DeviceNotAvailableException;
 import com.android.tradefed.log.LogUtil;
-import com.android.tradefed.testtype.DeviceTestCase;
 import com.android.tradefed.testtype.IBuildReceiver;
+import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.android.tradefed.util.RunUtil;
 
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.MessageLite;
-import com.google.protobuf.Parser;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
 
-public class MetadataTestCase extends DeviceTestCase implements IBuildReceiver {
+public class MetadataTestCase extends BaseHostJUnit4Test implements IBuildReceiver {
+    @Rule
+    public final CheckFlagsRule mCheckFlagsRule =
+            HostFlagsValueProvider.createCheckFlagsRule(this::getDevice);
+
     public static final String DUMP_METADATA_CMD = "cmd stats print-stats";
 
     protected IBuildInfo mCtsBuild;
@@ -62,9 +65,8 @@ public class MetadataTestCase extends DeviceTestCase implements IBuildReceiver {
         return builder;
     }
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @Before
+    public void setUp() throws Exception {
         assertThat(mCtsBuild).isNotNull();
         ConfigUtils.removeConfig(getDevice());
         ReportUtils.clearReports(getDevice());
@@ -73,12 +75,11 @@ public class MetadataTestCase extends DeviceTestCase implements IBuildReceiver {
         RunUtil.getDefault().sleep(1000);
     }
 
-    @Override
-    protected void tearDown() throws Exception {
+    @After
+    public void tearDown() throws Exception {
         ConfigUtils.removeConfig(getDevice());
         ReportUtils.clearReports(getDevice());
         DeviceUtils.uninstallTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE);
-        super.tearDown();
     }
 
     @Override

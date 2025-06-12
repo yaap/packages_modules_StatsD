@@ -51,6 +51,10 @@ public:
         return METRIC_TYPE_EVENT;
     }
 
+    void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
+                        const HashableDimensionKey& primaryKey, const FieldValue& oldState,
+                        const FieldValue& newState) override;
+
 private:
     void onMatchedLogEventInternalLocked(
             const size_t matcherIndex, const MetricDimensionKey& eventKey,
@@ -96,9 +100,22 @@ private:
                                                        LostAtomType atomType) const override;
 
     // Maps the field/value pairs of an atom to a list of timestamps used to deduplicate atoms.
+    // Used when event metric DOES NOT use slice_by_state. Empty otherwise.
     std::unordered_map<AtomDimensionKey, std::vector<int64_t>> mAggregatedAtoms;
 
+    // Maps the field/value pairs of an atom to the field/value pairs of a state to a list of
+    // timestamps used to deduplicate atoms and states.
+    // Used when event metric DOES use slice_by_state. Empty otherwise.
+    std::unordered_map<AtomDimensionKey,
+                       std::unordered_map<HashableDimensionKey, std::vector<int64_t>>>
+            mAggAtomsAndStates;
+
     const int mSamplingPercentage;
+
+    // Allowlist/denylist of fields to report. Empty means all are reported.
+    // If mOmitFields == true, this is a denylist, otherwise it's an allowlist.
+    const std::vector<Matcher> mFieldMatchers;
+    const bool mOmitFields;
 };
 
 }  // namespace statsd

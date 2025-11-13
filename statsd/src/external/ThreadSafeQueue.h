@@ -40,6 +40,11 @@ public:
         mQueue.push(value);
     }
 
+    int32_t size() const {
+        std::unique_lock<std::mutex> lock(mMutex);
+        return mQueue.size();
+    }
+
     bool empty() const {
         std::unique_lock<std::mutex> lock(mMutex);
         return mQueue.empty();

@@ -16,14 +16,8 @@
 
 #pragma once
 
-#include <stddef.h>
 #include <stdint.h>
-#include <sys/cdefs.h>
-
-__BEGIN_DECLS
 
 int64_t get_elapsed_realtime_ns();
 
 int toSocketLossError(int errno_code);
-
-__END_DECLS

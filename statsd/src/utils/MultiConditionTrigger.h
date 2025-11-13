@@ -17,6 +17,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <functional>
 #include <mutex>
 #include <set>
 #include <thread>

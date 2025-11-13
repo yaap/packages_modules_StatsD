@@ -53,6 +53,17 @@ uint8_t getNumAnnotations(uint8_t typeInfo) {
 
 }  // namespace
 
+std::string InstallTrainInfo::experimentIdsToString(const std::vector<int64_t>& experimentIds) {
+    std::string str;
+    for (size_t i = 0; i < experimentIds.size(); i++) {
+        str += std::to_string(experimentIds[i]);
+        if (i != experimentIds.size() - 1) {
+            str += ",";
+        }
+    }
+    return str;
+}
+
 LogEvent::LogEvent(int32_t uid, int32_t pid)
     : mLogdTimestampNs(getWallClockNs()), mLogUid(uid), mLogPid(pid) {
 }
@@ -621,9 +632,9 @@ int64_t LogEvent::GetLong(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == LONG) {
-                return value.mValue.long_value;
+                return value.mValue.get<int64_t>();
             } else if (value.mValue.getType() == INT) {
-                return value.mValue.int_value;
+                return value.mValue.get<int32_t>();
             } else {
                 *err = BAD_TYPE;
                 return 0;
@@ -643,7 +654,7 @@ int LogEvent::GetInt(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == INT) {
-                return value.mValue.int_value;
+                return value.mValue.get<int32_t>();
             } else {
                 *err = BAD_TYPE;
                 return 0;
@@ -663,7 +674,7 @@ const char* LogEvent::GetString(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == STRING) {
-                return value.mValue.str_value.c_str();
+                return value.mValue.get<string>().c_str();
             } else {
                 *err = BAD_TYPE;
                 return 0;
@@ -683,9 +694,9 @@ bool LogEvent::GetBool(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == INT) {
-                return value.mValue.int_value != 0;
+                return value.mValue.get<int32_t>() != 0;
             } else if (value.mValue.getType() == LONG) {
-                return value.mValue.long_value != 0;
+                return value.mValue.get<int64_t>() != 0;
             } else {
                 *err = BAD_TYPE;
                 return false;
@@ -705,7 +716,7 @@ float LogEvent::GetFloat(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == FLOAT) {
-                return value.mValue.float_value;
+                return value.mValue.get<float>();
             } else {
                 *err = BAD_TYPE;
                 return 0.0;
@@ -725,7 +736,7 @@ std::vector<uint8_t> LogEvent::GetStorage(size_t key, status_t* err) const {
     for (const auto& value : mValues) {
         if (value.mField.getField() == field) {
             if (value.mValue.getType() == STORAGE) {
-                return value.mValue.storage_value;
+                return value.mValue.get<vector<uint8_t>>();
             } else {
                 *err = BAD_TYPE;
                 return vector<uint8_t>();

@@ -239,25 +239,25 @@ TEST_P(LogEventTest, TestPrimitiveParsing) {
     Field expectedField = getField(100, {1, 1, 1}, 0, {false, false, false});
     EXPECT_EQ(expectedField, int32Item.mField);
     EXPECT_EQ(Type::INT, int32Item.mValue.getType());
-    EXPECT_EQ(10, int32Item.mValue.int_value);
+    EXPECT_EQ(10, int32Item.mValue.get<int32_t>());
 
     const FieldValue& int64Item = values[1];
     expectedField = getField(100, {2, 1, 1}, 0, {false, false, false});
     EXPECT_EQ(expectedField, int64Item.mField);
     EXPECT_EQ(Type::LONG, int64Item.mValue.getType());
-    EXPECT_EQ(0x123456789, int64Item.mValue.long_value);
+    EXPECT_EQ(0x123456789, int64Item.mValue.get<int64_t>());
 
     const FieldValue& floatItem = values[2];
     expectedField = getField(100, {3, 1, 1}, 0, {false, false, false});
     EXPECT_EQ(expectedField, floatItem.mField);
     EXPECT_EQ(Type::FLOAT, floatItem.mValue.getType());
-    EXPECT_EQ(2.0, floatItem.mValue.float_value);
+    EXPECT_EQ(2.0, floatItem.mValue.get<float>());
 
     const FieldValue& boolItem = values[3];
     expectedField = getField(100, {4, 1, 1}, 0, {true, false, false});
     EXPECT_EQ(expectedField, boolItem.mField);
     EXPECT_EQ(Type::INT, boolItem.mValue.getType());  // FieldValue does not support boolean type
-    EXPECT_EQ(1, boolItem.mValue.int_value);
+    EXPECT_EQ(1, boolItem.mValue.get<int32_t>());
 
     AStatsEvent_release(event);
 }
@@ -340,14 +340,14 @@ TEST_P(LogEventTest, TestStringAndByteArrayParsing) {
     Field expectedField = getField(100, {1, 1, 1}, 0, {false, false, false});
     EXPECT_EQ(expectedField, stringItem.mField);
     EXPECT_EQ(Type::STRING, stringItem.mValue.getType());
-    EXPECT_EQ(str, stringItem.mValue.str_value);
+    EXPECT_EQ(str, stringItem.mValue.get<string>());
 
     const FieldValue& storageItem = values[1];
     expectedField = getField(100, {2, 1, 1}, 0, {true, false, false});
     EXPECT_EQ(expectedField, storageItem.mField);
     EXPECT_EQ(Type::STORAGE, storageItem.mValue.getType());
     vector<uint8_t> expectedValue = {'t', 'e', 's', 't'};
-    EXPECT_EQ(expectedValue, storageItem.mValue.storage_value);
+    EXPECT_EQ(expectedValue, storageItem.mValue.get<vector<uint8_t>>());
 
     AStatsEvent_release(event);
 }
@@ -377,7 +377,7 @@ TEST_P(LogEventTest, TestEmptyString) {
     Field expectedField = getField(100, {1, 1, 1}, 0, {true, false, false});
     EXPECT_EQ(expectedField, item.mField);
     EXPECT_EQ(Type::STRING, item.mValue.getType());
-    EXPECT_EQ(empty, item.mValue.str_value);
+    EXPECT_EQ(empty, item.mValue.get<string>());
 
     AStatsEvent_release(event);
 }
@@ -407,7 +407,7 @@ TEST_P(LogEventTest, TestByteArrayWithNullCharacter) {
     EXPECT_EQ(expectedField, item.mField);
     EXPECT_EQ(Type::STORAGE, item.mValue.getType());
     vector<uint8_t> expectedValue(message, message + 5);
-    EXPECT_EQ(expectedValue, item.mValue.storage_value);
+    EXPECT_EQ(expectedValue, item.mValue.get<vector<uint8_t>>());
 
     AStatsEvent_release(event);
 }
@@ -467,26 +467,26 @@ TEST_P(LogEventTest, TestAttributionChain) {
     Field expectedField = getField(100, {1, 1, 1}, 2, {true, false, false});
     EXPECT_EQ(expectedField, uid1Item.mField);
     EXPECT_EQ(Type::INT, uid1Item.mValue.getType());
-    EXPECT_EQ(1001, uid1Item.mValue.int_value);
+    EXPECT_EQ(1001, uid1Item.mValue.get<int32_t>());
 
     const FieldValue& tag1Item = values[1];
     expectedField = getField(100, {1, 1, 2}, 2, {true, false, true});
     EXPECT_EQ(expectedField, tag1Item.mField);
     EXPECT_EQ(Type::STRING, tag1Item.mValue.getType());
-    EXPECT_EQ(tag1, tag1Item.mValue.str_value);
+    EXPECT_EQ(tag1, tag1Item.mValue.get<string>());
 
     // Check second attribution nodes
     const FieldValue& uid2Item = values[2];
     expectedField = getField(100, {1, 2, 1}, 2, {true, true, false});
     EXPECT_EQ(expectedField, uid2Item.mField);
     EXPECT_EQ(Type::INT, uid2Item.mValue.getType());
-    EXPECT_EQ(1002, uid2Item.mValue.int_value);
+    EXPECT_EQ(1002, uid2Item.mValue.get<int32_t>());
 
     const FieldValue& tag2Item = values[3];
     expectedField = getField(100, {1, 2, 2}, 2, {true, true, true});
     EXPECT_EQ(expectedField, tag2Item.mField);
     EXPECT_EQ(Type::STRING, tag2Item.mValue.getType());
-    EXPECT_EQ(tag2, tag2Item.mValue.str_value);
+    EXPECT_EQ(tag2, tag2Item.mValue.get<string>());
 
     AStatsEvent_release(event);
 }
@@ -573,63 +573,63 @@ TEST_P_GUARDED(LogEventTest, TestArrayParsing, __ANDROID_API_T__) {
     Field expectedField = getField(100, {1, 1, 1}, 1, {false, false, false});
     EXPECT_EQ(expectedField, int32ArrayItem1.mField);
     EXPECT_EQ(Type::INT, int32ArrayItem1.mValue.getType());
-    EXPECT_EQ(3, int32ArrayItem1.mValue.int_value);
+    EXPECT_EQ(3, int32ArrayItem1.mValue.get<int32_t>());
 
     const FieldValue& int32ArrayItem2 = values[1];
     expectedField = getField(100, {1, 2, 1}, 1, {false, true, false});
     EXPECT_EQ(expectedField, int32ArrayItem2.mField);
     EXPECT_EQ(Type::INT, int32ArrayItem2.mValue.getType());
-    EXPECT_EQ(6, int32ArrayItem2.mValue.int_value);
+    EXPECT_EQ(6, int32ArrayItem2.mValue.get<int32_t>());
 
     const FieldValue& int64ArrayItem1 = values[2];
     expectedField = getField(100, {2, 1, 1}, 1, {false, false, false});
     EXPECT_EQ(expectedField, int64ArrayItem1.mField);
     EXPECT_EQ(Type::LONG, int64ArrayItem1.mValue.getType());
-    EXPECT_EQ(1000L, int64ArrayItem1.mValue.long_value);
+    EXPECT_EQ(1000L, int64ArrayItem1.mValue.get<int64_t>());
 
     const FieldValue& int64ArrayItem2 = values[3];
     expectedField = getField(100, {2, 2, 1}, 1, {false, true, false});
     EXPECT_EQ(expectedField, int64ArrayItem2.mField);
     EXPECT_EQ(Type::LONG, int64ArrayItem2.mValue.getType());
-    EXPECT_EQ(1002L, int64ArrayItem2.mValue.long_value);
+    EXPECT_EQ(1002L, int64ArrayItem2.mValue.get<int64_t>());
 
     const FieldValue& floatArrayItem1 = values[4];
     expectedField = getField(100, {3, 1, 1}, 1, {false, false, false});
     EXPECT_EQ(expectedField, floatArrayItem1.mField);
     EXPECT_EQ(Type::FLOAT, floatArrayItem1.mValue.getType());
-    EXPECT_EQ(0.3f, floatArrayItem1.mValue.float_value);
+    EXPECT_EQ(0.3f, floatArrayItem1.mValue.get<float>());
 
     const FieldValue& floatArrayItem2 = values[5];
     expectedField = getField(100, {3, 2, 1}, 1, {false, true, false});
     EXPECT_EQ(expectedField, floatArrayItem2.mField);
     EXPECT_EQ(Type::FLOAT, floatArrayItem2.mValue.getType());
-    EXPECT_EQ(0.09f, floatArrayItem2.mValue.float_value);
+    EXPECT_EQ(0.09f, floatArrayItem2.mValue.get<float>());
 
     const FieldValue& boolArrayItem1 = values[6];
     expectedField = getField(100, {4, 1, 1}, 1, {false, false, false});
     EXPECT_EQ(expectedField, boolArrayItem1.mField);
     EXPECT_EQ(Type::INT,
               boolArrayItem1.mValue.getType());  // FieldValue does not support boolean type
-    EXPECT_EQ(false, boolArrayItem1.mValue.int_value);
+    EXPECT_EQ(false, boolArrayItem1.mValue.get<int32_t>());
 
     const FieldValue& boolArrayItem2 = values[7];
     expectedField = getField(100, {4, 2, 1}, 1, {false, true, false});
     EXPECT_EQ(expectedField, boolArrayItem2.mField);
     EXPECT_EQ(Type::INT,
               boolArrayItem2.mValue.getType());  // FieldValue does not support boolean type
-    EXPECT_EQ(true, boolArrayItem2.mValue.int_value);
+    EXPECT_EQ(true, boolArrayItem2.mValue.get<int32_t>());
 
     const FieldValue& stringArrayItem1 = values[8];
     expectedField = getField(100, {5, 1, 1}, 1, {true, false, false});
     EXPECT_EQ(expectedField, stringArrayItem1.mField);
     EXPECT_EQ(Type::STRING, stringArrayItem1.mValue.getType());
-    EXPECT_EQ("str1", stringArrayItem1.mValue.str_value);
+    EXPECT_EQ("str1", stringArrayItem1.mValue.get<string>());
 
     const FieldValue& stringArrayItem2 = values[9];
     expectedField = getField(100, {5, 2, 1}, 1, {true, true, false});
     EXPECT_EQ(expectedField, stringArrayItem2.mField);
     EXPECT_EQ(Type::STRING, stringArrayItem2.mValue.getType());
-    EXPECT_EQ("str2", stringArrayItem2.mValue.str_value);
+    EXPECT_EQ("str2", stringArrayItem2.mValue.get<string>());
 }
 
 TEST_P_GUARDED(LogEventTest, TestEmptyStringArray, __ANDROID_API_T__) {
@@ -660,13 +660,13 @@ TEST_P_GUARDED(LogEventTest, TestEmptyStringArray, __ANDROID_API_T__) {
     Field expectedField = getField(100, {1, 1, 1}, 1, {true, false, false});
     EXPECT_EQ(expectedField, stringArrayItem1.mField);
     EXPECT_EQ(Type::STRING, stringArrayItem1.mValue.getType());
-    EXPECT_EQ(empty, stringArrayItem1.mValue.str_value);
+    EXPECT_EQ(empty, stringArrayItem1.mValue.get<string>());
 
     const FieldValue& stringArrayItem2 = values[1];
     expectedField = getField(100, {1, 2, 1}, 1, {true, true, false});
     EXPECT_EQ(expectedField, stringArrayItem2.mField);
     EXPECT_EQ(Type::STRING, stringArrayItem2.mValue.getType());
-    EXPECT_EQ(empty, stringArrayItem2.mValue.str_value);
+    EXPECT_EQ(empty, stringArrayItem2.mValue.get<string>());
 
     AStatsEvent_release(event);
 }

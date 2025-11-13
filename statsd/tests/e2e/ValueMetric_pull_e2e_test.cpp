@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <android/binder_interface_utils.h>
+#include <com_android_os_statsd_flags.h>
+#include <flag_macros.h>
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -29,15 +31,19 @@ namespace statsd {
 
 #ifdef __ANDROID__
 
+using aidl::android::util::StatsEventParcel;
+using namespace std;
+using namespace testing;
+
 namespace {
 
 const int64_t metricId = 123456;
 
-StatsdConfig CreateStatsdConfig(bool useCondition = true) {
+StatsdConfig CreateStatsdConfig(int whatAtomId, int valueField, int dimField,
+                                bool useCondition = true) {
     StatsdConfig config;
     config.add_default_pull_packages("AID_ROOT");  // Fake puller is registered with root.
-    auto pulledAtomMatcher =
-            CreateSimpleAtomMatcher("TestMatcher", util::SUBSYSTEM_SLEEP_STATE);
+    auto pulledAtomMatcher = CreateSimpleAtomMatcher("TestMatcher", whatAtomId);
     *config.add_atom_matcher() = pulledAtomMatcher;
     *config.add_atom_matcher() = CreateScreenTurnedOnAtomMatcher();
     *config.add_atom_matcher() = CreateScreenTurnedOffAtomMatcher();
@@ -51,10 +57,8 @@ StatsdConfig CreateStatsdConfig(bool useCondition = true) {
     if (useCondition) {
         valueMetric->set_condition(screenIsOffPredicate.id());
     }
-    *valueMetric->mutable_value_field() =
-            CreateDimensions(util::SUBSYSTEM_SLEEP_STATE, {4 /* time sleeping field */});
-    *valueMetric->mutable_dimensions_in_what() =
-            CreateDimensions(util::SUBSYSTEM_SLEEP_STATE, {1 /* subsystem name */});
+    *valueMetric->mutable_value_field() = CreateDimensions(whatAtomId, {valueField});
+    *valueMetric->mutable_dimensions_in_what() = CreateDimensions(whatAtomId, {dimField});
     valueMetric->set_bucket(FIVE_MINUTES);
     valueMetric->set_use_absolute_value_on_reset(true);
     valueMetric->set_skip_zero_diff_output(false);
@@ -201,7 +205,8 @@ TEST(ValueMetricE2eTest, TestInitialConditionChanges) {
 }
 
 TEST(ValueMetricE2eTest, TestPulledEvents) {
-    auto config = CreateStatsdConfig();
+    auto config = CreateStatsdConfig(util::SUBSYSTEM_SLEEP_STATE, /* valueField = */ 4,
+                                     /* dimField = */ 1);
     int64_t baseTimeNs = getElapsedRealtimeNs();
     int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.value_metric(0).bucket()) * 1000000;
@@ -322,7 +327,8 @@ TEST(ValueMetricE2eTest, TestPulledEvents) {
 }
 
 TEST(ValueMetricE2eTest, TestPulledEvents_LateAlarm) {
-    auto config = CreateStatsdConfig();
+    auto config = CreateStatsdConfig(util::SUBSYSTEM_SLEEP_STATE, /* valueField = */ 4,
+                                     /* dimField = */ 1);
     int64_t baseTimeNs = getElapsedRealtimeNs();
     // 10 mins == 2 bucket durations.
     int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
@@ -449,7 +455,8 @@ TEST(ValueMetricE2eTest, TestPulledEvents_LateAlarm) {
 }
 
 TEST(ValueMetricE2eTest, TestPulledEvents_WithActivation) {
-    auto config = CreateStatsdConfig(false);
+    auto config = CreateStatsdConfig(util::SUBSYSTEM_SLEEP_STATE, /* valueField = */ 4,
+                                     /* dimField = */ 1, /* useCondition = */ false);
     int64_t baseTimeNs = getElapsedRealtimeNs();
     int64_t configAddedTimeNs = 10 * 60 * NS_PER_SEC + baseTimeNs;
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.value_metric(0).bucket()) * 1000000;
@@ -913,6 +920,386 @@ TEST(ValueMetricE2eTest, TestInitWithDefaultAggType) {
     ASSERT_EQ(1u, valueProducer->mAggregationTypes.size());
     EXPECT_EQ(ValueMetric::SUM, valueProducer->mAggregationTypes[0]);
     EXPECT_FALSE(valueProducer->mIncludeSampleSize);
+}
+
+namespace {
+
+class Puller : public BnPullAtomCallback {
+public:
+    int curPullNum = 0;
+
+    struct AtomData {
+        int uid;
+        int value;
+    };
+
+    // Mapping of uid to values for each pull
+    const vector<vector<AtomData>> data;
+
+    Puller(const vector<vector<AtomData>>& data) : data(data) {
+    }
+
+    Status onPullAtom(int atomId,
+                      const shared_ptr<IPullAtomResultReceiver>& resultReceiver) override {
+        vector<StatsEventParcel> parcels;
+        for (const auto [uid, value] : data[curPullNum]) {
+            AStatsEvent* statsEvent = AStatsEvent_obtain();
+            AStatsEvent_setAtomId(statsEvent, atomId);
+            AStatsEvent_writeInt32(statsEvent, uid);
+            AStatsEvent_writeInt32(statsEvent, value);
+            AStatsEvent_build(statsEvent);
+            size_t size;
+            uint8_t* buffer = AStatsEvent_getBuffer(statsEvent, &size);
+
+            StatsEventParcel p;
+            // vector.assign() creates a copy, but this is inevitable unless
+            // stats_event.h/c uses a vector as opposed to a buffer.
+            p.buffer.assign(buffer, buffer + size);
+            parcels.push_back(std::move(p));
+            AStatsEvent_release(statsEvent);
+        }
+        curPullNum++;
+        resultReceiver->pullFinished(atomId, /*success=*/true, parcels);
+        return Status::ok();
+    }
+};
+
+}  // anonymous namespace
+
+TEST_WITH_FLAGS(ValueMetricE2eTest, TestDimensionGuardrailHitWithZeroDefaultBase,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                    keep_value_metric_max_dimension_bucket))) {
+    const int atomId = 10'000;
+    StatsdConfig config = CreateStatsdConfig(atomId, /* valueField = */ 2, /* dimField = */ 1,
+                                             /* useCondition = */ false);
+    config.mutable_value_metric(0)->set_use_zero_default_base(true);
+
+    // Initialize StatsLogProcessor.
+    const uint64_t baseTimeNs = getElapsedRealtimeNs();
+    const uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(FIVE_MINUTES) * 1000000LL;
+    const uint64_t bucketStartTimeNs = baseTimeNs + bucketSizeNs;
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+    vector<vector<Puller::AtomData>> atomData;
+    atomData.push_back({});
+    const int maxDims = 800;
+
+    // Initial pull to set the base.
+    for (int dim = 1; dim <= maxDims + 2; dim++) {
+        atomData[0].push_back({dim, 1});
+    }
+
+    // End of first bucket.
+    atomData.push_back({});
+    for (int dim = maxDims - 1; dim <= maxDims + 2; dim++) {
+        atomData[1].push_back({dim, 3});
+    }
+
+    // End of second bucket.
+    atomData.push_back({});
+    for (int dim = 1; dim <= maxDims + 2; dim++) {
+        atomData[2].push_back({dim, 6});
+    }
+
+    shared_ptr<Puller> puller = SharedRefBase::make<Puller>(atomData);
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(baseTimeNs, bucketStartTimeNs, config, cfgKey, puller, atomId);
+
+    processor->mPullerManager->ForceClearPullerCache();
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 2 + 1);
+
+    processor->mPullerManager->ForceClearPullerCache();
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 3 + 1);
+
+    optional<ConfigMetricsReportList> reports =
+            getReports(*processor, baseTimeNs + bucketSizeNs * 3 + 2, cfgKey,
+                       /* includeCurrentBucket */ false);
+
+    ASSERT_NE(reports, nullopt);
+    ASSERT_EQ(reports->reports_size(), 1);
+    ConfigMetricsReport report = reports->reports(0);
+    ASSERT_EQ(report.metrics_size(), 1);
+
+    StatsLogReport metricReport = report.metrics(0);
+    EXPECT_TRUE(metricReport.dimension_guardrail_hit());
+    ASSERT_TRUE(metricReport.has_value_metrics());
+    EXPECT_EQ(metricReport.value_metrics().skipped_size(), 0);
+    StatsLogReport::ValueMetricDataWrapper valueMetrics;
+    sortMetricDataByDimensionsValue(metricReport.value_metrics(), &valueMetrics);
+
+    ASSERT_EQ(valueMetrics.data_size(), 2);
+    {  // uid = 799
+        ValueMetricData data = valueMetrics.data(0);
+        EXPECT_EQ(atomId, data.dimensions_in_what().field());
+        ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+        EXPECT_EQ(1 /* uid field tag */,
+                  data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+        EXPECT_EQ(maxDims - 1 /* uid field value */,
+                  data.dimensions_in_what().value_tuple().dimensions_value(0).value_int());
+
+        ASSERT_EQ(data.bucket_info_size(), 2);
+        {
+            ValueBucketInfo bucket = data.bucket_info(0);
+            ASSERT_EQ(bucket.values_size(), 1);
+            EXPECT_THAT(bucket.values(0),
+                        Property(&ValueBucketInfo::Value::has_value_long, IsTrue()));
+            EXPECT_EQ(bucket.values(0).value_long(), 2);
+        }
+
+        {
+            ValueBucketInfo bucket = data.bucket_info(1);
+            ASSERT_EQ(bucket.values_size(), 1);
+            EXPECT_THAT(bucket.values(0),
+                        Property(&ValueBucketInfo::Value::has_value_long, IsTrue()));
+            EXPECT_EQ(bucket.values(0).value_long(), 3);
+        }
+    }
+
+    {  // uid = 800
+        ValueMetricData data = valueMetrics.data(1);
+        EXPECT_EQ(atomId, data.dimensions_in_what().field());
+        ASSERT_EQ(1, data.dimensions_in_what().value_tuple().dimensions_value_size());
+        EXPECT_EQ(1 /* uid field tag */,
+                  data.dimensions_in_what().value_tuple().dimensions_value(0).field());
+        EXPECT_EQ(maxDims /* uid field value */,
+                  data.dimensions_in_what().value_tuple().dimensions_value(0).value_int());
+
+        ASSERT_EQ(data.bucket_info_size(), 2);
+        {
+            ValueBucketInfo bucket = data.bucket_info(0);
+            ASSERT_EQ(bucket.values_size(), 1);
+            EXPECT_THAT(bucket.values(0),
+                        Property(&ValueBucketInfo::Value::has_value_long, IsTrue()));
+            EXPECT_EQ(bucket.values(0).value_long(), 2);
+        }
+
+        {
+            ValueBucketInfo bucket = data.bucket_info(1);
+            ASSERT_EQ(bucket.values_size(), 1);
+            EXPECT_THAT(bucket.values(0),
+                        Property(&ValueBucketInfo::Value::has_value_long, IsTrue()));
+            EXPECT_EQ(bucket.values(0).value_long(), 3);
+        }
+    }
+}
+
+TEST_WITH_FLAGS(ValueMetricE2eTest,
+                TestDimensionGuardrailHitWithZeroDefaultBaseAndConditionAndState,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                    keep_value_metric_max_dimension_bucket))) {
+    const int atomId = 10'000;
+    StatsdConfig config = CreateStatsdConfig(atomId, /* valueField = */ 2, /* dimField = */ 1,
+                                             /* useCondition = */ true);
+    *config.add_atom_matcher() = CreateBatteryStateNoneMatcher();
+    *config.add_atom_matcher() = CreateBatteryStateUsbMatcher();
+    State state;
+    state.set_id(StringToId("PluggedState"));
+    state.set_atom_id(util::PLUGGED_STATE_CHANGED);
+    *config.add_state() = state;
+    config.mutable_value_metric(0)->add_slice_by_state(state.id());
+    config.mutable_value_metric(0)->set_use_zero_default_base(true);
+
+    // Initialize StatsLogProcessor.
+    const uint64_t baseTimeNs = getElapsedRealtimeNs();
+    const uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(FIVE_MINUTES) * 1000000LL;
+    const uint64_t bucketStartTimeNs = baseTimeNs + bucketSizeNs;
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+    vector<vector<Puller::AtomData>> atomData;
+    atomData.push_back({});
+    const int numDims = 400;
+
+    // There is no initial pull to set the base because condition is false.
+    // This pull is for condition change to true. Bucket is skipped because initial condition is
+    // unknown.
+    for (int dim = 1; dim <= numDims; dim++) {
+        atomData[0].push_back({dim, 1});
+    }
+
+    // End of first bucket.
+    atomData.push_back({});
+    for (int dim = 1; dim <= numDims; dim++) {
+        atomData[1].push_back({dim, 3});
+    }
+
+    // State change. For each dim, values are calculated for old state and condition timer is
+    // started for new state. This doubles the number of keys in mCurrentSlicedBucket. Hence, there
+    // are 804 keys total, of which the first 800 are kept.
+    atomData.push_back({});
+    for (int dim = 1; dim <= numDims + 2; dim++) {
+        atomData[2].push_back({dim, 6});
+    }
+
+    // End of 2nd bucket.
+    atomData.push_back({});
+    for (int dim = 1; dim <= numDims; dim++) {
+        atomData[3].push_back({dim, 10});
+    }
+
+    // Condition change to false.
+    atomData.push_back({});
+    for (int dim = 1; dim <= numDims * 2 + 1; dim++) {
+        atomData[4].push_back({dim, 15});
+    }
+
+    // This would be end of third bucket but this pull doesn't happen since condition is false.
+    atomData.push_back({});
+    for (int dim = 1; dim <= numDims; dim++) {
+        atomData[5].push_back({dim, 21});
+    }
+
+    StateManager::getInstance().clear();
+    shared_ptr<Puller> puller = SharedRefBase::make<Puller>(atomData);
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(baseTimeNs, bucketStartTimeNs, config, cfgKey, puller, atomId);
+
+    processor->mPullerManager->ForceClearPullerCache();
+    unique_ptr<LogEvent> screenOffEvent = CreateScreenStateChangedEvent(
+            baseTimeNs + bucketSizeNs + 40, android::view::DISPLAY_STATE_OFF);
+    processor->OnLogEvent(screenOffEvent.get());
+
+    processor->mPullerManager->ForceClearPullerCache();
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 2 + 1);
+
+    processor->mPullerManager->ForceClearPullerCache();
+    unique_ptr<LogEvent> pluggedUsbEvent = CreateBatteryStateChangedEvent(
+            baseTimeNs + bucketSizeNs * 2 + 10, BatteryPluggedStateEnum::BATTERY_PLUGGED_USB);
+    processor->OnLogEvent(pluggedUsbEvent.get());
+
+    processor->mPullerManager->ForceClearPullerCache();
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 3 + 1);
+
+    processor->mPullerManager->ForceClearPullerCache();
+    unique_ptr<LogEvent> screenOnEvent = CreateScreenStateChangedEvent(
+            baseTimeNs + bucketSizeNs * 3 + 10, android::view::DISPLAY_STATE_ON);
+    processor->OnLogEvent(screenOnEvent.get());
+
+    processor->mPullerManager->ForceClearPullerCache();
+    processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 4 + 1);
+
+    optional<ConfigMetricsReportList> reports =
+            getReports(*processor, baseTimeNs + bucketSizeNs * 5 + 2, cfgKey,
+                       /* includeCurrentBucket */ false);
+
+    ASSERT_NE(reports, nullopt);
+    ASSERT_EQ(reports->reports_size(), 1);
+    ConfigMetricsReport report = reports->reports(0);
+    ASSERT_EQ(report.metrics_size(), 1);
+
+    StatsLogReport metricReport = report.metrics(0);
+    EXPECT_TRUE(metricReport.dimension_guardrail_hit());
+    ASSERT_TRUE(metricReport.has_value_metrics());
+    EXPECT_EQ(metricReport.value_metrics().skipped_size(), 1);
+    EXPECT_EQ(metricReport.value_metrics().skipped(0).drop_event(0).drop_reason(),
+              BucketDropReason::CONDITION_UNKNOWN);
+    StatsLogReport::ValueMetricDataWrapper valueMetrics;
+    sortMetricDataByDimensionsValue(metricReport.value_metrics(), &valueMetrics);
+
+    // 800 dimension + state combinations
+    EXPECT_EQ(valueMetrics.data_size(), 800);
+
+    // Verify slice_by_state atom ID
+    EXPECT_THAT(valueMetrics.data(),
+                Each(Property(
+                        &ValueMetricData::slice_by_state,
+                        ElementsAre(Property(&StateValue::atom_id, util::PLUGGED_STATE_CHANGED)))));
+
+    // Verify dimension_in_what atom ID
+    EXPECT_THAT(valueMetrics.data(), Each(Property(&ValueMetricData::dimensions_in_what,
+                                                   Property(&DimensionsValue::field, atomId))));
+
+    // Data where state = unknown
+    vector<ValueMetricData> stateUnknownData;
+    std::copy_if(valueMetrics.data().begin(), valueMetrics.data().end(),
+                 std::back_inserter(stateUnknownData), [](const ValueMetricData& data) {
+                     return data.slice_by_state_size() == 1 &&
+                            data.slice_by_state(0).value() == -1 /* kStateUnknown */;
+                 });
+    EXPECT_EQ(stateUnknownData.size(), 400);
+
+    vector<DimensionsValueTuple> valueTuples(stateUnknownData.size());
+    std::transform(
+            stateUnknownData.cbegin(), stateUnknownData.cend(), valueTuples.begin(),
+            [](const ValueMetricData& data) { return data.dimensions_in_what().value_tuple(); });
+    EXPECT_THAT(valueTuples, Each(Property(&DimensionsValueTuple::dimensions_value_size, 1)));
+
+    vector<DimensionsValue> dimensionsValues(valueTuples.size());
+    std::transform(valueTuples.cbegin(), valueTuples.cend(), dimensionsValues.begin(),
+                   [](const DimensionsValueTuple& tuple) { return tuple.dimensions_value(0); });
+    EXPECT_THAT(dimensionsValues, Each(Property(&DimensionsValue::field, 1)));
+
+    // Verify uids 1 - 400 are present in the dimensions
+    vector<testing::Matcher<DimensionsValue>> dimensionsValueMatchers(dimensionsValues.size());
+    std::generate(dimensionsValueMatchers.begin(), dimensionsValueMatchers.end(), []() {
+        static int uid = 1;
+        return Property(&DimensionsValue::value_int, uid++);
+    });
+    EXPECT_THAT(dimensionsValues, ElementsAreArray(dimensionsValueMatchers));
+
+    EXPECT_THAT(stateUnknownData, Each(Property(&ValueMetricData::bucket_info_size, 1)));
+    EXPECT_THAT(stateUnknownData, Each(Property(&ValueMetricData::bucket_info,
+                                                Each(Property(&ValueBucketInfo::values_size, 1)))));
+    vector<ValueBucketInfo::Value> values(stateUnknownData.size());
+    std::transform(stateUnknownData.cbegin(), stateUnknownData.cend(), values.begin(),
+                   [](const ValueMetricData& data) { return data.bucket_info(0).values(0); });
+    EXPECT_THAT(values, Each(Property(&ValueBucketInfo::Value::has_value_long, IsTrue())));
+
+    // Value for each dimension is 6 - 3 = 3
+    EXPECT_THAT(values, Each(Property(&ValueBucketInfo::Value::value_long, 3)));
+
+    // Data where state = plugged
+    vector<ValueMetricData> statePluggedData;
+    std::copy_if(valueMetrics.data().begin(), valueMetrics.data().end(),
+                 std::back_inserter(statePluggedData), [](const ValueMetricData& data) {
+                     return data.slice_by_state_size() == 1 &&
+                            data.slice_by_state(0).value() ==
+                                    BatteryPluggedStateEnum::BATTERY_PLUGGED_USB;
+                 });
+    EXPECT_EQ(statePluggedData.size(), 400);
+
+    valueTuples.resize(statePluggedData.size());
+    std::transform(
+            statePluggedData.cbegin(), statePluggedData.cend(), valueTuples.begin(),
+            [](const ValueMetricData& data) { return data.dimensions_in_what().value_tuple(); });
+    EXPECT_THAT(valueTuples, Each(Property(&DimensionsValueTuple::dimensions_value_size, 1)));
+
+    dimensionsValues.resize(valueTuples.size());
+    std::transform(valueTuples.cbegin(), valueTuples.cend(), dimensionsValues.begin(),
+                   [](const DimensionsValueTuple& tuple) { return tuple.dimensions_value(0); });
+    EXPECT_THAT(dimensionsValues, Each(Property(&DimensionsValue::field, 1)));
+
+    // Verify uids 1 - 400 are present in the dimensions for plugged state
+    dimensionsValueMatchers.resize(dimensionsValues.size());
+    std::generate(dimensionsValueMatchers.begin(), dimensionsValueMatchers.end(), []() {
+        static int uid = 1;
+        return Property(&DimensionsValue::value_int, uid++);
+    });
+    EXPECT_THAT(dimensionsValues, ElementsAreArray(dimensionsValueMatchers));
+
+    // Two buckets per dimension for state == plugged
+    EXPECT_THAT(statePluggedData, Each(Property(&ValueMetricData::bucket_info_size, 2)));
+    EXPECT_THAT(statePluggedData, Each(Property(&ValueMetricData::bucket_info,
+                                                Each(Property(&ValueBucketInfo::values_size, 1)))));
+    EXPECT_THAT(statePluggedData,
+                Each(Property(&ValueMetricData::bucket_info,
+                              Each(Property(&ValueBucketInfo::values,
+                                            Each(Property(&ValueBucketInfo::Value::has_value_long,
+                                                          IsTrue())))))));
+
+    // 2nd bucket values
+    // Value for each dimension is 10 - 6 = 4
+    values.resize(statePluggedData.size());
+    std::transform(statePluggedData.cbegin(), statePluggedData.cend(), values.begin(),
+                   [](const ValueMetricData& data) { return data.bucket_info(0).values(0); });
+    EXPECT_THAT(values, Each(Property(&ValueBucketInfo::Value::value_long, 4)));
+
+    // 3rd bucket values
+    // Value for each dimension is 15 - 10 = 5
+    std::transform(statePluggedData.cbegin(), statePluggedData.cend(), values.begin(),
+                   [](const ValueMetricData& data) { return data.bucket_info(1).values(0); });
+    EXPECT_THAT(values, Each(Property(&ValueBucketInfo::Value::value_long, 5)));
 }
 
 #else

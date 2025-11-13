@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "socket/BaseStatsSocketListener.h"
+#include "socket/StatsSocketListener.h"
 
 namespace android {
 namespace os {
@@ -25,7 +25,7 @@ void fuzzSocket(const uint8_t* data, size_t size) {
     std::shared_ptr<LogEventFilter> filter(new LogEventFilter());
     filter->setFilteringEnabled(false);
 
-    BaseStatsSocketListener statsSocketListener(queue, filter);
+    StatsSocketListener statsSocketListener(queue, filter);
 
     statsSocketListener.processSocketMessage((void*) data, size, 0, 0);
     statsSocketListener.processStatsEventBuffer(data, size, 0, 0, *queue, *filter);

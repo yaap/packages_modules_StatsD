@@ -330,8 +330,6 @@ protected:
     // Util function to check whether the specified dimension hits the guardrail.
     bool hitGuardRailLocked(const MetricDimensionKey& newKey) const;
 
-    bool hasReachedGuardRailLimit() const;
-
     virtual void pullAndMatchEventsLocked(const int64_t timestampNs) {
     }
 

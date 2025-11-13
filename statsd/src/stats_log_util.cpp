@@ -140,27 +140,27 @@ void writeDimensionToProtoHelper(const std::vector<FieldValue>& dims,
             switch (dim.mValue.getType()) {
                 case INT:
                     if (isUidField(dim, uidFields) || isAttributionUidField(dim)) {
-                        usedUids.insert(dim.mValue.int_value);
+                        usedUids.insert(dim.mValue.get<int32_t>());
                     }
                     protoOutput->write(FIELD_TYPE_INT32 | DIMENSIONS_VALUE_VALUE_INT,
-                                       dim.mValue.int_value);
+                                       dim.mValue.get<int32_t>());
                     break;
                 case LONG:
                     protoOutput->write(FIELD_TYPE_INT64 | DIMENSIONS_VALUE_VALUE_LONG,
-                                       (long long)dim.mValue.long_value);
+                                       (long long)dim.mValue.get<int64_t>());
                     break;
                 case FLOAT:
                     protoOutput->write(FIELD_TYPE_FLOAT | DIMENSIONS_VALUE_VALUE_FLOAT,
-                                       dim.mValue.float_value);
+                                       dim.mValue.get<float>());
                     break;
                 case STRING:
                     if (str_set == nullptr) {
                         protoOutput->write(FIELD_TYPE_STRING | DIMENSIONS_VALUE_VALUE_STR,
-                                           dim.mValue.str_value);
+                                           dim.mValue.get<string>());
                     } else {
-                        str_set->insert(dim.mValue.str_value);
+                        str_set->insert(dim.mValue.get<string>());
                         protoOutput->write(FIELD_TYPE_UINT64 | DIMENSIONS_VALUE_VALUE_STR_HASH,
-                                           (long long)Hash64(dim.mValue.str_value));
+                                           (long long)Hash64(dim.mValue.get<string>()));
                     }
                     break;
                 default:
@@ -211,27 +211,27 @@ void writeDimensionLeafToProtoHelper(const std::vector<FieldValue>& dims,
             switch (dim.mValue.getType()) {
                 case INT:
                     if (isUidField(dim, uidFields) || isAttributionUidField(dim)) {
-                        usedUids.insert(dim.mValue.int_value);
+                        usedUids.insert(dim.mValue.get<int32_t>());
                     }
                     protoOutput->write(FIELD_TYPE_INT32 | DIMENSIONS_VALUE_VALUE_INT,
-                                       dim.mValue.int_value);
+                                       dim.mValue.get<int32_t>());
                     break;
                 case LONG:
                     protoOutput->write(FIELD_TYPE_INT64 | DIMENSIONS_VALUE_VALUE_LONG,
-                                       (long long)dim.mValue.long_value);
+                                       (long long)dim.mValue.get<int64_t>());
                     break;
                 case FLOAT:
                     protoOutput->write(FIELD_TYPE_FLOAT | DIMENSIONS_VALUE_VALUE_FLOAT,
-                                       dim.mValue.float_value);
+                                       dim.mValue.get<float>());
                     break;
                 case STRING:
                     if (str_set == nullptr) {
                         protoOutput->write(FIELD_TYPE_STRING | DIMENSIONS_VALUE_VALUE_STR,
-                                           dim.mValue.str_value);
+                                           dim.mValue.get<string>());
                     } else {
-                        str_set->insert(dim.mValue.str_value);
+                        str_set->insert(dim.mValue.get<string>());
                         protoOutput->write(FIELD_TYPE_UINT64 | DIMENSIONS_VALUE_VALUE_STR_HASH,
-                                           (long long)Hash64(dim.mValue.str_value));
+                                           (long long)Hash64(dim.mValue.get<string>()));
                     }
                     break;
                 default:
@@ -382,28 +382,28 @@ void writeFieldValueTreeToStreamHelper(int tagId, const std::vector<FieldValue>&
             switch (dim.mValue.getType()) {
                 case INT:
                     if (isUidField(dim, uidFields) || isAttributionUidField(dim)) {
-                        usedUids.insert(dim.mValue.int_value);
+                        usedUids.insert(dim.mValue.get<int32_t>());
                     }
                     protoOutput->write(FIELD_TYPE_INT32 | repeatedFieldMask | fieldNum,
-                                       dim.mValue.int_value);
+                                       dim.mValue.get<int32_t>());
                     break;
                 case LONG:
                     protoOutput->write(FIELD_TYPE_INT64 | repeatedFieldMask | fieldNum,
-                                       (long long)dim.mValue.long_value);
+                                       (long long)dim.mValue.get<int64_t>());
                     break;
                 case FLOAT:
                     protoOutput->write(FIELD_TYPE_FLOAT | repeatedFieldMask | fieldNum,
-                                       dim.mValue.float_value);
+                                       dim.mValue.get<float>());
                     break;
                 case STRING: {
                     protoOutput->write(FIELD_TYPE_STRING | repeatedFieldMask | fieldNum,
-                                       dim.mValue.str_value);
+                                       dim.mValue.get<string>());
                     break;
                 }
                 case STORAGE:
                     protoOutput->write(FIELD_TYPE_MESSAGE | fieldNum,
-                                       (const char*)dim.mValue.storage_value.data(),
-                                       dim.mValue.storage_value.size());
+                                       (const char*)dim.mValue.get<vector<uint8_t>>().data(),
+                                       dim.mValue.get<vector<uint8_t>>().size());
                     break;
                 default:
                     break;
@@ -445,11 +445,11 @@ void writeStateToProto(const FieldValue& state, util::ProtoOutputStream* protoOu
     switch (state.mValue.getType()) {
         case INT:
             protoOutput->write(FIELD_TYPE_INT32 | STATE_VALUE_CONTENTS_VALUE,
-                               state.mValue.int_value);
+                               state.mValue.get<int32_t>());
             break;
         case LONG:
             protoOutput->write(FIELD_TYPE_INT64 | STATE_VALUE_CONTENTS_GROUP_ID,
-                               state.mValue.long_value);
+                               state.mValue.get<int64_t>());
             break;
         default:
             break;
@@ -587,6 +587,13 @@ void writeAtomMetricStatsToStream(const std::pair<int64_t, StatsdStats::AtomMetr
 
 void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorruptedReason,
                                bool hasQueueOverflow, bool hasSocketLoss) {
+    writeDataCorruptedReasons(proto, fieldIdDataCorruptedReason, hasQueueOverflow, hasSocketLoss,
+                              /*hasSystemServerRestart=*/false);
+}
+
+void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorruptedReason,
+                               bool hasQueueOverflow, bool hasSocketLoss,
+                               bool hasSystemServerRestart) {
     if (hasQueueOverflow) {
         proto.write(FIELD_TYPE_INT32 | FIELD_COUNT_REPEATED | fieldIdDataCorruptedReason,
                     DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW);
@@ -594,6 +601,10 @@ void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorrupte
     if (hasSocketLoss) {
         proto.write(FIELD_TYPE_INT32 | FIELD_COUNT_REPEATED | fieldIdDataCorruptedReason,
                     DATA_CORRUPTED_SOCKET_LOSS);
+    }
+    if (hasSystemServerRestart) {
+        proto.write(FIELD_TYPE_INT32 | FIELD_COUNT_REPEATED | fieldIdDataCorruptedReason,
+                    DATA_CORRUPTED_SYSTEM_SERVER_CRASH);
     }
 }
 
@@ -670,7 +681,7 @@ void mapIsolatedUidsToHostUidInLogEvent(const sp<UidMap>& uidMap, LogEvent& even
     auto it = fieldValues->begin();
     while(it != fieldValues->end() && remainingUidCount > 0) {
         if (isUidField(*it)) {
-            it->mValue.setInt(uidMap->getHostUidOrSelf(it->mValue.int_value));
+            it->mValue.set(uidMap->getHostUidOrSelf(it->mValue.get<int32_t>()));
             remainingUidCount--;
         }
         ++it;

@@ -15,7 +15,8 @@
  */
 
 #include "include/stats_socket.h"
-#include "stats_buffer_writer.h"
+
+#include "include/stats_buffer_writer.h"
 
 void AStatsSocket_close() {
     stats_log_close();

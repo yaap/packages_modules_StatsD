@@ -45,6 +45,10 @@ public:
      */
     explicit BaseStatsSocketListener(const std::shared_ptr<LogEventQueue>& queue,
                             const std::shared_ptr<LogEventFilter>& logEventFilter);
+
+    virtual int startListener() = 0;
+    virtual int stopListener() = 0;
+
 protected:
     static int getLogSocket();
 

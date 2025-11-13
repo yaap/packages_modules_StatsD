@@ -646,8 +646,6 @@ protected:
     FRIEND_TEST(CountMetricE2eTest, TestSlicedStateWithPrimaryFields);
     FRIEND_TEST(CountMetricE2eTest, TestInitialConditionChanges);
 
-    FRIEND_TEST(DurationMetricE2eTest, TestOneBucket);
-    FRIEND_TEST(DurationMetricE2eTest, TestTwoBuckets);
     FRIEND_TEST(DurationMetricE2eTest, TestWithActivation);
     FRIEND_TEST(DurationMetricE2eTest, TestWithCondition);
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedCondition);
@@ -655,9 +653,7 @@ protected:
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedState);
     FRIEND_TEST(DurationMetricE2eTest, TestWithConditionAndSlicedState);
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedStateMapped);
-    FRIEND_TEST(DurationMetricE2eTest, TestSlicedStatePrimaryFieldsNotSubsetDimInWhat);
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedStatePrimaryFieldsSubset);
-    FRIEND_TEST(DurationMetricE2eTest, TestUploadThreshold);
 
     FRIEND_TEST(EventMetricE2eTest, TestSlicedState);
 

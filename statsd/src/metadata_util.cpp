@@ -27,22 +27,22 @@ void writeValueToProto(metadata::FieldValue* metadataFieldValue, const Value& va
     std::string storage_value;
     switch (value.getType()) {
         case INT:
-            metadataFieldValue->set_value_int(value.int_value);
+            metadataFieldValue->set_value_int(value.get<int32_t>());
             break;
         case LONG:
-            metadataFieldValue->set_value_long(value.long_value);
+            metadataFieldValue->set_value_long(value.get<int64_t>());
             break;
         case FLOAT:
-            metadataFieldValue->set_value_float(value.float_value);
+            metadataFieldValue->set_value_float(value.get<float>());
             break;
         case DOUBLE:
-            metadataFieldValue->set_value_double(value.double_value);
+            metadataFieldValue->set_value_double(value.get<double>());
             break;
         case STRING:
-            metadataFieldValue->set_value_str(value.str_value.c_str());
+            metadataFieldValue->set_value_str(value.get<std::string>().c_str());
             break;
         case STORAGE: // byte array
-            storage_value = ((char*) value.storage_value.data());
+            storage_value = ((char*)value.get<std::vector<uint8_t>>().data());
             metadataFieldValue->set_value_storage(storage_value);
             break;
         default:

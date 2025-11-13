@@ -1255,6 +1255,35 @@ TEST(StatsdStatsTest, TestErrorStatsReportReset) {
     EXPECT_TRUE(stats.mErrorStats.empty());
 }
 
+TEST(StatsdStatsTest, TestPullerAlarmStatsReport) {
+    StatsdStats stats;
+    stats.notePullerAlarmHasPull();
+    stats.notePullerAlarmHasPull();
+    stats.notePullerAlarmNoPull();
+    stats.notePullerAlarmError();
+
+    auto report = getStatsdStatsReport(stats, /* reset stats */ false);
+
+    EXPECT_TRUE(report.has_puller_alarm_stats());
+    EXPECT_THAT(report.puller_alarm_stats().alarm_with_pulls_count(), 2);
+    EXPECT_THAT(report.puller_alarm_stats().alarm_without_pulls_count(), 1);
+    EXPECT_THAT(report.puller_alarm_stats().alarm_with_puller_errors_count(), 1);
+}
+
+TEST(StatsdStatsTest, TestPullerAlarmStatsReset) {
+    StatsdStats stats;
+    stats.notePullerAlarmHasPull();
+    stats.notePullerAlarmHasPull();
+    stats.notePullerAlarmNoPull();
+    stats.notePullerAlarmError();
+
+    auto report = getStatsdStatsReport(stats, /* reset stats */ true);
+
+    EXPECT_THAT(stats.mPullerAlarmStats.alarm_with_pulls_count, 0);
+    EXPECT_THAT(stats.mPullerAlarmStats.alarm_without_pulls_count, 0);
+    EXPECT_THAT(stats.mPullerAlarmStats.alarm_with_puller_errors_count, 0);
+}
+
 AtomStats buildAtomStats(int32_t atomId, int32_t count) {
     AtomStats msg;
     msg.set_tag(atomId);

@@ -68,6 +68,8 @@ struct InstallTrainInfo {
     bool requiresStaging;
     bool rollbackEnabled;
     bool requiresLowLatencyMonitor;
+
+    static std::string experimentIdsToString(const std::vector<int64_t>& experimentIds);
 };
 
 /**

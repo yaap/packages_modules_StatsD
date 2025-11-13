@@ -62,7 +62,7 @@ TEST(DurationMetricE2eTest, TestOneBucket) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
 
     std::unique_ptr<LogEvent> event;
 
@@ -110,6 +110,83 @@ TEST(DurationMetricE2eTest, TestOneBucket) {
     EXPECT_EQ(baseTimeNs + bucketSizeNs, data.bucket_info(0).end_bucket_elapsed_nanos());
 }
 
+TEST(DurationMetricE2eTest, TestOneBucketDifferentAtomsForPredicate) {
+    StatsdConfig config;
+
+    auto startMatcher = CreateScreenTurnedOnAtomMatcher();
+    auto stopMatcher = CreateBatteryStateNoneMatcher();
+    *config.add_atom_matcher() = startMatcher;
+    *config.add_atom_matcher() = stopMatcher;
+
+    Predicate durationPredicate;
+    durationPredicate.set_id(StringToId("ScreenIsOn"));
+    durationPredicate.mutable_simple_predicate()->set_start(StringToId("ScreenTurnedOn"));
+    durationPredicate.mutable_simple_predicate()->set_stop(StringToId("BatteryPluggedNone"));
+
+    *config.add_predicate() = durationPredicate;
+
+    int64_t metricId = 123456;
+    auto durationMetric = config.add_duration_metric();
+    durationMetric->set_id(metricId);
+    durationMetric->set_what(durationPredicate.id());
+    durationMetric->set_bucket(FIVE_MINUTES);
+    durationMetric->set_aggregation_type(DurationMetric_AggregationType_SUM);
+
+    const int64_t baseTimeNs = 0;                                   // 0:00
+    const int64_t configAddedTimeNs = baseTimeNs + 1 * NS_PER_SEC;  // 0:01
+    const int64_t bucketSizeNs =
+            TimeUnitToBucketSizeInMillis(config.duration_metric(0).bucket()) * 1000LL * 1000LL;
+
+    int uid = 12345;
+    int64_t cfgId = 98765;
+    ConfigKey cfgKey(uid, cfgId);
+
+    auto processor = CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey);
+
+    std::unique_ptr<LogEvent> event;
+
+    // Screen is off at start of bucket.
+    event = CreateScreenStateChangedEvent(configAddedTimeNs,
+                                          android::view::DISPLAY_STATE_OFF);  // 0:01
+    processor->OnLogEvent(event.get());
+
+    // Turn screen on.
+    const int64_t durationStartNs = configAddedTimeNs + 10 * NS_PER_SEC;  // 0:11
+    event = CreateScreenStateChangedEvent(durationStartNs, android::view::DISPLAY_STATE_ON);
+    processor->OnLogEvent(event.get());
+
+    // Change BatteryPluggedState to trigger stop predicate
+    const int64_t durationEndNs = durationStartNs + 30 * NS_PER_SEC;  // 0:41
+    event = CreateBatteryStateChangedEvent(durationEndNs,
+                                           BatteryPluggedStateEnum::BATTERY_PLUGGED_NONE);  // 2:00
+
+    processor->OnLogEvent(event.get());
+
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor->onDumpReport(cfgKey, configAddedTimeNs + bucketSizeNs + 1 * NS_PER_SEC, false, true,
+                            ADB_DUMP, FAST, &buffer);  // 5:01
+    EXPECT_TRUE(buffer.size() > 0);
+    EXPECT_TRUE(reports.ParseFromArray(&buffer[0], buffer.size()));
+    backfillDimensionPath(&reports);
+    backfillStartEndTimestamp(&reports);
+    ASSERT_EQ(1, reports.reports_size());
+    ASSERT_EQ(1, reports.reports(0).metrics_size());
+    EXPECT_TRUE(reports.reports(0).metrics(0).has_estimated_data_bytes());
+    EXPECT_EQ(metricId, reports.reports(0).metrics(0).metric_id());
+    EXPECT_TRUE(reports.reports(0).metrics(0).has_duration_metrics());
+
+    StatsLogReport::DurationMetricDataWrapper durationMetrics;
+    sortMetricDataByDimensionsValue(reports.reports(0).metrics(0).duration_metrics(),
+                                    &durationMetrics);
+    ASSERT_EQ(1, durationMetrics.data_size());
+
+    DurationMetricData data = durationMetrics.data(0);
+    ASSERT_EQ(1, data.bucket_info_size());
+    ValidateDurationBucket(durationMetrics.data(0).bucket_info(0), configAddedTimeNs,
+                           baseTimeNs + bucketSizeNs, durationEndNs - durationStartNs);
+}
+
 TEST(DurationMetricE2eTest, TestTwoBuckets) {
     StatsdConfig config;
 
@@ -145,7 +222,7 @@ TEST(DurationMetricE2eTest, TestTwoBuckets) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
 
     std::unique_ptr<LogEvent> event;
 
@@ -267,7 +344,7 @@ TEST(DurationMetricE2eTest, TestWithActivation) {
     auto& eventActivationMap = metricProducer->mEventActivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     ASSERT_EQ(eventActivationMap.size(), 1u);
     EXPECT_TRUE(eventActivationMap.find(2) != eventActivationMap.end());
     EXPECT_EQ(eventActivationMap[2]->state, ActivationState::kNotActive);
@@ -293,7 +370,7 @@ TEST(DurationMetricE2eTest, TestWithActivation) {
     event = CreateAppCrashEvent(activationStartNs, 111);
     processor.OnLogEvent(event.get(), activationStartNs);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -306,7 +383,7 @@ TEST(DurationMetricE2eTest, TestWithActivation) {
     event = CreateScreenBrightnessChangedEvent(expirationNs, 64);  // 0:47
     processor.OnLogEvent(event.get(), expirationNs);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
     ASSERT_EQ(eventActivationMap.size(), 1u);
@@ -337,7 +414,7 @@ TEST(DurationMetricE2eTest, TestWithActivation) {
     event = CreateAppCrashEvent(activation2StartNs, 211);
     processor.OnLogEvent(event.get(), activation2StartNs);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -405,7 +482,7 @@ TEST(DurationMetricE2eTest, TestWithCondition) {
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     auto& eventActivationMap = metricProducer->mEventActivationMap;
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_TRUE(eventActivationMap.empty());
 
     int appUid = 123;
@@ -515,7 +592,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedCondition) {
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     auto& eventActivationMap = metricProducer->mEventActivationMap;
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_TRUE(eventActivationMap.empty());
 
     int appUid = 123;
@@ -625,7 +702,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     auto& eventActivationMap = metricProducer->mEventActivationMap;
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     ASSERT_EQ(eventActivationMap.size(), 1u);
     EXPECT_TRUE(eventActivationMap.find(4) != eventActivationMap.end());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kNotActive);
@@ -640,7 +717,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
                                             attributionTags1, "wl1");  // 0:10
     processor->OnLogEvent(event.get());
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[4]->start_ns, 0);
     EXPECT_EQ(eventActivationMap[4]->ttl_ns, event_activation1->ttl_seconds() * NS_PER_SEC);
@@ -648,7 +725,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
     event = CreateMoveToBackgroundEvent(bucketStartTimeNs + 22 * NS_PER_SEC, appUid);  // 0:22
     processor->OnLogEvent(event.get());
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[4]->start_ns, 0);
     EXPECT_EQ(eventActivationMap[4]->ttl_ns, event_activation1->ttl_seconds() * NS_PER_SEC);
@@ -657,7 +734,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
     event = CreateScreenStateChangedEvent(durationStartNs, android::view::DISPLAY_STATE_ON);
     processor->OnLogEvent(event.get());
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[4]->start_ns, durationStartNs);
     EXPECT_EQ(eventActivationMap[4]->ttl_ns, event_activation1->ttl_seconds() * NS_PER_SEC);
@@ -667,7 +744,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
     event = CreateAppCrashEvent(durationEndNs, 333);
     processor->OnLogEvent(event.get());
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[4]->start_ns, durationStartNs);
     EXPECT_EQ(eventActivationMap[4]->ttl_ns, event_activation1->ttl_seconds() * NS_PER_SEC);
@@ -692,7 +769,7 @@ TEST(DurationMetricE2eTest, TestWithActivationAndSlicedCondition) {
     event = CreateScreenStateChangedEvent(duration2StartNs, android::view::DISPLAY_STATE_ON);
     processor->OnLogEvent(event.get());
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[4]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[4]->start_ns, duration2StartNs);
     EXPECT_EQ(eventActivationMap[4]->ttl_ns, event_activation1->ttl_seconds() * NS_PER_SEC);
@@ -768,7 +845,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedState) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     EXPECT_TRUE(metricsManager->isActive());
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     ASSERT_EQ(metricProducer->mSlicedStateAtoms.size(), 1);
     EXPECT_EQ(metricProducer->mSlicedStateAtoms.at(0), SCREEN_STATE_ATOM_ID);
     ASSERT_EQ(metricProducer->mStateGroupMap.size(), 0);
@@ -916,7 +993,7 @@ TEST(DurationMetricE2eTest, TestWithConditionAndSlicedState) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     EXPECT_TRUE(metricsManager->isActive());
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     ASSERT_EQ(metricProducer->mSlicedStateAtoms.size(), 1);
     EXPECT_EQ(metricProducer->mSlicedStateAtoms.at(0), SCREEN_STATE_ATOM_ID);
     ASSERT_EQ(metricProducer->mStateGroupMap.size(), 0);
@@ -1073,7 +1150,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedStateMapped) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     EXPECT_TRUE(metricsManager->isActive());
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     ASSERT_EQ(metricProducer->mSlicedStateAtoms.size(), 1);
     EXPECT_EQ(metricProducer->mSlicedStateAtoms.at(0), SCREEN_STATE_ATOM_ID);
     ASSERT_EQ(metricProducer->mStateGroupMap.size(), 1);
@@ -1275,7 +1352,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedStatePrimaryFieldsSubset) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     EXPECT_TRUE(metricsManager->isActive());
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     ASSERT_EQ(metricProducer->mSlicedStateAtoms.size(), 1);
     EXPECT_EQ(metricProducer->mSlicedStateAtoms.at(0), UID_PROCESS_STATE_ATOM_ID);
     ASSERT_EQ(metricProducer->mStateGroupMap.size(), 0);
@@ -1512,7 +1589,7 @@ TEST(DurationMetricE2eTest, TestUploadThreshold) {
     ASSERT_EQ(metricsManager->mAllMetricProducers.size(), 1);
     sp<MetricProducer> metricProducer = metricsManager->mAllMetricProducers[0];
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
 
     std::unique_ptr<LogEvent> event;
 

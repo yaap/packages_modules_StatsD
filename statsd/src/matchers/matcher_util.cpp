@@ -89,14 +89,14 @@ bool combinationMatch(const vector<int>& children, const LogicalOperation& opera
 static bool tryMatchString(const sp<UidMap>& uidMap, const FieldValue& fieldValue,
                            const string& str_match) {
     if (isAttributionUidField(fieldValue) || isUidField(fieldValue)) {
-        int uid = fieldValue.mValue.int_value;
+        int uid = fieldValue.mValue.get<int32_t>();
         auto aidIt = UidMap::sAidToUidMapping.find(str_match);
         if (aidIt != UidMap::sAidToUidMapping.end()) {
             return ((int)aidIt->second) == uid;
         }
         return uidMap->hasApp(uid, str_match);
     } else if (fieldValue.mValue.getType() == STRING) {
-        return fieldValue.mValue.str_value == str_match;
+        return fieldValue.mValue.get<string>() == str_match;
     }
     return false;
 }
@@ -104,7 +104,7 @@ static bool tryMatchString(const sp<UidMap>& uidMap, const FieldValue& fieldValu
 static bool tryMatchWildcardString(const sp<UidMap>& uidMap, const FieldValue& fieldValue,
                                    const string& wildcardPattern) {
     if (isAttributionUidField(fieldValue) || isUidField(fieldValue)) {
-        int uid = fieldValue.mValue.int_value;
+        int uid = fieldValue.mValue.get<int32_t>();
         // TODO(b/236886985): replace aid/uid mapping with efficient bidirectional container
         // AidToUidMapping will never have uids above 10000
         if (uid < 10000) {
@@ -123,7 +123,7 @@ static bool tryMatchWildcardString(const sp<UidMap>& uidMap, const FieldValue& f
             }
         }
     } else if (fieldValue.mValue.getType() == STRING) {
-        return fnmatch(wildcardPattern.c_str(), fieldValue.mValue.str_value.c_str(), 0) == 0;
+        return fnmatch(wildcardPattern.c_str(), fieldValue.mValue.get<string>().c_str(), 0) == 0;
     }
     return false;
 }
@@ -148,8 +148,8 @@ static unique_ptr<LogEvent> getTransformedEvent(const FieldValueMatcher& matcher
         if (fieldValue.mValue.getType() != STRING) {
             continue;
         }
-        string str = fieldValue.mValue.str_value;
-        if (!re->replace(str, replacement) || str == fieldValue.mValue.str_value) {
+        string str = fieldValue.mValue.get<string>();
+        if (!re->replace(str, replacement) || str == fieldValue.mValue.get<string>()) {
             continue;
         }
 
@@ -157,7 +157,7 @@ static unique_ptr<LogEvent> getTransformedEvent(const FieldValueMatcher& matcher
         if (transformedEvent == nullptr) {
             transformedEvent = std::make_unique<LogEvent>(event);
         }
-        (*transformedEvent->getMutableValues())[i].mValue.str_value = str;
+        (*transformedEvent->getMutableValues())[i].mValue.get<string>() = str;
     }
     return transformedEvent;
 }
@@ -340,9 +340,9 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kEqBool: {
             for (int i = start; i < end; i++) {
                 if ((values[i].mValue.getType() == INT &&
-                     (values[i].mValue.int_value != 0) == matcher.eq_bool()) ||
+                     (values[i].mValue.get<int32_t>() != 0) == matcher.eq_bool()) ||
                     (values[i].mValue.getType() == LONG &&
-                     (values[i].mValue.long_value != 0) == matcher.eq_bool())) {
+                     (values[i].mValue.get<int64_t>() != 0) == matcher.eq_bool())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -421,12 +421,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kEqInt: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == INT &&
-                    (matcher.eq_int() == values[i].mValue.int_value)) {
+                    (matcher.eq_int() == values[i].mValue.get<int32_t>())) {
                     return {true, std::move(transformedEvent)};
                 }
                 // eq_int covers both int and long.
                 if (values[i].mValue.getType() == LONG &&
-                    (matcher.eq_int() == values[i].mValue.long_value)) {
+                    (matcher.eq_int() == values[i].mValue.get<int64_t>())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -437,12 +437,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
             for (int i = start; i < end; i++) {
                 for (const int int_value : int_list.int_value()) {
                     if (values[i].mValue.getType() == INT &&
-                        (int_value == values[i].mValue.int_value)) {
+                        (int_value == values[i].mValue.get<int32_t>())) {
                         return {true, std::move(transformedEvent)};
                     }
                     // eq_any_int covers both int and long.
                     if (values[i].mValue.getType() == LONG &&
-                        (int_value == values[i].mValue.long_value)) {
+                        (int_value == values[i].mValue.get<int64_t>())) {
                         return {true, std::move(transformedEvent)};
                     }
                 }
@@ -455,13 +455,13 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
                 bool notEqAll = true;
                 for (const int int_value : int_list.int_value()) {
                     if (values[i].mValue.getType() == INT &&
-                        (int_value == values[i].mValue.int_value)) {
+                        (int_value == values[i].mValue.get<int32_t>())) {
                         notEqAll = false;
                         break;
                     }
                     // neq_any_int covers both int and long.
                     if (values[i].mValue.getType() == LONG &&
-                        (int_value == values[i].mValue.long_value)) {
+                        (int_value == values[i].mValue.get<int64_t>())) {
                         notEqAll = false;
                         break;
                     }
@@ -475,12 +475,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kLtInt: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == INT &&
-                    (values[i].mValue.int_value < matcher.lt_int())) {
+                    (values[i].mValue.get<int32_t>() < matcher.lt_int())) {
                     return {true, std::move(transformedEvent)};
                 }
                 // lt_int covers both int and long.
                 if (values[i].mValue.getType() == LONG &&
-                    (values[i].mValue.long_value < matcher.lt_int())) {
+                    (values[i].mValue.get<int64_t>() < matcher.lt_int())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -489,12 +489,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kGtInt: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == INT &&
-                    (values[i].mValue.int_value > matcher.gt_int())) {
+                    (values[i].mValue.get<int32_t>() > matcher.gt_int())) {
                     return {true, std::move(transformedEvent)};
                 }
                 // gt_int covers both int and long.
                 if (values[i].mValue.getType() == LONG &&
-                    (values[i].mValue.long_value > matcher.gt_int())) {
+                    (values[i].mValue.get<int64_t>() > matcher.gt_int())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -503,7 +503,7 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kLtFloat: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == FLOAT &&
-                    (values[i].mValue.float_value < matcher.lt_float())) {
+                    (values[i].mValue.get<float>() < matcher.lt_float())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -512,7 +512,7 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kGtFloat: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == FLOAT &&
-                    (values[i].mValue.float_value > matcher.gt_float())) {
+                    (values[i].mValue.get<float>() > matcher.gt_float())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -521,12 +521,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kLteInt: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == INT &&
-                    (values[i].mValue.int_value <= matcher.lte_int())) {
+                    (values[i].mValue.get<int32_t>() <= matcher.lte_int())) {
                     return {true, std::move(transformedEvent)};
                 }
                 // lte_int covers both int and long.
                 if (values[i].mValue.getType() == LONG &&
-                    (values[i].mValue.long_value <= matcher.lte_int())) {
+                    (values[i].mValue.get<int64_t>() <= matcher.lte_int())) {
                     return {true, std::move(transformedEvent)};
                 }
             }
@@ -535,12 +535,12 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kGteInt: {
             for (int i = start; i < end; i++) {
                 if (values[i].mValue.getType() == INT &&
-                    (values[i].mValue.int_value >= matcher.gte_int())) {
+                    (values[i].mValue.get<int32_t>() >= matcher.gte_int())) {
                     return {true, std::move(transformedEvent)};
                 }
                 // gte_int covers both int and long.
                 if (values[i].mValue.getType() == LONG &&
-                    (values[i].mValue.long_value >= matcher.gte_int())) {
+                    (values[i].mValue.get<int64_t>() >= matcher.gte_int())) {
                     return {true, std::move(transformedEvent)};
                 }
             }

@@ -366,15 +366,15 @@ void MetricProducer::mapStateValue(int32_t atomId, FieldValue* value) {
     if (atomIt == mStateGroupMap.end()) {
         return;
     }
-    auto valueIt = atomIt->second.find(value->mValue.int_value);
+    auto valueIt = atomIt->second.find(value->mValue.get<int32_t>());
     if (valueIt == atomIt->second.end()) {
         // state map exists, but value was not put in a state group
         // so set mValue to kStateUnknown
         // TODO(tsaichristine): handle incomplete state maps
-        value->mValue.setInt(StateTracker::kStateUnknown);
+        value->mValue.set(StateTracker::kStateUnknown);
     } else {
         // set mValue to group_id
-        value->mValue.setLong(valueIt->second);
+        value->mValue.set(valueIt->second);
     }
 }
 
@@ -383,7 +383,7 @@ HashableDimensionKey MetricProducer::getUnknownStateKey() {
     for (auto atom : mSlicedStateAtoms) {
         FieldValue fieldValue;
         fieldValue.mField.setTag(atom);
-        fieldValue.mValue.setInt(StateTracker::kStateUnknown);
+        fieldValue.mValue.set(StateTracker::kStateUnknown);
         stateKey.addValue(fieldValue);
     }
     return stateKey;

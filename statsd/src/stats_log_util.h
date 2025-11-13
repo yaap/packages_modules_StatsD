@@ -99,6 +99,10 @@ void writeAtomMetricStatsToStream(const std::pair<int64_t, StatsdStats::AtomMetr
 void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorruptedReason,
                                bool hasQueueOverflow, bool hasSocketLoss);
 
+void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorruptedReason,
+                               bool hasQueueOverflow, bool hasSocketLoss,
+                               bool hasSystemServerRestart);
+
 template<class T>
 bool parseProtoOutputStream(ProtoOutputStream& protoOutput, T* message) {
     std::string pbBytes;

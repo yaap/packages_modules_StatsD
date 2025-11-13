@@ -47,6 +47,14 @@ StatsSocketListener::StatsSocketListener(const std::shared_ptr<LogEventQueue>& q
       SocketListener(getLogSocket(), false /*start listen*/){
 }
 
+int StatsSocketListener::startListener() {
+    return SocketListener::startListener(600);
+}
+
+int StatsSocketListener::stopListener() {
+    return SocketListener::stopListener();
+}
+
 bool StatsSocketListener::onDataAvailable(SocketClient* cli) {
     ATRACE_CALL_DEBUG();
     static bool name_set;

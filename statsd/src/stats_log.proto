@@ -756,6 +756,14 @@ message StatsdStatsReport {
     }
 
     optional ErrorStats error_stats = 27;
+
+    message PullerAlarmStats {
+        optional int32 alarm_with_pulls_count = 1;
+        optional int32 alarm_without_pulls_count = 2;
+        optional int32 alarm_with_puller_errors_count = 3;
+    }
+
+    optional PullerAlarmStats puller_alarm_stats = 29;
 }
 
 message AlertTriggerDetails {

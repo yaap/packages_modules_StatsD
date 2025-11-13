@@ -476,6 +476,7 @@ private:
     FRIEND_TEST(CountMetricE2eTest, TestRepeatedFieldsAndEmptyArrays);
 
     FRIEND_TEST(DurationMetricE2eTest, TestOneBucket);
+    FRIEND_TEST(DurationMetricE2eTest, TestOneBucketDifferentAtomsForPredicate);
     FRIEND_TEST(DurationMetricE2eTest, TestTwoBuckets);
     FRIEND_TEST(DurationMetricE2eTest, TestWithActivation);
     FRIEND_TEST(DurationMetricE2eTest, TestWithCondition);
@@ -506,6 +507,9 @@ private:
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithValueFieldPositionALL);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithMultipleAggTypes);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithDefaultAggType);
+    FRIEND_TEST(ValueMetricE2eTest, TestDimensionGuardrailHitWithZeroDefaultBase);
+    FRIEND_TEST(ValueMetricE2eTest,
+                TestDimensionGuardrailHitWithZeroDefaultBaseAndConditionAndState);
 
     FRIEND_TEST(KllMetricE2eTest, TestInitWithKllFieldPositionALL);
 

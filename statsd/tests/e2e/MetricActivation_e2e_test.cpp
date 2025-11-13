@@ -277,7 +277,7 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
     auto& eventActivationMap = metricProducer->mEventActivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // Two activations: one is triggered by battery saver mode (tracker index 0), the other is
     // triggered by screen on event (tracker index 2).
     ASSERT_EQ(eventActivationMap.size(), 2u);
@@ -295,14 +295,14 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
     event = CreateAppCrashEvent(bucketStartTimeNs + 5, 111);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 5);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 0);
 
     // Activated by battery save mode.
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + 10);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -321,7 +321,7 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
     event = CreateScreenStateChangedEvent(bucketStartTimeNs + 20, android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 20);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -334,7 +334,7 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25, 333);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -352,7 +352,7 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 8, 555);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 8);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -368,7 +368,7 @@ TEST(MetricActivationE2eTest, TestCountMetric) {
                                           android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 10 + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -496,7 +496,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     auto& eventDeactivationMap = metricProducer->mEventDeactivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // Two activations: one is triggered by battery saver mode (tracker index 0), the other is
     // triggered by screen on event (tracker index 2).
     ASSERT_EQ(eventActivationMap.size(), 2u);
@@ -518,14 +518,14 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateAppCrashEvent(bucketStartTimeNs + 5, 111);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 5);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 0);
 
     // Activated by battery save mode.
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + 10);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -545,7 +545,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateScreenStateChangedEvent(bucketStartTimeNs + 20, android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 20);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -559,7 +559,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25, 333);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -578,7 +578,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 8, 555);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 8);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -595,7 +595,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
                                           android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 10 + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -615,7 +615,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -635,7 +635,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateScreenBrightnessChangedEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 60, 64);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 60);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -651,7 +651,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 13, 888);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 13);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -670,7 +670,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 5);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -686,7 +686,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithOneDeactivation) {
     event = CreateScreenBrightnessChangedEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 16, 140);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 16);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 6);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
@@ -824,7 +824,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     auto& eventDeactivationMap = metricProducer->mEventDeactivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // Two activations: one is triggered by battery saver mode (tracker index 0), the other is
     // triggered by screen on event (tracker index 2).
     ASSERT_EQ(eventActivationMap.size(), 2u);
@@ -849,14 +849,14 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateAppCrashEvent(bucketStartTimeNs + 5, 111);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 5);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 0);
 
     // Activated by battery save mode.
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + 10);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -877,7 +877,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateScreenStateChangedEvent(bucketStartTimeNs + 20, android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 20);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -892,7 +892,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25, 333);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -912,7 +912,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 8, 555);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 8);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -930,7 +930,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
                                           android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 10 + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -951,7 +951,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -972,7 +972,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateScreenBrightnessChangedEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 60, 64);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 60);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -989,7 +989,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateAppCrashEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 13, 888);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 13);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
@@ -1008,7 +1008,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 5);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -1025,7 +1025,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoDeactivations) {
     event = CreateScreenBrightnessChangedEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 16, 140);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 16);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 6);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
@@ -1164,7 +1164,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     auto& eventDeactivationMap = metricProducer->mEventDeactivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // Two activations: one is triggered by battery saver mode (tracker index 0), the other is
     // triggered by screen on event (tracker index 2).
     ASSERT_EQ(eventActivationMap.size(), 2u);
@@ -1193,7 +1193,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     event = CreateScreenStateChangedEvent(bucketStartTimeNs + 10, android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -1209,7 +1209,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 + 10);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 + 10);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 1);
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 + 10);
@@ -1225,7 +1225,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     event = CreateScreenBrightnessChangedEvent(firstDeactivation, 64);
     processor.OnLogEvent(event.get(), firstDeactivation);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
@@ -1240,7 +1240,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     event = CreateBatterySaverOnEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 10 + 15);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 10 + 15);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
@@ -1257,7 +1257,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithSameDeactivation) {
     event = CreateScreenBrightnessChangedEvent(secondDeactivation, 140);
     processor.OnLogEvent(event.get(), secondDeactivation);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
@@ -1371,8 +1371,8 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     auto& eventDeactivationMap2 = metricProducer2->mEventDeactivationMap;
 
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
+    EXPECT_FALSE(metricProducer2->isActive());
     // Two activations: one is triggered by battery saver mode (tracker index 0), the other is
     // triggered by screen on event (tracker index 2).
     ASSERT_EQ(eventActivationMap.size(), 2u);
@@ -1416,8 +1416,8 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     event = CreateMoveToForegroundEvent(bucketStartTimeNs + 5, 1111);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 5);
     EXPECT_FALSE(metricsManager->isActive());
-    EXPECT_FALSE(metricProducer->mIsActive);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
+    EXPECT_FALSE(metricProducer2->isActive());
     EXPECT_EQ(broadcastCount, 0);
 
     // Activated by battery save mode.
@@ -1427,7 +1427,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(broadcastCount, 1);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1436,7 +1436,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1456,7 +1456,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     event = CreateScreenStateChangedEvent(bucketStartTimeNs + 20, android::view::DISPLAY_STATE_ON);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + 20);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1465,7 +1465,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1482,7 +1482,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     event = CreateMoveToForegroundEvent(bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25, 3333);
     processor.OnLogEvent(event.get(), bucketStartTimeNs + NS_PER_SEC * 60 * 2 + 25);
     EXPECT_TRUE(metricsManager->isActive());
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1491,7 +1491,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1518,7 +1518,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 2);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1527,7 +1527,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1545,7 +1545,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1554,7 +1554,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + 10);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1577,7 +1577,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(broadcastCount, 3);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1586,7 +1586,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1609,7 +1609,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     // New broadcast since the config is no longer active.
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1618,7 +1618,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1636,7 +1636,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_FALSE(metricsManager->isActive());
     EXPECT_EQ(broadcastCount, 4);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1645,7 +1645,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 11 + 15);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1667,7 +1667,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(broadcastCount, 5);
     ASSERT_EQ(activeConfigsBroadcast.size(), 1);
     EXPECT_EQ(activeConfigsBroadcast[0], cfgId);
-    EXPECT_TRUE(metricProducer->mIsActive);
+    EXPECT_TRUE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1676,7 +1676,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_TRUE(metricProducer2->mIsActive);
+    EXPECT_TRUE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1692,7 +1692,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_FALSE(metricsManager->isActive());
     EXPECT_EQ(broadcastCount, 6);
     ASSERT_EQ(activeConfigsBroadcast.size(), 0);
-    EXPECT_FALSE(metricProducer->mIsActive);
+    EXPECT_FALSE(metricProducer->isActive());
     EXPECT_EQ(eventActivationMap[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_EQ(eventActivationMap[0]->ttl_ns, 60 * 6 * NS_PER_SEC);
@@ -1701,7 +1701,7 @@ TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations) {
     EXPECT_EQ(eventActivationMap[2]->ttl_ns, 60 * 2 * NS_PER_SEC);
     EXPECT_EQ(eventDeactivationMap[3][0], eventActivationMap[0]);
     EXPECT_EQ(eventDeactivationMap[4][0], eventActivationMap[2]);
-    EXPECT_FALSE(metricProducer2->mIsActive);
+    EXPECT_FALSE(metricProducer2->isActive());
     EXPECT_EQ(eventActivationMap2[0]->state, ActivationState::kNotActive);
     EXPECT_EQ(eventActivationMap2[0]->start_ns, bucketStartTimeNs + NS_PER_SEC * 60 * 15 + 15);
     EXPECT_EQ(eventActivationMap2[0]->ttl_ns, 60 * 6 * NS_PER_SEC);

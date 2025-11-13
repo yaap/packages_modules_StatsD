@@ -95,11 +95,11 @@ void KllMetricProducer::writePastBucketAggregateToProto(
 optional<int64_t> getInt64ValueFromEvent(const LogEvent& event, const Matcher& matcher) {
     for (const FieldValue& value : event.getValues()) {
         if (value.mField.matches(matcher)) {
-            switch (value.mValue.type) {
+            switch (value.mValue.getType()) {
                 case INT:
-                    return {value.mValue.int_value};
+                    return {value.mValue.get<int32_t>()};
                 case LONG:
-                    return {value.mValue.long_value};
+                    return {value.mValue.get<int64_t>()};
                 default:
                     return nullopt;
             }

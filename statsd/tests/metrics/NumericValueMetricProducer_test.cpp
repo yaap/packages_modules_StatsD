@@ -1704,7 +1704,7 @@ TEST(NumericValueMetricProducerTest, TestUseZeroDefaultBase) {
     auto& interval1 = iter->second.intervals[0];
     auto iterBase = valueProducer->mDimInfos.begin();
     auto& base1 = iterBase->second.dimExtras[0];
-    EXPECT_EQ(1, iter->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(1, iter->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base1.is<int64_t>());
     EXPECT_EQ(3, base1.getValue<int64_t>());
     EXPECT_EQ(0, interval1.sampleSize);
@@ -1770,7 +1770,7 @@ TEST(NumericValueMetricProducerTest, TestUseZeroDefaultBaseWithPullFailures) {
     NumericValueMetricProducer::Interval& interval1 = it->second.intervals[0];
     NumericValue& base1 =
             valueProducer->mDimInfos.find(it->first.getDimensionKeyInWhat())->second.dimExtras[0];
-    EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base1.is<int64_t>());
     EXPECT_EQ(3, base1.getValue<int64_t>());
     EXPECT_EQ(0, interval1.sampleSize);
@@ -1796,7 +1796,7 @@ TEST(NumericValueMetricProducerTest, TestUseZeroDefaultBaseWithPullFailures) {
     }
     NumericValue& base2 = itBase2->second.dimExtras[0];
     EXPECT_TRUE(base2 != base1);
-    EXPECT_EQ(2, itBase2->first.getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, itBase2->first.getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base2.is<int64_t>());
     EXPECT_EQ(4, base2.getValue<int64_t>());
     ASSERT_EQ(2UL, valueProducer->mPastBuckets.size());
@@ -1809,7 +1809,7 @@ TEST(NumericValueMetricProducerTest, TestUseZeroDefaultBaseWithPullFailures) {
 
     ASSERT_EQ(0UL, valueProducer->mCurrentSlicedBucket.size());
     ASSERT_EQ(1UL, valueProducer->mDimInfos.size());
-    EXPECT_EQ(2, valueProducer->mDimInfos.begin()->first.getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, valueProducer->mDimInfos.begin()->first.getValues()[0].mValue.get<int32_t>());
     NumericValue& base3 = valueProducer->mDimInfos.begin()->second.dimExtras[0];
     EXPECT_TRUE(base3.is<int64_t>());
     EXPECT_EQ(5, base3.getValue<int64_t>());
@@ -1862,7 +1862,7 @@ TEST(NumericValueMetricProducerTest, TestTrimUnusedDimensionKey) {
     auto& interval1 = iter->second.intervals[0];
     auto iterBase = valueProducer->mDimInfos.begin();
     auto& base1 = iterBase->second.dimExtras[0];
-    EXPECT_EQ(1, iter->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(1, iter->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base1.is<int64_t>());
     EXPECT_EQ(3, base1.getValue<int64_t>());
     EXPECT_EQ(0, interval1.sampleSize);
@@ -1890,7 +1890,7 @@ TEST(NumericValueMetricProducerTest, TestTrimUnusedDimensionKey) {
     }
     EXPECT_TRUE(itBase != iterBase);
     auto base2 = itBase->second.dimExtras[0];
-    EXPECT_EQ(2, itBase->first.getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, itBase->first.getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base2.is<int64_t>());
     EXPECT_EQ(4, base2.getValue<int64_t>());
     EXPECT_FALSE(itBase->second.seenNewData);
@@ -1903,7 +1903,7 @@ TEST(NumericValueMetricProducerTest, TestTrimUnusedDimensionKey) {
     ASSERT_EQ(0UL, valueProducer->mCurrentSlicedBucket.size());
     ASSERT_EQ(1UL, valueProducer->mDimInfos.size());
     base2 = valueProducer->mDimInfos.begin()->second.dimExtras[0];
-    EXPECT_EQ(2, valueProducer->mDimInfos.begin()->first.getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, valueProducer->mDimInfos.begin()->first.getValues()[0].mValue.get<int32_t>());
     EXPECT_TRUE(base2.is<int64_t>());
     EXPECT_EQ(5, base2.getValue<int64_t>());
     EXPECT_FALSE(valueProducer->mDimInfos.begin()->second.seenNewData);
@@ -1930,7 +1930,7 @@ TEST(NumericValueMetricProducerTest, TestTrimUnusedDimensionKey) {
     // Dimension = 2
     auto iterator = valueProducer->mPastBuckets.begin();
     ASSERT_EQ(1, iterator->first.getDimensionKeyInWhat().getValues().size());
-    EXPECT_EQ(2, iterator->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, iterator->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     ASSERT_EQ(2, iterator->second.size());
     EXPECT_EQ(bucket4StartTimeNs, iterator->second[0].mBucketStartNs);
     EXPECT_EQ(bucket5StartTimeNs, iterator->second[0].mBucketEndNs);
@@ -1943,7 +1943,7 @@ TEST(NumericValueMetricProducerTest, TestTrimUnusedDimensionKey) {
     iterator++;
     // Dimension = 1
     ASSERT_EQ(1, iterator->first.getDimensionKeyInWhat().getValues().size());
-    EXPECT_EQ(1, iterator->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(1, iterator->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     ASSERT_EQ(2, iterator->second.size());
     EXPECT_EQ(bucketStartTimeNs, iterator->second[0].mBucketStartNs);
     EXPECT_EQ(bucket2StartTimeNs, iterator->second[0].mBucketEndNs);
@@ -2220,6 +2220,7 @@ TEST(NumericValueMetricProducerTest_BucketDrop, TestInvalidBucketWhenGuardRailHi
     metric.mutable_dimensions_in_what()->set_field(tagId);
     metric.mutable_dimensions_in_what()->add_child()->set_field(1);
     metric.set_condition(StringToId("SCREEN_ON"));
+    metric.set_drop_bucket_on_max_dimensions_exceeded(true);
 
     sp<MockStatsPullerManager> pullerManager = new StrictMock<MockStatsPullerManager>();
     EXPECT_CALL(*pullerManager, Pull(tagId, kConfigKey, bucketStartTimeNs + 2, _))
@@ -3989,12 +3990,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, kStateUnknown}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, it->second.intervals[0].sampleSize);
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs);
 
@@ -4012,12 +4013,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, it->second.intervals.size());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 5 * NS_PER_SEC);
     // Value for dimension, state key {{}, kStateUnknown}
@@ -4025,7 +4026,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4044,12 +4045,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(9, itBase->second.dimExtras[0].getValue<int64_t>());
     EXPECT_TRUE(itBase->second.hasCurrentState);
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, OFF}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, it->second.intervals.size());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 10 * NS_PER_SEC);
     // Value for dimension, state key {{}, ON}
@@ -4057,7 +4058,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(4, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4067,7 +4068,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4087,12 +4088,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, OFF}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(12, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4102,7 +4103,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(4, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 5 * NS_PER_SEC,
@@ -4112,7 +4113,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4132,12 +4133,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedState) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(it->second.intervals[0].sampleSize, 0);
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 50 * NS_PER_SEC);
 
@@ -4259,12 +4260,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, {kStateUnknown}}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, it->second.intervals[0].sampleSize);
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs);
 
@@ -4282,19 +4283,19 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              itBase->second.currentState.getValues()[0].mValue.long_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int64_t>());
     // Value for dimension, state key {{}, ON GROUP}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 5 * NS_PER_SEC);
     // Value for dimension, state key {{}, kStateUnknown}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4315,19 +4316,19 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int64_t>());
     // Value for dimension, state key {{}, ON GROUP}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 5 * NS_PER_SEC);
     // Value for dimension, state key {{}, kStateUnknown}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4348,19 +4349,19 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int64_t>());
     // Value for dimension, state key {{}, ON GROUP}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 5 * NS_PER_SEC);
     // Value for dimension, state key {{}, kStateUnknown}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4380,19 +4381,19 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(screenOffGroup.group_id(),
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int64_t>());
     // Value for dimension, state key {{}, OFF GROUP}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOffGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.long_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 15 * NS_PER_SEC);
     // Value for dimension, state key {{}, ON GROUP}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOnGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.long_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(16, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
@@ -4402,7 +4403,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 5 * NS_PER_SEC,
@@ -4422,12 +4423,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMap) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(screenOffGroup.group_id(),
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int64_t>());
     // Value for dimension, state key {{}, OFF GROUP}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(screenOffGroup.group_id(),
-              it->first.getStateValuesKey().getValues()[0].mValue.long_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int64_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 50 * NS_PER_SEC);
 
     EXPECT_TRUE(report.has_value_metrics());
@@ -4624,16 +4625,16 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithPrimaryField_WithDimensi
     ASSERT_EQ(2UL, valueProducer->mDimInfos.size());
     auto it = valueProducer->mCurrentSlicedBucket.begin();  // dimension, state key {2, BACKGROUND}
     EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues().size());
-    EXPECT_EQ(2, it->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(2, it->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::app::PROCESS_STATE_IMPORTANT_BACKGROUND,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     it++;  // dimension, state key {1, FOREGROUND}
     EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues().size());
-    EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues()[0].mValue.int_value);
+    EXPECT_EQ(1, it->first.getDimensionKeyInWhat().getValues()[0].mValue.get<int32_t>());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(android::app::PROCESS_STATE_IMPORTANT_FOREGROUND,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
 
     // Bucket status after uid 1 process state change from Foreground -> Background.
     uidProcessEvent =
@@ -4806,12 +4807,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, kStateUnknown}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs);
 
     // Bucket status after battery saver mode ON event.
@@ -4828,12 +4829,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 10 * NS_PER_SEC);
 
     // Value for key {{}, -1}
@@ -4841,7 +4842,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 10 * NS_PER_SEC);
 
@@ -4859,7 +4860,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 20 * NS_PER_SEC,
                          bucketStartTimeNs + 30 * NS_PER_SEC);
 
@@ -4868,7 +4869,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 10 * NS_PER_SEC);
 
@@ -4884,12 +4885,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     itBase = valueProducer->mDimInfos.find(it->first.getDimensionKeyInWhat());
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 20 * NS_PER_SEC,
                          bucketStartTimeNs + 40 * NS_PER_SEC);
 
@@ -4898,7 +4899,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithMissingDataInStateChange
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 10 * NS_PER_SEC);
 
@@ -5097,12 +5098,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for dimension, state key {{}, kStateUnknown}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /* StateTracker::kStateUnknown */,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs);
 
     // Bucket status after battery saver mode ON event.
@@ -5116,12 +5117,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     itBase = valueProducer->mDimInfos.find(it->first.getDimensionKeyInWhat());
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 10 * NS_PER_SEC);
 
     // Value for key {{}, -1}
@@ -5129,7 +5130,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 10 * NS_PER_SEC);
 
@@ -5144,12 +5145,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     itBase = valueProducer->mDimInfos.find(it->first.getDimensionKeyInWhat());
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, OFF}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 20 * NS_PER_SEC);
 
     // Value for key {{}, ON}
@@ -5157,7 +5158,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 20 * NS_PER_SEC);
 
@@ -5166,7 +5167,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
                          bucketStartTimeNs + 10 * NS_PER_SEC);
 
@@ -5182,12 +5183,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithNoPullOnBucketBoundary) 
     itBase = valueProducer->mDimInfos.find(it->first.getDimensionKeyInWhat());
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucket2StartTimeNs + 30 * NS_PER_SEC);
 
     // Start dump report and check output.
@@ -5323,12 +5324,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 10 * NS_PER_SEC);
 
     // Value for key {{}, -1}
@@ -5336,7 +5337,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 0, 0);
 
     // Bucket status after condition change to false.
@@ -5349,12 +5350,12 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 20 * NS_PER_SEC,
                          bucketStartTimeNs + 30 * NS_PER_SEC);
 
@@ -5363,7 +5364,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 0, 0);
 
     unique_ptr<LogEvent> batterySaverOffEvent =
@@ -5382,7 +5383,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 20 * NS_PER_SEC,
                          bucketStartTimeNs + 30 * NS_PER_SEC);
 
@@ -5391,7 +5392,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, false, 0, 0);
 
     batterySaverOnEvent =
@@ -5402,7 +5403,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithDataMissingInConditionCh
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     ASSERT_EQ(2UL, valueProducer->mCurrentSlicedBucket.size());
 
     // Start dump report and check output.
@@ -5781,7 +5782,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithCondition) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, ON}
     ASSERT_EQ(2UL, valueProducer->mCurrentSlicedBucket.size());
     std::unordered_map<MetricDimensionKey, NumericValueMetricProducer::CurrentBucket>::iterator it =
@@ -5789,14 +5790,14 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithCondition) {
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 20 * NS_PER_SEC);
     // Value for key {{}, -1}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(-1 /*StateTracker::kUnknown*/,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, it->second.intervals[0].sampleSize);
     assertConditionTimer(it->second.conditionTimer, false, 0, 0);
 
@@ -5812,21 +5813,21 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithCondition) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, OFF}
     ASSERT_EQ(3UL, valueProducer->mCurrentSlicedBucket.size());
     it = valueProducer->mCurrentSlicedBucket.begin();
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 30 * NS_PER_SEC);
     // Value for key {{}, ON}
     it++;
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(2, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
@@ -5852,7 +5853,7 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithCondition) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, OFF}
     it = valueProducer->mCurrentSlicedBucket.begin();
     assertConditionTimer(it->second.conditionTimer, true, 0, bucket2StartTimeNs);
@@ -5866,14 +5867,14 @@ TEST(NumericValueMetricProducerTest, TestSlicedStateWithCondition) {
     EXPECT_TRUE(itBase->second.hasCurrentState);
     ASSERT_EQ(1, itBase->second.currentState.getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              itBase->second.currentState.getValues()[0].mValue.int_value);
+              itBase->second.currentState.getValues()[0].mValue.get<int32_t>());
     // Value for key {{}, OFF}
     ASSERT_EQ(1UL, valueProducer->mCurrentSlicedBucket.size());
     it = valueProducer->mCurrentSlicedBucket.begin();
     EXPECT_EQ(0, it->first.getDimensionKeyInWhat().getValues().size());
     ASSERT_EQ(1, it->first.getStateValuesKey().getValues().size());
     EXPECT_EQ(BatterySaverModeStateChanged::OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     EXPECT_GT(it->second.intervals[0].sampleSize, 0);
     EXPECT_EQ(4, it->second.intervals[0].aggregate.getValue<int64_t>());
     assertConditionTimer(it->second.conditionTimer, false, 10 * NS_PER_SEC,
@@ -7140,7 +7141,7 @@ TEST(NumericValueMetricProducerTest_ConditionCorrection, TestLateStateChangeSlic
     // Value for dimension, state key {{}, OFF}
     auto it = valueProducer->mCurrentSlicedBucket.begin();
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucketStartTimeNs + 5 * NS_PER_SEC);
 
     // Bucket status after screen state change OFF->ON, forces bucket flush and new bucket start
@@ -7156,7 +7157,7 @@ TEST(NumericValueMetricProducerTest_ConditionCorrection, TestLateStateChangeSlic
     // Value for dimension, state key {{}, ON}
     it = valueProducer->mCurrentSlicedBucket.begin();
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucket2StartTimeNs + 10 * NS_PER_SEC);
 
     // Bucket status after screen state change ON->OFF, forces bucket flush and new bucket start
@@ -7170,7 +7171,7 @@ TEST(NumericValueMetricProducerTest_ConditionCorrection, TestLateStateChangeSlic
     // Value for dimension, state key {{}, OFF}
     it = valueProducer->mCurrentSlicedBucket.begin();
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              it->first.getStateValuesKey().getValues()[0].mValue.int_value);
+              it->first.getStateValuesKey().getValues()[0].mValue.get<int32_t>());
     assertConditionTimer(it->second.conditionTimer, true, 0, bucket3StartTimeNs, 0);
 
     // Bucket status after screen state change OFF->ON, forces bucket flush and new bucket start

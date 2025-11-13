@@ -30,16 +30,16 @@ namespace android {
 namespace os {
 namespace statsd {
 
-// Recursive function to determine if a matcher needs to be updated. Populates matcherToUpdate.
+// Recursive function to determine if a matcher needs to be updated. Populates matcherUpdateStatus.
 // Returns nullopt if successful and InvalidConfigReason if not.
 optional<InvalidConfigReason> determineMatcherUpdateStatus(
         const StatsdConfig& config, const int matcherIdx,
         const unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
         const vector<sp<AtomMatchingTracker>>& oldAtomMatchingTrackers,
         const unordered_map<int64_t, int>& newAtomMatchingTrackerMap,
-        vector<UpdateStatus>& matchersToUpdate, vector<uint8_t>& cycleTracker) {
+        vector<UpdateStatus>& matcherUpdateStatus, vector<uint8_t>& cycleTracker) {
     // Have already examined this matcher.
-    if (matchersToUpdate[matcherIdx] != UPDATE_UNKNOWN) {
+    if (matcherUpdateStatus[matcherIdx] != UPDATE_UNKNOWN) {
         return nullopt;
     }
 
@@ -48,7 +48,7 @@ optional<InvalidConfigReason> determineMatcherUpdateStatus(
     // Check if new matcher.
     const auto& oldAtomMatchingTrackerIt = oldAtomMatchingTrackerMap.find(id);
     if (oldAtomMatchingTrackerIt == oldAtomMatchingTrackerMap.end()) {
-        matchersToUpdate[matcherIdx] = UPDATE_NEW;
+        matcherUpdateStatus[matcherIdx] = UPDATE_NEW;
         return nullopt;
     }
 
@@ -61,14 +61,14 @@ optional<InvalidConfigReason> determineMatcherUpdateStatus(
     }
     uint64_t newProtoHash = Hash64(serializedMatcher);
     if (newProtoHash != oldAtomMatchingTrackers[oldAtomMatchingTrackerIt->second]->getProtoHash()) {
-        matchersToUpdate[matcherIdx] = UPDATE_REPLACE;
+        matcherUpdateStatus[matcherIdx] = UPDATE_REPLACE;
         return nullopt;
     }
 
     optional<InvalidConfigReason> invalidConfigReason;
     switch (matcher.contents_case()) {
         case AtomMatcher::ContentsCase::kSimpleAtomMatcher: {
-            matchersToUpdate[matcherIdx] = UPDATE_PRESERVE;
+            matcherUpdateStatus[matcherIdx] = UPDATE_PRESERVE;
             return nullopt;
         }
         case AtomMatcher::ContentsCase::kCombination: {
@@ -94,18 +94,18 @@ optional<InvalidConfigReason> determineMatcherUpdateStatus(
                 }
                 invalidConfigReason = determineMatcherUpdateStatus(
                         config, childIdx, oldAtomMatchingTrackerMap, oldAtomMatchingTrackers,
-                        newAtomMatchingTrackerMap, matchersToUpdate, cycleTracker);
+                        newAtomMatchingTrackerMap, matcherUpdateStatus, cycleTracker);
                 if (invalidConfigReason.has_value()) {
                     invalidConfigReason->matcherIds.push_back(id);
                     return invalidConfigReason;
                 }
 
-                if (matchersToUpdate[childIdx] == UPDATE_REPLACE) {
+                if (matcherUpdateStatus[childIdx] == UPDATE_REPLACE) {
                     status = UPDATE_REPLACE;
                     break;
                 }
             }
-            matchersToUpdate[matcherIdx] = status;
+            matcherUpdateStatus[matcherIdx] = status;
             cycleTracker[matcherIdx] = false;
             return nullopt;
         }
@@ -144,12 +144,12 @@ optional<InvalidConfigReason> updateAtomMatchingTrackers(
     }
 
     // For combination matchers, we need to determine if any children need to be updated.
-    vector<UpdateStatus> matchersToUpdate(atomMatcherCount, UPDATE_UNKNOWN);
+    vector<UpdateStatus> matcherUpdateStatus(atomMatcherCount, UPDATE_UNKNOWN);
     vector<uint8_t> cycleTracker(atomMatcherCount, false);
     for (int i = 0; i < atomMatcherCount; i++) {
         invalidConfigReason = determineMatcherUpdateStatus(
                 config, i, oldAtomMatchingTrackerMap, oldAtomMatchingTrackers,
-                newAtomMatchingTrackerMap, matchersToUpdate, cycleTracker);
+                newAtomMatchingTrackerMap, matcherUpdateStatus, cycleTracker);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -158,7 +158,7 @@ optional<InvalidConfigReason> updateAtomMatchingTrackers(
     for (int i = 0; i < atomMatcherCount; i++) {
         const AtomMatcher& matcher = config.atom_matcher(i);
         const int64_t id = matcher.id();
-        switch (matchersToUpdate[i]) {
+        switch (matcherUpdateStatus[i]) {
             case UPDATE_PRESERVE: {
                 const auto& oldAtomMatchingTrackerIt = oldAtomMatchingTrackerMap.find(id);
                 if (oldAtomMatchingTrackerIt == oldAtomMatchingTrackerMap.end()) {
@@ -231,17 +231,17 @@ optional<InvalidConfigReason> updateAtomMatchingTrackers(
     return nullopt;
 }
 
-// Recursive function to determine if a condition needs to be updated. Populates conditionsToUpdate.
-// Returns nullopt if successful and InvalidConfigReason if not.
+// Recursive function to determine if a condition needs to be updated. Populates
+// conditionUpdateStatus. Returns nullopt if successful and InvalidConfigReason if not.
 optional<InvalidConfigReason> determineConditionUpdateStatus(
         const StatsdConfig& config, const int conditionIdx,
         const unordered_map<int64_t, int>& oldConditionTrackerMap,
         const vector<sp<ConditionTracker>>& oldConditionTrackers,
         const unordered_map<int64_t, int>& newConditionTrackerMap,
-        const set<int64_t>& replacedMatchers, vector<UpdateStatus>& conditionsToUpdate,
+        const set<int64_t>& replacedMatchers, vector<UpdateStatus>& conditionUpdateStatus,
         vector<uint8_t>& cycleTracker) {
     // Have already examined this condition.
-    if (conditionsToUpdate[conditionIdx] != UPDATE_UNKNOWN) {
+    if (conditionUpdateStatus[conditionIdx] != UPDATE_UNKNOWN) {
         return nullopt;
     }
 
@@ -250,7 +250,7 @@ optional<InvalidConfigReason> determineConditionUpdateStatus(
     // Check if new condition.
     const auto& oldConditionTrackerIt = oldConditionTrackerMap.find(id);
     if (oldConditionTrackerIt == oldConditionTrackerMap.end()) {
-        conditionsToUpdate[conditionIdx] = UPDATE_NEW;
+        conditionUpdateStatus[conditionIdx] = UPDATE_NEW;
         return nullopt;
     }
 
@@ -263,7 +263,7 @@ optional<InvalidConfigReason> determineConditionUpdateStatus(
     }
     uint64_t newProtoHash = Hash64(serializedCondition);
     if (newProtoHash != oldConditionTrackers[oldConditionTrackerIt->second]->getProtoHash()) {
-        conditionsToUpdate[conditionIdx] = UPDATE_REPLACE;
+        conditionUpdateStatus[conditionIdx] = UPDATE_REPLACE;
         return nullopt;
     }
 
@@ -274,23 +274,23 @@ optional<InvalidConfigReason> determineConditionUpdateStatus(
             const SimplePredicate& simplePredicate = predicate.simple_predicate();
             if (simplePredicate.has_start()) {
                 if (replacedMatchers.find(simplePredicate.start()) != replacedMatchers.end()) {
-                    conditionsToUpdate[conditionIdx] = UPDATE_REPLACE;
+                    conditionUpdateStatus[conditionIdx] = UPDATE_REPLACE;
                     return nullopt;
                 }
             }
             if (simplePredicate.has_stop()) {
                 if (replacedMatchers.find(simplePredicate.stop()) != replacedMatchers.end()) {
-                    conditionsToUpdate[conditionIdx] = UPDATE_REPLACE;
+                    conditionUpdateStatus[conditionIdx] = UPDATE_REPLACE;
                     return nullopt;
                 }
             }
             if (simplePredicate.has_stop_all()) {
                 if (replacedMatchers.find(simplePredicate.stop_all()) != replacedMatchers.end()) {
-                    conditionsToUpdate[conditionIdx] = UPDATE_REPLACE;
+                    conditionUpdateStatus[conditionIdx] = UPDATE_REPLACE;
                     return nullopt;
                 }
             }
-            conditionsToUpdate[conditionIdx] = UPDATE_PRESERVE;
+            conditionUpdateStatus[conditionIdx] = UPDATE_PRESERVE;
             return nullopt;
         }
         case Predicate::ContentsCase::kCombination: {
@@ -316,18 +316,19 @@ optional<InvalidConfigReason> determineConditionUpdateStatus(
                 }
                 invalidConfigReason = determineConditionUpdateStatus(
                         config, childIdx, oldConditionTrackerMap, oldConditionTrackers,
-                        newConditionTrackerMap, replacedMatchers, conditionsToUpdate, cycleTracker);
+                        newConditionTrackerMap, replacedMatchers, conditionUpdateStatus,
+                        cycleTracker);
                 if (invalidConfigReason.has_value()) {
                     invalidConfigReason->conditionIds.push_back(id);
                     return invalidConfigReason;
                 }
 
-                if (conditionsToUpdate[childIdx] == UPDATE_REPLACE) {
+                if (conditionUpdateStatus[childIdx] == UPDATE_REPLACE) {
                     status = UPDATE_REPLACE;
                     break;
                 }
             }
-            conditionsToUpdate[conditionIdx] = status;
+            conditionUpdateStatus[conditionIdx] = status;
             cycleTracker[conditionIdx] = false;
             return nullopt;
         }
@@ -369,12 +370,12 @@ optional<InvalidConfigReason> updateConditions(
         conditionProtos.push_back(condition);
     }
 
-    vector<UpdateStatus> conditionsToUpdate(conditionTrackerCount, UPDATE_UNKNOWN);
+    vector<UpdateStatus> conditionUpdateStatus(conditionTrackerCount, UPDATE_UNKNOWN);
     vector<uint8_t> cycleTracker(conditionTrackerCount, false);
     for (int i = 0; i < conditionTrackerCount; i++) {
         invalidConfigReason = determineConditionUpdateStatus(
                 config, i, oldConditionTrackerMap, oldConditionTrackers, newConditionTrackerMap,
-                replacedMatchers, conditionsToUpdate, cycleTracker);
+                replacedMatchers, conditionUpdateStatus, cycleTracker);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -385,7 +386,7 @@ optional<InvalidConfigReason> updateConditions(
     for (int i = 0; i < conditionTrackerCount; i++) {
         const Predicate& predicate = config.predicate(i);
         const int64_t id = predicate.id();
-        switch (conditionsToUpdate[i]) {
+        switch (conditionUpdateStatus[i]) {
             case UPDATE_PRESERVE: {
                 preservedConditions.insert(i);
                 const auto& oldConditionTrackerIt = oldConditionTrackerMap.find(id);
@@ -573,7 +574,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
         const vector<sp<MetricProducer>>& oldMetricProducers,
         const unordered_map<int64_t, int>& metricToActivationMap,
         const set<int64_t>& replacedMatchers, const set<int64_t>& replacedConditions,
-        const set<int64_t>& replacedStates, vector<UpdateStatus>& metricsToUpdate) {
+        const set<int64_t>& replacedStates, vector<UpdateStatus>& metricUpdateStatus) {
     int metricIndex = 0;
     optional<InvalidConfigReason> invalidConfigReason;
     for (int i = 0; i < config.count_metric_size(); i++, metricIndex++) {
@@ -586,7 +587,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_COUNT, {metric.what()},
                 conditionDependencies, metric.slice_by_state(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -601,7 +602,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_DURATION, /*matcherDependencies=*/{},
                 conditionDependencies, metric.slice_by_state(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -616,7 +617,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_EVENT, {metric.what()},
                 conditionDependencies, ::google::protobuf::RepeatedField<int64_t>(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -631,7 +632,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_VALUE, {metric.what()},
                 conditionDependencies, metric.slice_by_state(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -650,7 +651,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_GAUGE, matcherDependencies,
                 conditionDependencies, ::google::protobuf::RepeatedField<int64_t>(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -666,7 +667,7 @@ optional<InvalidConfigReason> determineAllMetricUpdateStatuses(
                 config, metric, metric.id(), METRIC_TYPE_KLL, {metric.what()},
                 conditionDependencies, metric.slice_by_state(), metric.links(),
                 oldMetricProducerMap, oldMetricProducers, metricToActivationMap, replacedMatchers,
-                replacedConditions, replacedStates, metricsToUpdate[metricIndex]);
+                replacedConditions, replacedStates, metricUpdateStatus[metricIndex]);
         if (invalidConfigReason.has_value()) {
             return invalidConfigReason;
         }
@@ -766,10 +767,10 @@ optional<InvalidConfigReason> updateMetrics(
         metricToActivationMap.insert({metricId, i});
     }
 
-    vector<UpdateStatus> metricsToUpdate(allMetricsCount, UPDATE_UNKNOWN);
+    vector<UpdateStatus> metricUpdateStatus(allMetricsCount, UPDATE_UNKNOWN);
     invalidConfigReason = determineAllMetricUpdateStatuses(
             config, oldMetricProducerMap, oldMetricProducers, metricToActivationMap,
-            replacedMatchers, replacedConditions, replacedStates, metricsToUpdate);
+            replacedMatchers, replacedConditions, replacedStates, metricUpdateStatus);
     if (invalidConfigReason.has_value()) {
         return invalidConfigReason;
     }
@@ -780,7 +781,7 @@ optional<InvalidConfigReason> updateMetrics(
         const CountMetric& metric = config.count_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -822,7 +823,7 @@ optional<InvalidConfigReason> updateMetrics(
         const DurationMetric& metric = config.duration_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -864,7 +865,7 @@ optional<InvalidConfigReason> updateMetrics(
         const EventMetric& metric = config.event_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -906,7 +907,7 @@ optional<InvalidConfigReason> updateMetrics(
         const ValueMetric& metric = config.value_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -949,7 +950,7 @@ optional<InvalidConfigReason> updateMetrics(
         const GaugeMetric& metric = config.gauge_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -992,7 +993,7 @@ optional<InvalidConfigReason> updateMetrics(
         const KllMetric& metric = config.kll_metric(i);
         newMetricProducerMap[metric.id()] = metricIndex;
         optional<sp<MetricProducer>> producer;
-        switch (metricsToUpdate[metricIndex]) {
+        switch (metricUpdateStatus[metricIndex]) {
             case UPDATE_PRESERVE: {
                 producer = updateMetric(
                         config, i, metricIndex, metric.id(), allAtomMatchingTrackers,
@@ -1055,7 +1056,7 @@ optional<InvalidConfigReason> updateMetrics(
                         INVALID_CONFIG_REASON_METRIC_SLICED_STATE_ATOM_ALLOWED_FROM_ANY_UID,
                         producer->getMetricId());
                 // Preserved metrics should've already registered.`
-            } else if (metricsToUpdate[i] != UPDATE_PRESERVE) {
+            } else if (metricUpdateStatus[i] != UPDATE_PRESERVE) {
                 StateManager::getInstance().registerListener(atomId, producer);
             }
         }
@@ -1063,7 +1064,7 @@ optional<InvalidConfigReason> updateMetrics(
 
     // Init new/replaced metrics.
     for (size_t i = 0; i < newMetricProducers.size(); i++) {
-        if (metricsToUpdate[i] == UPDATE_REPLACE || metricsToUpdate[i] == UPDATE_NEW) {
+        if (metricUpdateStatus[i] == UPDATE_REPLACE || metricUpdateStatus[i] == UPDATE_NEW) {
             newMetricProducers[i]->prepareFirstBucket();
         }
     }

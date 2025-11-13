@@ -277,7 +277,7 @@ void EventMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_
                                          const FieldValue& oldState, const FieldValue& newState) {
     VLOG("EventMetric %lld onStateChanged time %lld, State%d, key %s, %d -> %d",
          (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
-         oldState.mValue.int_value, newState.mValue.int_value);
+         oldState.mValue.get<int32_t>(), newState.mValue.get<int32_t>());
 }
 
 void EventMetricProducer::onMatchedLogEventInternalLocked(
@@ -295,7 +295,10 @@ void EventMetricProducer::onMatchedLogEventInternalLocked(
     const int64_t elapsedTimeNs = truncateTimestampIfNecessary(event);
     AtomDimensionKey key(
             event.GetTagId(),
-            HashableDimensionKey(filterValues(mFieldMatchers, event.getValues(), mOmitFields)));
+            HashableDimensionKey(
+                    mFieldMatchers.empty()
+                            ? event.getValues()
+                            : filterValues(mFieldMatchers, event.getValues(), mOmitFields)));
     // TODO(b/383929503): Optimize slice_by_state performance
     if (!mAggregatedAtoms.contains(key) && !mAggAtomsAndStates.contains(key)) {
         sp<ConfigMetadataProvider> provider = getConfigMetadataProvider();

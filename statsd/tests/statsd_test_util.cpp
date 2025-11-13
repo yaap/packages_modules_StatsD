@@ -2440,6 +2440,20 @@ StatsdStatsReport getStatsdStatsReport(bool resetStats) {
     return getStatsdStatsReport(stats, resetStats);
 }
 
+optional<ConfigMetricsReportList> getReports(StatsLogProcessor& processor, int64_t dumpTimeNs,
+                                             const ConfigKey& cfgKey, bool includeCurrentBucket) {
+    ConfigMetricsReportList reports;
+    vector<uint8_t> buffer;
+    processor.onDumpReport(cfgKey, dumpTimeNs, includeCurrentBucket, true, ADB_DUMP, FAST, &buffer);
+    if (reports.ParseFromArray(&buffer[0], buffer.size())) {
+        backfillDimensionPath(&reports);
+        backfillStringInReport(&reports);
+        backfillStartEndTimestamp(&reports);
+        return reports;
+    }
+    return nullopt;
+}
+
 StatsdStatsReport getStatsdStatsReport(StatsdStats& stats, bool resetStats) {
     vector<uint8_t> statsBuffer;
     stats.dumpStats(&statsBuffer, resetStats);

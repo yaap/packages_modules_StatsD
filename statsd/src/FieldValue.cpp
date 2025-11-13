@@ -23,6 +23,9 @@
 #include "hash.h"
 #include "math.h"
 
+using std::string;
+using std::vector;
+
 namespace android {
 namespace os {
 namespace statsd {
@@ -60,8 +63,8 @@ bool Field::matches(const Matcher& matcher) const {
     return false;
 }
 
-std::vector<Matcher> dedupFieldMatchers(const std::vector<Matcher>& fieldMatchers) {
-    std::vector<Matcher> dedupedFieldMatchers;
+vector<Matcher> dedupFieldMatchers(const vector<Matcher>& fieldMatchers) {
+    vector<Matcher> dedupedFieldMatchers;
     for (size_t i = 0; i < fieldMatchers.size(); i++) {
         if (std::find(dedupedFieldMatchers.begin(), dedupedFieldMatchers.end(), fieldMatchers[i]) ==
             dedupedFieldMatchers.end()) {
@@ -72,7 +75,7 @@ std::vector<Matcher> dedupFieldMatchers(const std::vector<Matcher>& fieldMatcher
 }
 
 void translateFieldMatcher(int tag, const FieldMatcher& matcher, int depth, int* pos, int* mask,
-                           std::vector<Matcher>* output) {
+                           vector<Matcher>* output) {
     if (depth > kMaxLogDepth) {
         ALOGE("depth > 2");
         return;
@@ -119,7 +122,7 @@ void translateFieldMatcher(int tag, const FieldMatcher& matcher, int depth, int*
     }
 }
 
-void translateFieldMatcher(const FieldMatcher& matcher, std::vector<Matcher>* output) {
+void translateFieldMatcher(const FieldMatcher& matcher, vector<Matcher>* output) {
     int pos[] = {1, 1, 1};
     int mask[] = {0x7f, 0x7f, 0x7f};
     int tag = matcher.field();
@@ -136,7 +139,7 @@ int32_t getUidIfExists(const FieldValue& value) {
     // the field is uid field if the field is the uid field in attribution node
     // or annotated as such in the atom
     bool isUid = isAttributionUidField(value) || isUidField(value);
-    return isUid ? value.mValue.int_value : -1;
+    return isUid ? value.mValue.get<int32_t>() : -1;
 }
 
 bool isAttributionUidField(const Field& field, const Value& value) {
@@ -155,241 +158,85 @@ bool isPrimitiveRepeatedField(const Field& field) {
     return field.getDepth() == 1;
 }
 
-Value::Value(const Value& from) {
-    type = from.getType();
-    switch (type) {
-        case INT:
-            int_value = from.int_value;
-            break;
-        case LONG:
-            long_value = from.long_value;
-            break;
-        case FLOAT:
-            float_value = from.float_value;
-            break;
-        case DOUBLE:
-            double_value = from.double_value;
-            break;
-        case STRING:
-            str_value = from.str_value;
-            break;
-        case STORAGE:
-            storage_value = from.storage_value;
-            break;
-        default:
-            break;
+// anonymous namespace for Value variant visitors
+namespace {
+// Visitor for printing type information currently stored in the Value.
+struct ToStringVisitor {
+    string operator()(int32_t value) const {
+        return std::to_string(value) + "[I]";
     }
+    string operator()(int64_t value) const {
+        return std::to_string(value) + "[L]";
+    }
+    string operator()(float value) const {
+        return std::to_string(value) + "[F]";
+    }
+    string operator()(double value) const {
+        return std::to_string(value) + "[D]";
+    }
+    string operator()(const string& value) const {
+        return value + "[S]";
+    }
+    string operator()(const vector<uint8_t>& value) const {
+        return "bytes of size " + std::to_string(value.size()) + "[ST]";
+    }
+    string operator()(std::monostate) const {
+        return "[UNKNOWN]";
+    }
+};
+
+struct GetSizeVisitor {
+    size_t operator()(const string& value) const {
+        return sizeof(char) * value.length();
+    }
+    size_t operator()(const vector<uint8_t>& value) const {
+        return sizeof(uint8_t) * value.size();
+    }
+    size_t operator()(const auto& value) const {
+        return sizeof(value);
+    }
+};
+}  // namespace
+
+// Keeping the impl in the cpp file and explicitly naming the templates prevents accidentally
+// accessing unsupported types.
+template <typename V>
+V& Value::get() {
+    return std::get<V>(mData);
 }
+template int32_t& Value::get<int32_t>();
+template int64_t& Value::get<int64_t>();
+template float& Value::get<float>();
+template double& Value::get<double>();
+template string& Value::get<string>();
+template vector<uint8_t>& Value::get<vector<uint8_t>>();
 
-std::string Value::toString() const {
-    switch (type) {
-        case INT:
-            return std::to_string(int_value) + "[I]";
-        case LONG:
-            return std::to_string(long_value) + "[L]";
-        case FLOAT:
-            return std::to_string(float_value) + "[F]";
-        case DOUBLE:
-            return std::to_string(double_value) + "[D]";
-        case STRING:
-            return str_value + "[S]";
-        case STORAGE:
-            return "bytes of size " + std::to_string(storage_value.size()) + "[ST]";
-        default:
-            return "[UNKNOWN]";
-    }
+template <typename V>
+const V& Value::get() const {
+    return std::get<V>(mData);
 }
+template const int32_t& Value::get<int32_t>() const;
+template const int64_t& Value::get<int64_t>() const;
+template const float& Value::get<float>() const;
+template const double& Value::get<double>() const;
+template const string& Value::get<string>() const;
+template const vector<uint8_t>& Value::get<vector<uint8_t>>() const;
 
-bool Value::isZero() const {
-    switch (type) {
-        case INT:
-            return int_value == 0;
-        case LONG:
-            return long_value == 0;
-        case FLOAT:
-            return fabs(float_value) <= std::numeric_limits<float>::epsilon();
-        case DOUBLE:
-            return fabs(double_value) <= std::numeric_limits<double>::epsilon();
-        case STRING:
-            return str_value.size() == 0;
-        case STORAGE:
-            return storage_value.size() == 0;
-        default:
-            return false;
-    }
+template <typename V>
+void Value::set(V v) {
+    mData = v;
 }
+template void Value::set<int32_t>(int32_t);
+template void Value::set<int64_t>(int64_t);
 
-bool Value::operator==(const Value& that) const {
-    if (type != that.getType()) return false;
-
-    switch (type) {
-        case INT:
-            return int_value == that.int_value;
-        case LONG:
-            return long_value == that.long_value;
-        case FLOAT:
-            return float_value == that.float_value;
-        case DOUBLE:
-            return double_value == that.double_value;
-        case STRING:
-            return str_value == that.str_value;
-        case STORAGE:
-            return storage_value == that.storage_value;
-        default:
-            return false;
-    }
-}
-
-bool Value::operator!=(const Value& that) const {
-    if (type != that.getType()) return true;
-    switch (type) {
-        case INT:
-            return int_value != that.int_value;
-        case LONG:
-            return long_value != that.long_value;
-        case FLOAT:
-            return float_value != that.float_value;
-        case DOUBLE:
-            return double_value != that.double_value;
-        case STRING:
-            return str_value != that.str_value;
-        case STORAGE:
-            return storage_value != that.storage_value;
-        default:
-            return false;
-    }
-}
-
-bool Value::operator<(const Value& that) const {
-    if (type != that.getType()) return type < that.getType();
-
-    switch (type) {
-        case INT:
-            return int_value < that.int_value;
-        case LONG:
-            return long_value < that.long_value;
-        case FLOAT:
-            return float_value < that.float_value;
-        case DOUBLE:
-            return double_value < that.double_value;
-        case STRING:
-            return str_value < that.str_value;
-        case STORAGE:
-            return storage_value < that.storage_value;
-        default:
-            return false;
-    }
-}
-
-bool Value::operator>(const Value& that) const {
-    if (type != that.getType()) return type > that.getType();
-
-    switch (type) {
-        case INT:
-            return int_value > that.int_value;
-        case LONG:
-            return long_value > that.long_value;
-        case FLOAT:
-            return float_value > that.float_value;
-        case DOUBLE:
-            return double_value > that.double_value;
-        case STRING:
-            return str_value > that.str_value;
-        case STORAGE:
-            return storage_value > that.storage_value;
-        default:
-            return false;
-    }
-}
-
-bool Value::operator>=(const Value& that) const {
-    if (type != that.getType()) return type >= that.getType();
-
-    switch (type) {
-        case INT:
-            return int_value >= that.int_value;
-        case LONG:
-            return long_value >= that.long_value;
-        case FLOAT:
-            return float_value >= that.float_value;
-        case DOUBLE:
-            return double_value >= that.double_value;
-        case STRING:
-            return str_value >= that.str_value;
-        case STORAGE:
-            return storage_value >= that.storage_value;
-        default:
-            return false;
-    }
-}
-
-Value Value::operator-(const Value& that) const {
-    Value v;
-    if (type != that.type) {
-        ALOGE("Can't operate on different value types, %d, %d", type, that.type);
-        return v;
-    }
-    if (type == STRING) {
-        ALOGE("Can't operate on string value type");
-        return v;
-    }
-
-    if (type == STORAGE) {
-        ALOGE("Can't operate on storage value type");
-        return v;
-    }
-
-    switch (type) {
-        case INT:
-            v.setInt(int_value - that.int_value);
-            break;
-        case LONG:
-            v.setLong(long_value - that.long_value);
-            break;
-        case FLOAT:
-            v.setFloat(float_value - that.float_value);
-            break;
-        case DOUBLE:
-            v.setDouble(double_value - that.double_value);
-            break;
-        default:
-            break;
-    }
-    return v;
-}
-
-Value& Value::operator=(const Value& that) {
-    if (this != &that) {
-        type = that.type;
-        switch (type) {
-            case INT:
-                int_value = that.int_value;
-                break;
-            case LONG:
-                long_value = that.long_value;
-                break;
-            case FLOAT:
-                float_value = that.float_value;
-                break;
-            case DOUBLE:
-                double_value = that.double_value;
-                break;
-            case STRING:
-                str_value = that.str_value;
-                break;
-            case STORAGE:
-                storage_value = that.storage_value;
-                break;
-            default:
-                break;
-        }
-    }
-    return *this;
+string Value::toString() const {
+    return std::visit(ToStringVisitor{}, mData);
 }
 
 Value& Value::operator+=(const Value& that) {
-    if (type != that.type) {
-        ALOGE("Can't operate on different value types, %d, %d", type, that.type);
+    Type type = getType();
+    if (type != that.getType()) {
+        ALOGE("Can't operate on different value types, %d, %d", type, that.getType());
         return *this;
     }
     if (type == STRING) {
@@ -403,16 +250,16 @@ Value& Value::operator+=(const Value& that) {
 
     switch (type) {
         case INT:
-            int_value += that.int_value;
+            mData = get<int32_t>() + that.get<int32_t>();
             break;
         case LONG:
-            long_value += that.long_value;
+            mData = get<int64_t>() + that.get<int64_t>();
             break;
         case FLOAT:
-            float_value += that.float_value;
+            mData = get<float>() + that.get<float>();
             break;
         case DOUBLE:
-            double_value += that.double_value;
+            mData = get<double>() + that.get<double>();
             break;
         default:
             break;
@@ -420,50 +267,12 @@ Value& Value::operator+=(const Value& that) {
     return *this;
 }
 
-double Value::getDouble() const {
-    switch (type) {
-        case INT:
-            return int_value;
-        case LONG:
-            return long_value;
-        case FLOAT:
-            return float_value;
-        case DOUBLE:
-            return double_value;
-        default:
-            return 0;
-    }
-}
-
 size_t Value::getSize() const {
-    size_t size = 0;
-    switch (type) {
-        case INT:
-            size = sizeof(int32_t);
-            break;
-        case LONG:
-            size = sizeof(int64_t);
-            break;
-        case FLOAT:
-            size = sizeof(float);
-            break;
-        case DOUBLE:
-            size = sizeof(double);
-            break;
-        case STRING:
-            size = sizeof(char) * str_value.length();
-            break;
-        case STORAGE:
-            size = sizeof(uint8_t) * storage_value.size();
-            break;
-        default:
-            break;
-    }
-    return size;
+    return std::visit(GetSizeVisitor{}, mData);
 }
 
-std::string Annotations::toString() const {
-    std::string annotations;
+string Annotations::toString() const {
+    string annotations;
     if (isUidField()) {
         annotations += "UID";
     }
@@ -482,8 +291,7 @@ std::string Annotations::toString() const {
     return annotations;
 }
 
-bool equalDimensions(const std::vector<Matcher>& dimension_a,
-                     const std::vector<Matcher>& dimension_b) {
+bool equalDimensions(const vector<Matcher>& dimension_a, const vector<Matcher>& dimension_b) {
     bool eq = dimension_a.size() == dimension_b.size();
     for (size_t i = 0; eq && i < dimension_a.size(); ++i) {
         if (dimension_b[i] != dimension_a[i]) {
@@ -494,8 +302,7 @@ bool equalDimensions(const std::vector<Matcher>& dimension_a,
 }
 
 /* Is dimension_a a subset of dimension_b. */
-bool subsetDimensions(const std::vector<Matcher>& dimension_a,
-                      const std::vector<Matcher>& dimension_b) {
+bool subsetDimensions(const vector<Matcher>& dimension_a, const vector<Matcher>& dimension_b) {
     if (dimension_a.size() > dimension_b.size()) {
         return false;
     }
@@ -562,7 +369,7 @@ bool ShouldUseNestedDimensions(const FieldMatcher& matcher) {
     return HasPositionALL(matcher) || HasPrimitiveRepeatedField(matcher);
 }
 
-size_t getSize(const std::vector<FieldValue>& fieldValues) {
+size_t getSize(const vector<FieldValue>& fieldValues) {
     size_t totalSize = 0;
     for (const FieldValue& fieldValue : fieldValues) {
         totalSize += fieldValue.getSize();
@@ -570,7 +377,7 @@ size_t getSize(const std::vector<FieldValue>& fieldValues) {
     return totalSize;
 }
 
-size_t getFieldValuesSizeV2(const std::vector<FieldValue>& fieldValues) {
+size_t getFieldValuesSizeV2(const vector<FieldValue>& fieldValues) {
     size_t totalSize = 0;
     for (const FieldValue& fieldValue : fieldValues) {
         totalSize += fieldValue.getSizeV2();
@@ -580,29 +387,32 @@ size_t getFieldValuesSizeV2(const std::vector<FieldValue>& fieldValues) {
 
 bool shouldKeepSample(const FieldValue& sampleFieldValue, int shardOffset, int shardCount) {
     int hashValue = 0;
-    switch (sampleFieldValue.mValue.type) {
+    switch (sampleFieldValue.mValue.getType()) {
         case INT:
-            hashValue = Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.int_value),
-                               sizeof(sampleFieldValue.mValue.int_value));
+            hashValue =
+                    Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.get<int32_t>()),
+                           sizeof(sampleFieldValue.mValue.get<int32_t>()));
             break;
         case LONG:
-            hashValue = Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.long_value),
-                               sizeof(sampleFieldValue.mValue.long_value));
+            hashValue =
+                    Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.get<int64_t>()),
+                           sizeof(sampleFieldValue.mValue.get<int64_t>()));
             break;
         case FLOAT:
-            hashValue = Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.float_value),
-                               sizeof(sampleFieldValue.mValue.float_value));
+            hashValue = Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.get<float>()),
+                               sizeof(sampleFieldValue.mValue.get<float>()));
             break;
         case DOUBLE:
-            hashValue = Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.double_value),
-                               sizeof(sampleFieldValue.mValue.double_value));
+            hashValue =
+                    Hash32(reinterpret_cast<const char*>(&sampleFieldValue.mValue.get<double>()),
+                           sizeof(sampleFieldValue.mValue.get<double>()));
             break;
         case STRING:
-            hashValue = Hash32(sampleFieldValue.mValue.str_value);
+            hashValue = Hash32(sampleFieldValue.mValue.get<string>());
             break;
         case STORAGE:
-            hashValue = Hash32((const char*)sampleFieldValue.mValue.storage_value.data(),
-                               sampleFieldValue.mValue.storage_value.size());
+            hashValue = Hash32((const char*)sampleFieldValue.mValue.get<vector<uint8_t>>().data(),
+                               sampleFieldValue.mValue.get<vector<uint8_t>>().size());
             break;
         default:
             return true;

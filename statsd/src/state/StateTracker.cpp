@@ -128,9 +128,9 @@ void StateTracker::updateStateForPrimaryKey(const int64_t eventTimeNs,
                                             StateValueInfo& stateValueInfo) {
     FieldValue oldState;
     oldState.mField = mField;
-    oldState.mValue.setInt(stateValueInfo.state);
+    oldState.mValue.set(stateValueInfo.state);
     const int32_t oldStateValue = stateValueInfo.state;
-    const int32_t newStateValue = newState.mValue.int_value;
+    const int32_t newStateValue = newState.mValue.get<int32_t>();
 
     // Update state map and notify listeners if state has changed.
     // Every state event triggers a state overwrite.

@@ -136,7 +136,7 @@ TEST_F(StatsCallbackPullerTest, PullSuccess) {
     EXPECT_LT(startTimeNs, dataHolder[0]->GetElapsedTimestampNs());
     EXPECT_GT(endTimeNs, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(value, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(value, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 }
 
 TEST_F(StatsCallbackPullerTest, PullFail) {

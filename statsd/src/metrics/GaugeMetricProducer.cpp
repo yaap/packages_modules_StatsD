@@ -239,7 +239,7 @@ void GaugeMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_
                                          const FieldValue& oldState, const FieldValue& newState) {
     VLOG("GaugeMetric %lld onStateChanged time %lld, State%d, key %s, %d -> %d",
          (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
-         oldState.mValue.int_value, newState.mValue.int_value);
+         oldState.mValue.get<int32_t>(), newState.mValue.get<int32_t>());
 }
 
 void GaugeMetricProducer::dumpStatesLocked(int out, bool verbose) const {
@@ -514,7 +514,9 @@ void GaugeMetricProducer::onSlicedConditionMayChangeLocked(bool overallCondition
 }
 
 vector<FieldValue> GaugeMetricProducer::getGaugeFields(const LogEvent& event) {
-    vector<FieldValue> gaugeFields = filterValues(mFieldMatchers, event.getValues(), mOmitFields);
+    vector<FieldValue> gaugeFields =
+            mFieldMatchers.empty() ? event.getValues()
+                                   : filterValues(mFieldMatchers, event.getValues(), mOmitFields);
 
     // Trim all dimension fields from output. Dimensions will appear in output report and will
     // benefit from dictionary encoding. For large pulled atoms, this can give the benefit of
@@ -621,7 +623,9 @@ void GaugeMetricProducer::onMatchedLogEventInternalLocked(
     }
 
     const int64_t truncatedElapsedTimestampNs = truncateTimestampIfNecessary(event);
-    GaugeAtom gaugeAtom(getGaugeFields(event), truncatedElapsedTimestampNs);
+    GaugeAtom gaugeAtom(mFieldMatchers.empty() && mDimensionsInWhat.empty() ? event.getValues()
+                                                                            : getGaugeFields(event),
+                        truncatedElapsedTimestampNs);
     (*mCurrentSlicedBucket)[eventKey].push_back(gaugeAtom);
     // Anomaly detection on gauge metric only works when there is one numeric
     // field specified.
@@ -630,9 +634,9 @@ void GaugeMetricProducer::onMatchedLogEventInternalLocked(
             const Value& value = gaugeAtom.mFields.begin()->mValue;
             long gaugeVal = 0;
             if (value.getType() == INT) {
-                gaugeVal = (long)value.int_value;
+                gaugeVal = (long)value.get<int32_t>();
             } else if (value.getType() == LONG) {
-                gaugeVal = value.long_value;
+                gaugeVal = value.get<int64_t>();
             }
             for (auto& tracker : mAnomalyTrackers) {
                 tracker->detectAndDeclareAnomaly(eventTimeNs, mCurrentBucketNum, mMetricId,
@@ -650,9 +654,9 @@ void GaugeMetricProducer::updateCurrentSlicedBucketForAnomaly() {
         const Value& value = slice.second.front().mFields.front().mValue;
         long gaugeVal = 0;
         if (value.getType() == INT) {
-            gaugeVal = (long)value.int_value;
+            gaugeVal = (long)value.get<int32_t>();
         } else if (value.getType() == LONG) {
-            gaugeVal = value.long_value;
+            gaugeVal = value.get<int64_t>();
         }
         (*mCurrentSlicedBucketForAnomaly)[slice.first] = gaugeVal;
     }

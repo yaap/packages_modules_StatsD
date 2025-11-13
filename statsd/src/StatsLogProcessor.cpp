@@ -169,8 +169,8 @@ void StatsLogProcessor::mapIsolatedUidToHostUidIfNecessaryLocked(LogEvent* event
         for (size_t i = indexRange.first; i <= indexRange.second; i++) {
             FieldValue& fieldValue = fieldValues->at(i);
             if (isAttributionUidField(fieldValue)) {
-                const int hostUid = mUidMap->getHostUidOrSelf(fieldValue.mValue.int_value);
-                fieldValue.mValue.setInt(hostUid);
+                const int hostUid = mUidMap->getHostUidOrSelf(fieldValue.mValue.get<int32_t>());
+                fieldValue.mValue.set(hostUid);
             }
         }
     } else {
@@ -230,8 +230,14 @@ void StatsLogProcessor::onBinaryPushStateChangedEventLocked(LogEvent* event) {
     trainInfo.experimentIds = {trainExperimentIds.experiment_id().begin(),
                                trainExperimentIds.experiment_id().end()};
 
+    VLOG("trainInfo.experimentIds before update %s",
+         InstallTrainInfo::experimentIdsToString(trainInfo.experimentIds).c_str());
+
     // Update the train info on disk and get any data the logevent is missing.
     getAndUpdateTrainInfoOnDisk(is_rollback, &trainInfo);
+
+    VLOG("trainInfo.experimentIds after update %s",
+         InstallTrainInfo::experimentIdsToString(trainInfo.experimentIds).c_str());
 
     std::vector<uint8_t> trainExperimentIdProto;
     writeExperimentIdsToProto(trainInfo.experimentIds, &trainExperimentIdProto);
@@ -827,7 +833,8 @@ void StatsLogProcessor::onConfigMetricsReportLocked(
     // Data corrupted reason
     writeDataCorruptedReasons(tempProto, FIELD_ID_DATA_CORRUPTED_REASON,
                               StatsdStats::getInstance().hasEventQueueOverflow(),
-                              StatsdStats::getInstance().hasSocketLoss());
+                              StatsdStats::getInstance().hasSocketLoss(),
+                              StatsdStats::getInstance().hasSystemServerRestart());
 
     // Estimated memory bytes
     tempProto.write(FIELD_TYPE_INT64 | FIELD_ID_ESTIMATED_DATA_BYTES, totalSize);

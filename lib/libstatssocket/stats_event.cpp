@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "stats_buffer_writer.h"
+#include "include/stats_buffer_writer.h"
 #include "utils.h"
 
 #define LOGGER_ENTRY_MAX_PAYLOAD 4068
@@ -84,7 +84,7 @@ struct AStatsEvent {
 };
 
 AStatsEvent* AStatsEvent_obtain() {
-    AStatsEvent* event = malloc(sizeof(AStatsEvent));
+    AStatsEvent* event = static_cast<AStatsEvent*>(malloc(sizeof(AStatsEvent)));
     event->lastFieldPos = 0;
     event->numBytesWritten = 2;  // reserve first 2 bytes for root event type and number of elements
     event->numElements = 0;

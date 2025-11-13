@@ -20,7 +20,7 @@ flag {
 }
 
 flag {
-    name: "enable_iouring"
+    name: "use_iouring"
     namespace: "statsd"
     description: "Enables iouring implementation of the statsd"
     bug: "380509817"
@@ -34,3 +34,11 @@ flag {
     bug: "382574781"
     is_fixed_read_only: true
 }
+
+flag {
+  name: "keep_value_metric_max_dimension_bucket"
+  namespace: "statsd"
+  description: "Whether to keep the bucket in ValueMetric when dimension guardrail is hit."
+  bug: "408060408"
+}
+

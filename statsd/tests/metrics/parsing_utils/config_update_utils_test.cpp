@@ -2295,7 +2295,7 @@ TEST_F(ConfigUpdateTest, TestUpdateCountMetrics) {
     FieldValue screenState;
     StateManager::getInstance().getStateValue(util::SCREEN_STATE_CHANGED, DEFAULT_DIMENSION_KEY,
                                               &screenState);
-    EXPECT_EQ(screenState.mValue.int_value, android::view::DisplayStateEnum::DISPLAY_STATE_ON);
+    EXPECT_EQ(screenState.mValue.get<int32_t>(), android::view::DisplayStateEnum::DISPLAY_STATE_ON);
 }
 
 TEST_F(ConfigUpdateTest, TestUpdateGaugeMetrics) {

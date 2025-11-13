@@ -17,11 +17,13 @@
 #define STATSD_DEBUG false  // STOPSHIP if true
 #include "Log.h"
 
+#include <IOUringSocketHandler/IOUringSocketHandler.h>
 #include <android/binder_ibinder.h>
 #include <android/binder_ibinder_platform.h>
 #include <android/binder_interface_utils.h>
 #include <android/binder_manager.h>
 #include <android/binder_process.h>
+#include <com_android_os_statsd_flags.h>
 #include <stdio.h>
 #include <sys/random.h>
 #include <sys/stat.h>
@@ -33,6 +35,9 @@
 #include "flags/FlagProvider.h"
 #include "packages/UidMap.h"
 #include "socket/StatsSocketListener.h"
+#include "socket/StatsSocketListenerIoUring.h"
+
+namespace flags = com::android::os::statsd::flags;
 
 using namespace android;
 using namespace android::os::statsd;
@@ -41,7 +46,7 @@ using std::shared_ptr;
 using std::make_shared;
 
 shared_ptr<StatsService> gStatsService = nullptr;
-sp<StatsSocketListener> gSocketListener = nullptr;
+sp<BaseStatsSocketListener> gSocketListener = nullptr;
 int gCtrlPipe[2];
 
 void signalHandler(int sig) {
@@ -102,13 +107,15 @@ int main(int /*argc*/, char** /*argv*/) {
     // Start reading events from the socket as early as possible.
     // Processing from the queue is delayed until StatsService::startup to allow
     // config initialization to occur before we start processing atoms.
-    gSocketListener = new StatsSocketListener(eventQueue, logEventFilter);
+    if (flags::use_iouring() && IOUringSocketHandler::IsIouringSupported()) {
+        gSocketListener = new StatsSocketListenerIoUring(eventQueue, logEventFilter);
+    } else {
+        gSocketListener = new StatsSocketListener(eventQueue, logEventFilter);
+    }
 
     ALOGI("Statsd starts to listen to socket.");
     // Backlog and /proc/sys/net/unix/max_dgram_qlen set to large value
-    if (gSocketListener->startListener(600)) {
-        exit(1);
-    }
+    gSocketListener->startListener();
 
     // Create the service
     gStatsService = SharedRefBase::make<StatsService>(uidMap, eventQueue, logEventFilter);

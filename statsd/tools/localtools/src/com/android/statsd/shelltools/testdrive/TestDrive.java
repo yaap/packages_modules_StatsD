@@ -635,6 +635,11 @@ public class TestDrive {
                                     .setAtomId(ZramExtensionAtoms
                                             .ZRAM_BD_STAT_MMD_FIELD_NUMBER)
                                     .addPackages("AID_MMD"))
+                    .addPullAtomPackages(
+                            PullAtomPackages.newBuilder()
+                                    .setAtomId(ZramExtensionAtoms
+                                            .ZRAM_IO_STAT_MMD_FIELD_NUMBER)
+                                    .addPackages("AID_MMD"))
                     .setHashStringsInMetricReport(false);
         }
     }

@@ -258,17 +258,17 @@ static bool getInsertSqlStmt(sqlite3* db, sqlite3_stmt** stmt, const int64_t met
             }
             switch (fieldValue.mValue.getType()) {
                 case INT:
-                    sqlite3_bind_int(*stmt, index, fieldValue.mValue.int_value);
+                    sqlite3_bind_int(*stmt, index, fieldValue.mValue.get<int32_t>());
                     break;
                 case LONG:
-                    sqlite3_bind_int64(*stmt, index, fieldValue.mValue.long_value);
+                    sqlite3_bind_int64(*stmt, index, fieldValue.mValue.get<int64_t>());
                     break;
                 case STRING:
-                    sqlite3_bind_text(*stmt, index, fieldValue.mValue.str_value.c_str(), -1,
+                    sqlite3_bind_text(*stmt, index, fieldValue.mValue.get<string>().c_str(), -1,
                                       SQLITE_STATIC);
                     break;
                 case FLOAT:
-                    sqlite3_bind_double(*stmt, index, fieldValue.mValue.float_value);
+                    sqlite3_bind_double(*stmt, index, fieldValue.mValue.get<float>());
                     break;
                 default:
                     // Byte array fields are not supported.

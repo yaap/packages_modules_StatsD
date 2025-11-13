@@ -97,7 +97,7 @@ TEST_F(StatsPullerTest, PullSuccess) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 
     sleep_for(std::chrono::milliseconds(11));
 
@@ -111,7 +111,7 @@ TEST_F(StatsPullerTest, PullSuccess) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(2222L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(44, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(44, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 }
 
 TEST_F(StatsPullerTest, PullFailAfterSuccess) {
@@ -125,7 +125,7 @@ TEST_F(StatsPullerTest, PullFailAfterSuccess) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 
     sleep_for(std::chrono::milliseconds(11));
 
@@ -197,7 +197,7 @@ TEST_F(StatsPullerTest, PullTooFast) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 
     pullData.clear();
     pullData.push_back(createSimpleEvent(2222L, 44));
@@ -210,7 +210,7 @@ TEST_F(StatsPullerTest, PullTooFast) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 }
 
 TEST_F(StatsPullerTest, PullFailsAndTooFast) {
@@ -243,7 +243,7 @@ TEST_F(StatsPullerTest, PullSameEventTime) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 
     pullData.clear();
     pullData.push_back(createSimpleEvent(2222L, 44));
@@ -258,7 +258,7 @@ TEST_F(StatsPullerTest, PullSameEventTime) {
     EXPECT_EQ(pullTagId, dataHolder[0]->GetTagId());
     EXPECT_EQ(1111L, dataHolder[0]->GetElapsedTimestampNs());
     ASSERT_EQ(1, dataHolder[0]->size());
-    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.int_value);
+    EXPECT_EQ(33, dataHolder[0]->getValues()[0].mValue.get<int64_t>());
 }
 
 // Test pull takes longer than timeout, 2nd pull happens at same event time

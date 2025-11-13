@@ -19,6 +19,7 @@
 
 #include "NumericValueMetricProducer.h"
 
+#include <com_android_os_statsd_flags.h>
 #include <stdlib.h>
 
 #include <algorithm>
@@ -45,6 +46,8 @@ using std::unordered_map;
 namespace android {
 namespace os {
 namespace statsd {
+
+namespace flags = com::android::os::statsd::flags;
 
 namespace {  // anonymous namespace
 // for StatsLogReport
@@ -92,6 +95,7 @@ NumericValueMetricProducer::NumericValueMetricProducer(
       mSkipZeroDiffOutput(metric.skip_zero_diff_output()),
       mUseZeroDefaultBase(metric.use_zero_default_base()),
       mHasGlobalBase(false),
+      mDropBucketOnDimensionHardLimitExceeded(metric.drop_bucket_on_max_dimensions_exceeded()),
       mMaxPullDelayNs(metric.has_max_pull_delay_sec() ? metric.max_pull_delay_sec() * NS_PER_SEC
                                                       : StatsdStats::kPullMaxDelayNs),
       mDedupedFieldMatchers(dedupFieldMatchers(whatOptions.fieldMatchers)),
@@ -288,7 +292,7 @@ void NumericValueMetricProducer::accumulateEvents(const vector<shared_ptr<LogEve
     if (mUseDiff) {
         // An extra aggregation step is needed to sum values with matching dimensions
         // before calculating the diff between sums of consecutive pulls.
-        std::unordered_map<HashableDimensionKey, pair<LogEvent, vector<int>>> aggregateEvents;
+        std::map<HashableDimensionKey, pair<LogEvent, vector<int>>> aggregateEvents;
         for (const auto& data : allData) {
             const auto [matchResult, transformedEvent] =
                     mEventMatcherWizard->matchLogEvent(*data, mWhatMatcherIndex);
@@ -355,15 +359,32 @@ void NumericValueMetricProducer::accumulateEvents(const vector<shared_ptr<LogEve
     mMatchedMetricDimensionKeys.clear();
     mHasGlobalBase = true;
 
-    // If we reach the guardrail, we might have dropped some data which means the bucket is
-    // incomplete.
-    //
-    // The base also needs to be reset. If we do not have the full data, we might
-    // incorrectly compute the diff when mUseZeroDefaultBase is true since an existing key
-    // might be missing from mCurrentSlicedBucket.
-    if (hasReachedGuardRailLimit()) {
-        invalidateCurrentBucket(eventElapsedTimeNs, BucketDropReason::DIMENSION_GUARDRAIL_REACHED);
-        mCurrentSlicedBucket.clear();
+    if (mHasHitGuardrail) {
+        if (flags::keep_value_metric_max_dimension_bucket()) {
+            // If we reach the guardrail, we might have dropped some data which means the bucket is
+            // incomplete. Drop this bucket if mDropBucketOnDimensionHardLimitExceeded is true and
+            // reset the base. If the bucket is not dropped, we might incorrectly compute the diff
+            // when mUseZeroDefaultBase is true since an existing base might have been ignored if it
+            // was part of the data ignored after the dimension guardrail was hit.
+            if (mDropBucketOnDimensionHardLimitExceeded) {
+                invalidateCurrentBucket(eventElapsedTimeNs,
+                                        BucketDropReason::DIMENSION_GUARDRAIL_REACHED);
+                mCurrentSlicedBucket.clear();
+                mHasHitGuardrail = false;
+            }
+            mHasGlobalBase = false;
+        } else {
+            // If we reach the guardrail, we might have dropped some data which means the bucket is
+            // incomplete.
+            //
+            // The base also needs to be reset. If we do not have the full data, we might
+            // incorrectly compute the diff when mUseZeroDefaultBase is true since an existing key
+            // might be missing from mCurrentSlicedBucket.
+            invalidateCurrentBucket(eventElapsedTimeNs,
+                                    BucketDropReason::DIMENSION_GUARDRAIL_REACHED);
+            mCurrentSlicedBucket.clear();
+            mHasHitGuardrail = false;
+        }
     }
 }
 
@@ -398,7 +419,7 @@ NumericValue getAggregationInputValue(const LogEvent& event, const Matcher& matc
                 continue;
             }
             if (value.mValue.getType() == INT) {
-                binCounts.push_back(value.mValue.int_value);
+                binCounts.push_back(value.mValue.get<int32_t>());
             } else {
                 return NumericValue{};
             }
@@ -410,15 +431,15 @@ NumericValue getAggregationInputValue(const LogEvent& event, const Matcher& matc
         if (!value.mField.matches(matcher)) {
             continue;
         }
-        switch (value.mValue.type) {
+        switch (value.mValue.getType()) {
             case INT:
-                return NumericValue((int64_t)value.mValue.int_value);
+                return NumericValue((int64_t)value.mValue.get<int32_t>());
             case LONG:
-                return NumericValue((int64_t)value.mValue.long_value);
+                return NumericValue((int64_t)value.mValue.get<int64_t>());
             case FLOAT:
-                return NumericValue((double)value.mValue.float_value);
+                return NumericValue((double)value.mValue.get<float>());
             case DOUBLE:
-                return NumericValue((double)value.mValue.double_value);
+                return NumericValue((double)value.mValue.get<double>());
             default:
                 return NumericValue{};
         }

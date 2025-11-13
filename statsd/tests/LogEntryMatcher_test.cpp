@@ -25,6 +25,7 @@
 
 using namespace android::os::statsd;
 using std::shared_ptr;
+using std::string;
 using std::unordered_map;
 using std::vector;
 
@@ -1527,13 +1528,13 @@ TEST(AtomMatcherTest, TestStringReplaceRoot) {
 
     const vector<FieldValue>& fieldValues = transformedEvent->getValues();
     ASSERT_EQ(fieldValues.size(), 7);
-    EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-    EXPECT_EQ(fieldValues[1].mValue.str_value, "location1");
-    EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-    EXPECT_EQ(fieldValues[3].mValue.str_value, "location2");
-    EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-    EXPECT_EQ(fieldValues[5].mValue.str_value, "location3");
-    EXPECT_EQ(fieldValues[6].mValue.str_value, "some value");
+    EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+    EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location1");
+    EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+    EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location2");
+    EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+    EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location3");
+    EXPECT_EQ(fieldValues[6].mValue.get<string>(), "some value");
 }
 
 TEST(AtomMatcherTest, TestStringReplaceAttributionTagFirst) {
@@ -1564,13 +1565,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagFirst) {
     ASSERT_NE(transformedEvent, nullptr);
     const vector<FieldValue>& fieldValues = transformedEvent->getValues();
     ASSERT_EQ(fieldValues.size(), 7);
-    EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-    EXPECT_EQ(fieldValues[1].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-    EXPECT_EQ(fieldValues[3].mValue.str_value, "location2");
-    EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-    EXPECT_EQ(fieldValues[5].mValue.str_value, "location3");
-    EXPECT_EQ(fieldValues[6].mValue.str_value, "some value123");
+    EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+    EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+    EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location2");
+    EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+    EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location3");
+    EXPECT_EQ(fieldValues[6].mValue.get<string>(), "some value123");
 }
 
 TEST(AtomMatcherTest, TestStringReplaceAttributionTagLast) {
@@ -1602,13 +1603,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagLast) {
 
     const vector<FieldValue>& fieldValues = transformedEvent->getValues();
     ASSERT_EQ(fieldValues.size(), 7);
-    EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-    EXPECT_EQ(fieldValues[1].mValue.str_value, "location1");
-    EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-    EXPECT_EQ(fieldValues[3].mValue.str_value, "location2");
-    EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-    EXPECT_EQ(fieldValues[5].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[6].mValue.str_value, "some value123");
+    EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+    EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location1");
+    EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+    EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location2");
+    EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+    EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[6].mValue.get<string>(), "some value123");
 }
 
 TEST(AtomMatcherTest, TestStringReplaceAttributionTagAll) {
@@ -1640,13 +1641,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagAll) {
 
     const vector<FieldValue>& fieldValues = transformedEvent->getValues();
     ASSERT_EQ(fieldValues.size(), 7);
-    EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-    EXPECT_EQ(fieldValues[1].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-    EXPECT_EQ(fieldValues[3].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-    EXPECT_EQ(fieldValues[5].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[6].mValue.str_value, "some value123");
+    EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+    EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+    EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+    EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[6].mValue.get<string>(), "some value123");
 }
 
 TEST(AtomMatcherTest, TestStringReplaceNestedAllWithMultipleNestedStringFields) {
@@ -1684,13 +1685,13 @@ TEST(AtomMatcherTest, TestStringReplaceNestedAllWithMultipleNestedStringFields) 
 
     const vector<FieldValue>& fieldValues = transformedEvent->getValues();
     ASSERT_EQ(fieldValues.size(), 7);
-    EXPECT_EQ(fieldValues[0].mValue.str_value, "abc1");
-    EXPECT_EQ(fieldValues[1].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[2].mValue.str_value, "xyz2");
-    EXPECT_EQ(fieldValues[3].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[4].mValue.str_value, "abc3");
-    EXPECT_EQ(fieldValues[5].mValue.str_value, "location");
-    EXPECT_EQ(fieldValues[6].mValue.str_value, "some value123");
+    EXPECT_EQ(fieldValues[0].mValue.get<string>(), "abc1");
+    EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[2].mValue.get<string>(), "xyz2");
+    EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[4].mValue.get<string>(), "abc3");
+    EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location");
+    EXPECT_EQ(fieldValues[6].mValue.get<string>(), "some value123");
 }
 
 TEST(AtomMatcherTest, TestStringReplaceRootOnMatchedField) {
@@ -1725,13 +1726,13 @@ TEST(AtomMatcherTest, TestStringReplaceRootOnMatchedField) {
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "location1");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "location2");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "location3");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "bar");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "location1");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "location2");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "location3");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "bar");
     }
 }
 
@@ -1773,13 +1774,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagFirstOnMatchedField) {
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "bar");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "bar2");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "bar3");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "bar123");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "bar");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "bar2");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "bar3");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "bar123");
     }
 }
 
@@ -1821,13 +1822,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagLastOnMatchedField) {
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "bar1");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "bar2");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "bar");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "bar123");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "bar1");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "bar2");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "bar");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "bar123");
     }
 }
 
@@ -1869,13 +1870,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagAnyOnMatchedField) {
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "bar");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "bar123");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "bar");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "bar123");
     }
 }
 
@@ -1928,13 +1929,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagAnyAndRootOnMatchedFields) 
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "bar");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "blah");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "bar");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "blah");
     }
 }
 
@@ -1985,13 +1986,13 @@ TEST(AtomMatcherTest, TestStringReplaceAttributionTagAnyWithAttributionUidValueM
         ASSERT_NE(transformedEvent, nullptr);
         const vector<FieldValue>& fieldValues = transformedEvent->getValues();
         ASSERT_EQ(fieldValues.size(), 7);
-        EXPECT_EQ(fieldValues[0].mValue.int_value, 1111);
-        EXPECT_EQ(fieldValues[1].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[2].mValue.int_value, 2222);
-        EXPECT_EQ(fieldValues[3].mValue.str_value, "bar");
-        EXPECT_EQ(fieldValues[4].mValue.int_value, 3333);
-        EXPECT_EQ(fieldValues[5].mValue.str_value, "foo");
-        EXPECT_EQ(fieldValues[6].mValue.str_value, "bar123");
+        EXPECT_EQ(fieldValues[0].mValue.get<int32_t>(), 1111);
+        EXPECT_EQ(fieldValues[1].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[2].mValue.get<int32_t>(), 2222);
+        EXPECT_EQ(fieldValues[3].mValue.get<string>(), "bar");
+        EXPECT_EQ(fieldValues[4].mValue.get<int32_t>(), 3333);
+        EXPECT_EQ(fieldValues[5].mValue.get<string>(), "foo");
+        EXPECT_EQ(fieldValues[6].mValue.get<string>(), "bar123");
     }
 }
 

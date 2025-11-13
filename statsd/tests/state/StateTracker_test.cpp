@@ -54,14 +54,14 @@ public:
     void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
                         const HashableDimensionKey& primaryKey, const FieldValue& oldState,
                         const FieldValue& newState) {
-        updates.emplace_back(primaryKey, newState.mValue.int_value);
+        updates.emplace_back(primaryKey, newState.mValue.get<int32_t>());
     }
 };
 
 int getStateInt(StateManager& mgr, int atomId, const HashableDimensionKey& queryKey) {
     FieldValue output;
     mgr.getStateValue(atomId, queryKey, &output);
-    return output.mValue.int_value;
+    return output.mValue.get<int32_t>();
 }
 
 // START: build event functions.
@@ -259,7 +259,7 @@ TEST(StateTrackerTest, TestStateChangeNested) {
                                                                   attributionTags1, "wakelockName");
     mgr.onLogEvent(*event1);
     ASSERT_EQ(1, listener->updates.size());
-    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(1, listener->updates[0].mState);
     listener->updates.clear();
 
@@ -277,7 +277,7 @@ TEST(StateTrackerTest, TestStateChangeNested) {
             timestampNs + 3000, attributionUids1, attributionTags1, "wakelockName");
     mgr.onLogEvent(*event4);
     ASSERT_EQ(1, listener->updates.size());
-    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(0, listener->updates[0].mState);
 }
 
@@ -301,11 +301,11 @@ TEST(StateTrackerTest, TestStateChangeReset) {
                                            BleScanStateChanged::ON, false, false, false);
     mgr.onLogEvent(*event1);
     ASSERT_EQ(1, listener->updates.size());
-    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(BleScanStateChanged::ON, listener->updates[0].mState);
     FieldValue stateFieldValue;
     mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
-    EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.int_value);
+    EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
     std::unique_ptr<LogEvent> event2 =
@@ -313,10 +313,10 @@ TEST(StateTrackerTest, TestStateChangeReset) {
                                            BleScanStateChanged::ON, false, false, false);
     mgr.onLogEvent(*event2);
     ASSERT_EQ(1, listener->updates.size());
-    EXPECT_EQ(2000, listener->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(2000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(BleScanStateChanged::ON, listener->updates[0].mState);
     mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
-    EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.int_value);
+    EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
     std::unique_ptr<LogEvent> event3 =
@@ -328,7 +328,7 @@ TEST(StateTrackerTest, TestStateChangeReset) {
         EXPECT_EQ(BleScanStateChanged::OFF, update.mState);
 
         mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, update.mKey, &stateFieldValue);
-        EXPECT_EQ(BleScanStateChanged::OFF, stateFieldValue.mValue.int_value);
+        EXPECT_EQ(BleScanStateChanged::OFF, stateFieldValue.mValue.get<int32_t>());
     }
 }
 
@@ -373,7 +373,7 @@ TEST(StateTrackerTest, TestStateChangeOnePrimaryField) {
 
     // check listener was updated
     ASSERT_EQ(1, listener1->updates.size());
-    EXPECT_EQ(1000, listener1->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(1000, listener1->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(1002, listener1->updates[0].mState);
 
     // check StateTracker was updated by querying for state
@@ -401,9 +401,9 @@ TEST(StateTrackerTest, TestStateChangePrimaryFieldAttrChain) {
     // Check listener was updated.
     ASSERT_EQ(1, listener1->updates.size());
     ASSERT_EQ(3, listener1->updates[0].mKey.getValues().size());
-    EXPECT_EQ(1001, listener1->updates[0].mKey.getValues()[0].mValue.int_value);
-    EXPECT_EQ(1, listener1->updates[0].mKey.getValues()[1].mValue.int_value);
-    EXPECT_EQ("wakelockName", listener1->updates[0].mKey.getValues()[2].mValue.str_value);
+    EXPECT_EQ(1001, listener1->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
+    EXPECT_EQ(1, listener1->updates[0].mKey.getValues()[1].mValue.get<int32_t>());
+    EXPECT_EQ("wakelockName", listener1->updates[0].mKey.getValues()[2].mValue.get<string>());
     EXPECT_EQ(WakelockStateChanged::ACQUIRE, listener1->updates[0].mState);
 
     // Check StateTracker was updated by querying for state.
@@ -442,7 +442,7 @@ TEST(StateTrackerTest, TestStateChangeMultiplePrimaryFields) {
 
     // check listener was updated
     ASSERT_EQ(1, listener1->updates.size());
-    EXPECT_EQ(1000, listener1->updates[0].mKey.getValues()[0].mValue.int_value);
+    EXPECT_EQ(1000, listener1->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(1, listener1->updates[0].mState);
 
     // check StateTracker was updated by querying for state
@@ -577,7 +577,7 @@ TEST(StateTrackerTest, TestMalformedStateEvent_ExistingStateValue) {
     EXPECT_EQ(BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, listener->updates[0].mState);
     FieldValue stateFieldValue;
     mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
-    EXPECT_EQ(BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, stateFieldValue.mValue.int_value);
+    EXPECT_EQ(BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
     // Malformed event.
@@ -587,7 +587,7 @@ TEST(StateTrackerTest, TestMalformedStateEvent_ExistingStateValue) {
     EXPECT_EQ(kStateUnknown, listener->updates[0].mState);
     EXPECT_FALSE(mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey,
                                    &stateFieldValue));
-    EXPECT_EQ(kStateUnknown, stateFieldValue.mValue.int_value);
+    EXPECT_EQ(kStateUnknown, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 }
 

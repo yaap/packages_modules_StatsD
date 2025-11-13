@@ -16,6 +16,8 @@
 
 #include <aidl/android/os/IPullAtomResultReceiver.h>
 #include <aidl/android/util/StatsEventParcel.h>
+#include <com_android_os_statsd_flags.h>
+#include <flag_macros.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -165,7 +167,7 @@ TEST(StatsPullerManagerTest, TestPullChoosesCorrectUid) {
     ASSERT_EQ(data.size(), 1);
     EXPECT_EQ(data[0]->GetTagId(), pullTagId1);
     ASSERT_EQ(data[0]->getValues().size(), 1);
-    EXPECT_EQ(data[0]->getValues()[0].mValue.int_value, uid1);
+    EXPECT_EQ(data[0]->getValues()[0].mValue.get<int32_t>(), uid1);
 }
 
 TEST(StatsPullerManagerTest, TestPullInvalidConfigKey) {
@@ -186,7 +188,7 @@ TEST(StatsPullerManagerTest, TestPullConfigKeyGood) {
     EXPECT_TRUE(pullerManager->Pull(pullTagId1, configKey, /*timestamp =*/1, &data));
     EXPECT_EQ(data[0]->GetTagId(), pullTagId1);
     ASSERT_EQ(data[0]->getValues().size(), 1);
-    EXPECT_EQ(data[0]->getValues()[0].mValue.int_value, uid2);
+    EXPECT_EQ(data[0]->getValues()[0].mValue.get<int32_t>(), uid2);
 }
 
 TEST(StatsPullerManagerTest, TestPullConfigKeyNoPullerWithUid) {
@@ -354,6 +356,7 @@ TEST(StatsPullerManagerTest, TestOnAlarmFiredMultipleUidsSelectsFirstUid) {
 }
 
 TEST(StatsPullerManagerTest, TestOnAlarmFiredUidsNotRegisteredInPullAtomCallback) {
+    StatsdStats::getInstance().reset();
     sp<MockPullDataReceiver> receiver = new StrictMock<MockPullDataReceiver>();
     EXPECT_CALL(*receiver, onDataPulled(_, PullResult::PULL_RESULT_FAIL, _)).Times(1);
     sp<StatsPullerManager> pullerManager = new StatsPullerManager();
@@ -371,6 +374,17 @@ TEST(StatsPullerManagerTest, TestOnAlarmFiredUidsNotRegisteredInPullAtomCallback
 
     EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullerNotFound, 1);
     EXPECT_EQ(StatsdStats::getInstance().mPulledAtomStats[pullTagId1].pullFailed, 0);
+}
+
+TEST_WITH_FLAGS(StatsPullerManagerTest, TestOnAlarmFiredNoPulls,
+                REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                    parallel_pulls))) {
+    StatsdStats::getInstance().reset();
+    sp<StatsPullerManager> pullerManager = new StatsPullerManager();
+
+    pullerManager->OnAlarmFired(100);
+
+    EXPECT_EQ(StatsdStats::getInstance().mPullerAlarmStats.alarm_without_pulls_count, 1);
 }
 
 }  // namespace statsd

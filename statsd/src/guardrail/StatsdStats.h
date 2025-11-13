@@ -169,6 +169,12 @@ struct SubscriptionStats {
     int32_t flush_count = 0;
 };
 
+struct PullerAlarmStats {
+    int32_t alarm_with_pulls_count = 0;
+    int32_t alarm_without_pulls_count = 0;
+    int32_t alarm_with_puller_errors_count = 0;
+};
+
 // Keeps track of stats of statsd.
 // Single instance shared across the process. All public methods are thread safe.
 class StatsdStats {
@@ -537,6 +543,11 @@ public:
     void noteSystemServerRestart(int32_t timeSec);
 
     /**
+     * Records whether a system server restart has occurred.
+     */
+    bool hasSystemServerRestart();
+
+    /**
      * Records statsd skipped an event.
      */
     void noteLogLost(int32_t wallClockTimeSec, int32_t count, int32_t lastError,
@@ -738,6 +749,12 @@ public:
                              int64_t minAtomReadTimeNs, int64_t maxAtomReadTimeNs,
                              const std::unordered_map<int32_t, int32_t>& atomCounts);
 
+    void notePullerAlarmNoPull();
+
+    void notePullerAlarmHasPull();
+
+    void notePullerAlarmError();
+
     /**
      * Reset the historical stats. Including all stats in icebox, and the tracked stats about
      * metrics, matchers, and atoms. The active configs will be kept and StatsdStats will continue
@@ -855,6 +872,9 @@ private:
 
     // Track the number of dropped entries used by the uid map.
     UidMapStats mUidMapStats;
+
+    // Tracks the number of times a pulling alarm resulted in a pull.
+    PullerAlarmStats mPullerAlarmStats;
 
     // The stats about the configs that are still in use.
     // The map size is capped by kMaxConfigCount.
@@ -1094,6 +1114,7 @@ private:
     FRIEND_TEST(StatsPullerManagerTest, TestOnAlarmFiredNoPullerForUidNotesPullerNotFound);
     FRIEND_TEST(StatsPullerManagerTest, TestOnAlarmFiredNoUidProviderUpdatesNextPullTime);
     FRIEND_TEST(StatsPullerManagerTest, TestOnAlarmFiredUidsNotRegisteredInPullAtomCallback);
+    FRIEND_TEST(StatsPullerManagerTest, TestOnAlarmFiredNoPulls);
     FRIEND_TEST(StatsdStatsTest, TestActivationBroadcastGuardrailHit);
     FRIEND_TEST(StatsdStatsTest, TestAnomalyMonitor);
     FRIEND_TEST(StatsdStatsTest, TestAtomDroppedStats);
@@ -1134,6 +1155,8 @@ private:
     FRIEND_TEST(StatsdStatsTest, TestLoggingRateReport);
     FRIEND_TEST(StatsdStatsTest, TestLoggingRateReportOnlyTopN);
     FRIEND_TEST(StatsdStatsTest, TestLoggingRateReportReset);
+    FRIEND_TEST(StatsdStatsTest, TestPullerAlarmStatsReport);
+    FRIEND_TEST(StatsdStatsTest, TestPullerAlarmStatsReset);
 };
 
 InvalidConfigReason createInvalidConfigReasonWithMatcher(const InvalidConfigReasonEnum reason,

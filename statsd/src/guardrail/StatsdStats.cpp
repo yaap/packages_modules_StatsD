@@ -69,6 +69,7 @@ const int FIELD_ID_QUEUE_STATS = 25;
 const int FIELD_ID_SOCKET_READ_STATS = 26;
 const int FIELD_ID_ERROR_STATS = 27;
 const int FIELD_ID_PEAK_LOGGING_RATES = 28;
+const int FIELD_ID_PULLER_ALARM_STATS = 29;
 
 const int FIELD_ID_RESTRICTED_METRIC_QUERY_STATS_CALLING_UID = 1;
 const int FIELD_ID_RESTRICTED_METRIC_QUERY_STATS_CONFIG_ID = 2;
@@ -227,6 +228,11 @@ const int FIELD_ID_LARGE_BATCH_SOCKET_READ_ATOM_STATS_COUNT = 2;
 // ErrorStats
 const int FIELD_ID_ERROR_STATS_COUNTERS = 1;
 
+// PullerAlarmStats
+const int FIELD_ID_PULLER_ALARM_STATS_ALARM_WITH_PULLS_COUNT = 1;
+const int FIELD_ID_PULLER_ALARM_STATS_ALARM_WITHOUT_PULLS_COUNT = 2;
+const int FIELD_ID_PULLER_ALARM_STATS_ALARM_WITH_ERROR_COUNT = 3;
+
 // CounterStats counters
 const int FIELD_ID_COUNTER_STATS_COUNTER_TYPE = 1;
 const int FIELD_ID_COUNTER_STATS_COUNT = 2;
@@ -373,6 +379,22 @@ void StatsdStats::noteBatchSocketRead(int32_t size, int64_t lastReadTimeNs, int6
                                                 localAtomCounts);
     }
 }
+
+void StatsdStats::notePullerAlarmNoPull() {
+    lock_guard<std::mutex> lock(mLock);
+    mPullerAlarmStats.alarm_without_pulls_count++;
+}
+
+void StatsdStats::notePullerAlarmHasPull() {
+    lock_guard<std::mutex> lock(mLock);
+    mPullerAlarmStats.alarm_with_pulls_count++;
+}
+
+void StatsdStats::notePullerAlarmError() {
+    lock_guard<std::mutex> lock(mLock);
+    mPullerAlarmStats.alarm_with_puller_errors_count++;
+}
+
 void StatsdStats::noteBroadcastSent(const ConfigKey& key) {
     noteBroadcastSent(key, getWallClockSec());
 }
@@ -799,6 +821,10 @@ void StatsdStats::noteSystemServerRestart(int32_t timeSec) {
     mSystemServerRestartSec.push_back(timeSec);
 }
 
+bool StatsdStats::hasSystemServerRestart() {
+    return mSystemServerRestartSec.size() > 0;
+}
+
 void StatsdStats::notePullFailed(int atomId) {
     lock_guard<std::mutex> lock(mLock);
     mPulledAtomStats[atomId].pullFailed++;
@@ -1216,6 +1242,9 @@ void StatsdStats::resetInternalLocked() {
 
     mErrorStats.clear();
     mLoggingRateStats.reset();
+    mPullerAlarmStats.alarm_with_pulls_count = 0;
+    mPullerAlarmStats.alarm_without_pulls_count = 0;
+    mPullerAlarmStats.alarm_with_puller_errors_count = 0;
 }
 
 string buildTimeString(int64_t timeSec) {
@@ -1662,6 +1691,15 @@ void StatsdStats::dumpStats(int out) const {
         // TODO(b/343464656): add enum toString helper API
         dprintf(out, "IllegalState type %d: count=%d\n", errorType, count);
     }
+
+    if (flags::parallel_pulls()) {
+        dprintf(out, "********PullerAlarmStats********\n");
+        dprintf(out, "Alarms with pulls: %d\n", mPullerAlarmStats.alarm_with_pulls_count);
+        dprintf(out, "Alarms without pulls: %d\n", mPullerAlarmStats.alarm_without_pulls_count);
+        dprintf(out, "Alarms with puller errors: %d\n",
+                mPullerAlarmStats.alarm_with_puller_errors_count);
+    }
+
     dprintf(out, "\n");
     dprintf(out, "********Statsd Stats Id***********\n");
     dprintf(out, "Statsd Stats Id %d\n", mStatsdStatsId);
@@ -1686,6 +1724,26 @@ void addErrorStatsToProto(const std::map<CounterType, int32_t>& stats, ProtoOutp
 
         proto->end(tmpToken);
     }
+
+    proto->end(token);
+}
+
+void addPullerAlarmStatsToProto(const PullerAlarmStats& pullerAlarmStats,
+                                ProtoOutputStream* proto) {
+    if (pullerAlarmStats.alarm_with_pulls_count == 0 &&
+        pullerAlarmStats.alarm_without_pulls_count == 0 &&
+        pullerAlarmStats.alarm_with_puller_errors_count == 0) {
+        return;
+    }
+
+    uint64_t token = proto->start(FIELD_TYPE_MESSAGE | FIELD_ID_PULLER_ALARM_STATS);
+
+    proto->write(FIELD_TYPE_INT32 | FIELD_ID_PULLER_ALARM_STATS_ALARM_WITH_PULLS_COUNT,
+                 pullerAlarmStats.alarm_with_pulls_count);
+    proto->write(FIELD_TYPE_INT32 | FIELD_ID_PULLER_ALARM_STATS_ALARM_WITHOUT_PULLS_COUNT,
+                 pullerAlarmStats.alarm_without_pulls_count);
+    proto->write(FIELD_TYPE_INT32 | FIELD_ID_PULLER_ALARM_STATS_ALARM_WITH_ERROR_COUNT,
+                 pullerAlarmStats.alarm_with_puller_errors_count);
 
     proto->end(token);
 }
@@ -2187,6 +2245,7 @@ void StatsdStats::dumpStats(vector<uint8_t>* output, bool reset) {
     proto.end(socketReadStatsToken);
 
     addErrorStatsToProto(mErrorStats, &proto);
+    addPullerAlarmStatsToProto(mPullerAlarmStats, &proto);
 
     output->clear();
     proto.serializeToVector(output);

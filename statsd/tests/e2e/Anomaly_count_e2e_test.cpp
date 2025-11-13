@@ -325,7 +325,7 @@ TEST(AnomalyCountDetectionE2eTest, TestCountMetric_save_refractory_to_disk) {
     metadata::FieldValue dimKeyInWhat = metadataDimKey.dimension_key_in_what(0);
     EXPECT_EQ(dimKeyInWhat.field().tag(), fieldValue1.mField.getTag());
     EXPECT_EQ(dimKeyInWhat.field().field(), fieldValue1.mField.getField());
-    EXPECT_EQ(dimKeyInWhat.value_int(), fieldValue1.mValue.int_value);
+    EXPECT_EQ(dimKeyInWhat.value_int(), fieldValue1.mValue.get<int32_t>());
 }
 
 TEST(AnomalyCountDetectionE2eTest, TestCountMetric_load_refractory_from_disk) {

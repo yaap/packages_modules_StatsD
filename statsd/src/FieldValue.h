@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <string>
+
 #include "src/statsd_config.pb.h"
 
 namespace android {
@@ -31,7 +33,8 @@ const int32_t kLastBitMask = 0x80;
 const int32_t kClearLastBitDeco = 0x7f;
 const int32_t kClearAllPositionMatcherMask = 0xffff00ff;
 
-enum Type { UNKNOWN, INT, LONG, FLOAT, DOUBLE, STRING, STORAGE };
+// MUST BE DECLARED IN THE SAME ORDER AS THE ALTERNATIVES IN VALUE VARIANT
+enum Type { UNKNOWN = 0, INT = 1, LONG = 2, FLOAT = 3, DOUBLE = 4, STRING = 5, STORAGE = 6 };
 
 int32_t getEncodedField(int32_t pos[], int32_t depth, bool includeDepth);
 
@@ -279,93 +282,42 @@ inline Matcher getFirstUidMatcher(int32_t atomId) {
  * A wrapper for a union type to contain multiple types of values.
  *
  */
-struct Value {
-    Value() : type(UNKNOWN) {}
+class Value {
+public:
+    Value() noexcept = default;
 
-    Value(int32_t v) {
-        int_value = v;
-        type = INT;
+    // Copy constructor for contained types
+    template <typename V>
+    Value(const V& value) : mData(value) {
     }
 
-    Value(int64_t v) {
-        long_value = v;
-        type = LONG;
-    }
+    template <typename V>
+    V& get();
 
-    Value(float v) {
-        float_value = v;
-        type = FLOAT;
-    }
+    template <typename V>
+    const V& get() const;
 
-    Value(double v) {
-        double_value = v;
-        type = DOUBLE;
-    }
-
-    Value(const std::string& v) {
-        str_value = v;
-        type = STRING;
-    }
-
-    Value(const std::vector<uint8_t>& v) {
-        storage_value = v;
-        type = STORAGE;
-    }
-
-    void setInt(int32_t v) {
-        int_value = v;
-        type = INT;
-    }
-
-    void setLong(int64_t v) {
-        long_value = v;
-        type = LONG;
-    }
-
-    void setFloat(float v) {
-        float_value = v;
-        type = FLOAT;
-    }
-
-    void setDouble(double v) {
-        double_value = v;
-        type = DOUBLE;
-    }
-
-    union {
-        int32_t int_value;
-        int64_t long_value;
-        float float_value;
-        double double_value;
-    };
-    std::string str_value;
-    std::vector<uint8_t> storage_value;
-
-    Type type;
+    template <typename V>
+    void set(V v);
 
     std::string toString() const;
 
-    bool isZero() const;
-
     Type getType() const {
-        return type;
+        return static_cast<Type>(mData.index());
     }
-
-    double getDouble() const;
 
     size_t getSize() const;
 
-    Value(const Value& from);
+    constexpr Value(const Value& other) = default;
 
-    bool operator==(const Value& that) const;
-    bool operator!=(const Value& that) const;
+    auto operator<=>(const Value& that) const = default;
 
-    bool operator<(const Value& that) const;
-    bool operator>(const Value& that) const;
-    bool operator>=(const Value& that) const;
-    Value operator-(const Value& that) const;
     Value& operator+=(const Value& that);
-    Value& operator=(const Value& that);
+    Value& operator=(const Value& that) = default;
+
+private:
+    std::variant<std::monostate, int32_t, int64_t, float, double, std::string, std::vector<uint8_t>>
+            mData;
 };
 
 class Annotations {

@@ -259,7 +259,7 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::onStateChanged(
     std::lock_guard<std::mutex> lock(mMutex);
     VLOG("ValueMetricProducer %lld onStateChanged time %lld, State %d, key %s, %d -> %d",
          (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
-         oldState.mValue.int_value, newState.mValue.int_value);
+         oldState.mValue.get<int32_t>(), newState.mValue.get<int32_t>());
 
     FieldValue oldStateCopy = oldState;
     FieldValue newStateCopy = newState;
@@ -661,11 +661,6 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::dumpStatesLocked(int out,
 }
 
 template <typename AggregatedValue, typename DimExtras>
-bool ValueMetricProducer<AggregatedValue, DimExtras>::hasReachedGuardRailLimit() const {
-    return mCurrentSlicedBucket.size() >= mDimensionHardLimit;
-}
-
-template <typename AggregatedValue, typename DimExtras>
 bool ValueMetricProducer<AggregatedValue, DimExtras>::hitGuardRailLocked(
         const MetricDimensionKey& newKey) const {
     // ===========GuardRail==============
@@ -677,7 +672,7 @@ bool ValueMetricProducer<AggregatedValue, DimExtras>::hitGuardRailLocked(
         size_t newTupleCount = mCurrentSlicedBucket.size() + 1;
         StatsdStats::getInstance().noteMetricDimensionSize(mConfigKey, mMetricId, newTupleCount);
         // 2. Don't add more tuples, we are above the allowed threshold. Drop the data.
-        if (hasReachedGuardRailLimit()) {
+        if (newTupleCount > mDimensionHardLimit) {
             if (!mHasHitGuardrail) {
                 ALOGE("ValueMetricProducer %lld dropping data for dimension key %s",
                       (long long)mMetricId, newKey.toString().c_str());
@@ -725,14 +720,16 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::onMatchedLogEventInternalL
         return;
     }
 
-    if (hitGuardRailLocked(eventKey)) {
-        return;
-    }
-
     const auto& returnVal = mDimInfos.emplace(whatKey, DimensionsInWhatInfo(getUnknownStateKey()));
     DimensionsInWhatInfo& dimensionsInWhatInfo = returnVal.first->second;
     const HashableDimensionKey& oldStateKey = dimensionsInWhatInfo.currentState;
-    CurrentBucket& currentBucket = mCurrentSlicedBucket[MetricDimensionKey(whatKey, oldStateKey)];
+    const MetricDimensionKey oldKey(whatKey, oldStateKey);
+
+    if (hitGuardRailLocked(oldKey)) {
+        return;
+    }
+
+    CurrentBucket& currentBucket = mCurrentSlicedBucket[oldKey];
 
     // Ensure we turn on the condition timer in the case where dimensions
     // were missing on a previous pull due to a state change.
@@ -759,8 +756,9 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::onMatchedLogEventInternalL
         currentBucket.conditionTimer.onConditionChanged(false, eventTimeNs);
 
         // Turn ON the condition timer for the new state key.
-        mCurrentSlicedBucket[MetricDimensionKey(whatKey, stateKey)]
-                .conditionTimer.onConditionChanged(true, eventTimeNs);
+        if (!hitGuardRailLocked(eventKey)) {
+            mCurrentSlicedBucket[eventKey].conditionTimer.onConditionChanged(true, eventTimeNs);
+        }
     }
 }
 

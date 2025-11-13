@@ -897,6 +897,10 @@ public:
 
 sp<MockConfigMetadataProvider> makeMockConfigMetadataProvider(bool enabled);
 
+std::optional<ConfigMetricsReportList> getReports(StatsLogProcessor& processor, int64_t dumpTimeNs,
+                                                  const ConfigKey& cfgKey,
+                                                  bool includeCurrentBucket);
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

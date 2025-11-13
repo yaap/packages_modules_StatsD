@@ -189,7 +189,7 @@ void CountMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_
                                          const FieldValue& oldState, const FieldValue& newState) {
     VLOG("CountMetric %lld onStateChanged time %lld, State%d, key %s, %d -> %d",
          (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
-         oldState.mValue.int_value, newState.mValue.int_value);
+         oldState.mValue.get<int32_t>(), newState.mValue.get<int32_t>());
 }
 
 void CountMetricProducer::dumpStatesLocked(int out, bool verbose) const {

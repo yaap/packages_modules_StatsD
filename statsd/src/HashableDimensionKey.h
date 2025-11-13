@@ -52,8 +52,7 @@ struct Metric2State {
 
 class HashableDimensionKey {
 public:
-    explicit HashableDimensionKey(const std::vector<FieldValue>& values) {
-        mValues = values;
+    explicit HashableDimensionKey(const std::vector<FieldValue>& values) : mValues(values) {
     }
 
     HashableDimensionKey() {};

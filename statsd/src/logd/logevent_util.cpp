@@ -35,7 +35,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     result.uid = event.GetUid();
     if (logEventValues[1].mField.getPosAtDepth(0) == 2 &&
         logEventValues[1].mValue.getType() == LONG) {
-        result.firstLossTsNanos = logEventValues[1].mValue.long_value;
+        result.firstLossTsNanos = logEventValues[1].mValue.get<int64_t>();
     } else {
         // atom content is invalid
         return std::nullopt;
@@ -43,7 +43,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
 
     if (logEventValues[2].mField.getPosAtDepth(0) == 3 &&
         logEventValues[2].mValue.getType() == LONG) {
-        result.lastLossTsNanos = logEventValues[2].mValue.long_value;
+        result.lastLossTsNanos = logEventValues[2].mValue.get<int64_t>();
     } else {
         // atom content is invalid
         return std::nullopt;
@@ -51,7 +51,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
 
     if (logEventValues[3].mField.getPosAtDepth(0) == 4 &&
         logEventValues[3].mValue.getType() == INT) {
-        result.overflowCounter = logEventValues[3].mValue.int_value;
+        result.overflowCounter = logEventValues[3].mValue.get<int32_t>();
     } else {
         // atom content is invalid
         return std::nullopt;
@@ -72,7 +72,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     std::vector<FieldValue>::const_iterator valuesIt = logEventValues.begin() + arraysOffset;
     while (valuesIt != logEventValues.end() && valuesIt->mField.getPosAtDepth(0) == 5 &&
            valuesIt->mValue.getType() == INT) {
-        result.errors.push_back(valuesIt->mValue.int_value);
+        result.errors.push_back(valuesIt->mValue.get<int32_t>());
         valuesIt++;
     }
     if (result.errors.size() != expectedEntriesCount) {
@@ -82,7 +82,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
 
     while (valuesIt != logEventValues.end() && valuesIt->mField.getPosAtDepth(0) == 6 &&
            valuesIt->mValue.getType() == INT) {
-        result.atomIds.push_back(valuesIt->mValue.int_value);
+        result.atomIds.push_back(valuesIt->mValue.get<int32_t>());
         valuesIt++;
     }
     if (result.atomIds.size() != expectedEntriesCount) {
@@ -92,7 +92,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
 
     while (valuesIt != logEventValues.end() && valuesIt->mField.getPosAtDepth(0) == 7 &&
            valuesIt->mValue.getType() == INT) {
-        result.counts.push_back(valuesIt->mValue.int_value);
+        result.counts.push_back(valuesIt->mValue.get<int32_t>());
         valuesIt++;
     }
     if (result.counts.size() != expectedEntriesCount) {

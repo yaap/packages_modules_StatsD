@@ -231,8 +231,7 @@ void StatsPullerManager::UnregisterPullUidProvider(const ConfigKey& configKey,
 static void processPullerQueue(ThreadSafeQueue<StatsPullerManager::PullerParams>& pullerQueue,
                                std::queue<StatsPullerManager::PulledInfo>& pulledData,
                                const int64_t wallClockNs, const int64_t elapsedTimeNs,
-                               std::atomic_int& pendingThreads,
-                               std::condition_variable& mainThreadCondition,
+                               int& pendingThreads, std::condition_variable& mainThreadCondition,
                                std::mutex& mainThreadConditionLock) {
     std::optional<StatsPullerManager::PullerParams> queueResult = pullerQueue.pop();
     while (queueResult.has_value()) {
@@ -269,7 +268,9 @@ static void processPullerQueue(ThreadSafeQueue<StatsPullerManager::PullerParams>
 
         queueResult = pullerQueue.pop();
     }
+    mainThreadConditionLock.lock();
     pendingThreads--;
+    mainThreadConditionLock.unlock();
     mainThreadCondition.notify_one();
 }
 
@@ -283,20 +284,28 @@ void StatsPullerManager::OnAlarmFired(int64_t elapsedTimeNs) {
         ThreadSafeQueue<PullerParams> pullerQueue;
         std::queue<PulledInfo> pulledData;
         initPullerQueue(pullerQueue, pulledData, elapsedTimeNs, minNextPullTimeNs);
+        int pendingThreads = 0;
+        vector<thread> pullerThreads;
         std::mutex mainThreadConditionLock;
         std::condition_variable waitForPullerThreadsCondition;
-        vector<thread> pullerThreads;
-        std::atomic_int pendingThreads = PULLER_THREAD_COUNT;
-        pullerThreads.reserve(PULLER_THREAD_COUNT);
-        // Spawn multiple threads to simultaneously pull all necessary pullers. These pullers push
-        // the pulled data to a queue for the main thread to process.
-        for (int i = 0; i < PULLER_THREAD_COUNT; ++i) {
-            pullerThreads.emplace_back(
-                    processPullerQueue, std::ref(pullerQueue), std::ref(pulledData), wallClockNs,
-                    elapsedTimeNs, std::ref(pendingThreads),
-                    std::ref(waitForPullerThreadsCondition), std::ref(mainThreadConditionLock));
+        if (!pullerQueue.empty()) {
+            StatsdStats::getInstance().notePullerAlarmHasPull();
+            const int numThreads = std::min(pullerQueue.size(), PULLER_THREAD_COUNT);
+            pendingThreads = numThreads;
+            pullerThreads.reserve(numThreads);
+            // Spawn multiple threads to simultaneously pull all necessary pullers. These pullers
+            // push the pulled data to a queue for the main thread to process.
+            for (int i = 0; i < numThreads; ++i) {
+                pullerThreads.emplace_back(
+                        processPullerQueue, std::ref(pullerQueue), std::ref(pulledData),
+                        wallClockNs, elapsedTimeNs, std::ref(pendingThreads),
+                        std::ref(waitForPullerThreadsCondition), std::ref(mainThreadConditionLock));
+            }
+        } else if (!pulledData.empty()) {
+            StatsdStats::getInstance().notePullerAlarmError();
+        } else {
+            StatsdStats::getInstance().notePullerAlarmNoPull();
         }
-
         // Process all pull results on the main thread without waiting for the puller threads
         // to finish.
         while (true) {
@@ -340,7 +349,6 @@ void StatsPullerManager::OnAlarmFired(int64_t elapsedTimeNs) {
         for (thread& pullerThread : pullerThreads) {
             pullerThread.join();
         }
-
     } else {
         onAlarmFiredSynchronous(elapsedTimeNs, wallClockNs, minNextPullTimeNs);
     }
@@ -444,55 +452,52 @@ void StatsPullerManager::initPullerQueue(ThreadSafeQueue<PullerParams>& pullerQu
                                          const int64_t elapsedTimeNs, int64_t& minNextPullTimeNs) {
     for (auto& pair : mReceivers) {
         vector<ReceiverInfo*> receivers;
-        if (pair.second.size() != 0) {
-            for (ReceiverInfo& receiverInfo : pair.second) {
-                // If pullNecessary and enough time has passed for the next bucket, then add
-                // receiver to the list that will pull on this alarm.
-                // If pullNecessary is false, check if next pull time needs to be updated.
-                sp<PullDataReceiver> receiverPtr = receiverInfo.receiver.promote();
-                if (receiverInfo.nextPullTimeNs <= elapsedTimeNs && receiverPtr != nullptr &&
-                    receiverPtr->isPullNeeded()) {
-                    receivers.push_back(&receiverInfo);
-                } else {
-                    if (receiverInfo.nextPullTimeNs <= elapsedTimeNs) {
-                        receiverPtr->onDataPulled({}, PullResult::PULL_NOT_NEEDED, elapsedTimeNs);
-                        int numBucketsAhead = (elapsedTimeNs - receiverInfo.nextPullTimeNs) /
-                                              receiverInfo.intervalNs;
-                        receiverInfo.nextPullTimeNs +=
-                                (numBucketsAhead + 1) * receiverInfo.intervalNs;
-                    }
-                    minNextPullTimeNs = min(receiverInfo.nextPullTimeNs, minNextPullTimeNs);
+        for (ReceiverInfo& receiverInfo : pair.second) {
+            // If pullNecessary and enough time has passed for the next bucket, then add
+            // receiver to the list that will pull on this alarm.
+            // If pullNecessary is false, check if next pull time needs to be updated.
+            sp<PullDataReceiver> receiverPtr = receiverInfo.receiver.promote();
+            if (receiverInfo.nextPullTimeNs <= elapsedTimeNs && receiverPtr != nullptr &&
+                receiverPtr->isPullNeeded()) {
+                receivers.push_back(&receiverInfo);
+            } else {
+                if (receiverInfo.nextPullTimeNs <= elapsedTimeNs) {
+                    receiverPtr->onDataPulled({}, PullResult::PULL_NOT_NEEDED, elapsedTimeNs);
+                    int numBucketsAhead =
+                            (elapsedTimeNs - receiverInfo.nextPullTimeNs) / receiverInfo.intervalNs;
+                    receiverInfo.nextPullTimeNs += (numBucketsAhead + 1) * receiverInfo.intervalNs;
                 }
+                minNextPullTimeNs = min(receiverInfo.nextPullTimeNs, minNextPullTimeNs);
             }
-            if (receivers.size() > 0) {
-                bool foundPuller = false;
-                int tagId = pair.first.atomTag;
-                vector<int32_t> uids;
-                if (getPullerUidsLocked(tagId, pair.first.configKey, uids)) {
-                    for (int32_t uid : uids) {
-                        PullerKey key = {.uid = uid, .atomTag = tagId};
-                        auto pullerIt = mAllPullAtomInfo.find(key);
-                        if (pullerIt != mAllPullAtomInfo.end()) {
-                            PullerParams params;
-                            params.key = key;
-                            params.puller = pullerIt->second;
-                            params.receivers = std::move(receivers);
-                            pullerQueue.push(params);
-                            foundPuller = true;
-                            break;
-                        }
-                    }
-                    if (!foundPuller) {
-                        StatsdStats::getInstance().notePullerNotFound(tagId);
-                        ALOGW("StatsPullerManager: Unknown tagId %d", tagId);
+        }
+        if (receivers.size() > 0) {
+            bool foundPuller = false;
+            int tagId = pair.first.atomTag;
+            vector<int32_t> uids;
+            if (getPullerUidsLocked(tagId, pair.first.configKey, uids)) {
+                for (int32_t uid : uids) {
+                    PullerKey key = {.uid = uid, .atomTag = tagId};
+                    auto pullerIt = mAllPullAtomInfo.find(key);
+                    if (pullerIt != mAllPullAtomInfo.end()) {
+                        PullerParams params;
+                        params.key = key;
+                        params.puller = pullerIt->second;
+                        params.receivers = std::move(receivers);
+                        pullerQueue.push(params);
+                        foundPuller = true;
+                        break;
                     }
                 }
                 if (!foundPuller) {
-                    PulledInfo pulledInfo;
-                    pulledInfo.pullErrorCode = PullErrorCode::PULL_FAIL;
-                    pulledInfo.receiverInfo = std::move(receivers);
-                    pulledData.push(pulledInfo);
+                    StatsdStats::getInstance().notePullerNotFound(tagId);
+                    ALOGW("StatsPullerManager: Unknown tagId %d", tagId);
                 }
+            }
+            if (!foundPuller) {
+                PulledInfo pulledInfo;
+                pulledInfo.pullErrorCode = PullErrorCode::PULL_FAIL;
+                pulledInfo.receiverInfo = std::move(receivers);
+                pulledData.push(pulledInfo);
             }
         }
     }

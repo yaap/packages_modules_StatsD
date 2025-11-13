@@ -71,8 +71,8 @@ void mapAndMergeIsolatedUidsToHostUid(vector<shared_ptr<LogEvent>>& data, const 
             for (size_t i = attrIndexRange.first; i <= attrIndexRange.second; i++) {
                 FieldValue& fieldValue = fieldValues->at(i);
                 if (isAttributionUidField(fieldValue)) {
-                    const int hostUid = uidMap->getHostUidOrSelf(fieldValue.mValue.int_value);
-                    fieldValue.mValue.setInt(hostUid);
+                    const int hostUid = uidMap->getHostUidOrSelf(fieldValue.mValue.get<int32_t>());
+                    fieldValue.mValue.set(hostUid);
                 }
             }
         } else {

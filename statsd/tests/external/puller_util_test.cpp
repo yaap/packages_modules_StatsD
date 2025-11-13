@@ -33,6 +33,7 @@ namespace statsd {
 
 using namespace testing;
 using std::shared_ptr;
+using std::string;
 using std::vector;
 /*
  * Test merge isolated and host uid
@@ -78,9 +79,10 @@ TEST(PullerUtilTest, MergeNoDimension) {
     ASSERT_EQ(1, (int)data.size());
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData + hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData + hostAdditiveData,
+              actualFieldValues->at(2).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, MergeWithDimension) {
@@ -105,15 +107,16 @@ TEST(PullerUtilTest, MergeWithDimension) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
 
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData,
+              actualFieldValues->at(2).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, NoMergeHostUidOnly) {
@@ -134,15 +137,15 @@ TEST(PullerUtilTest, NoMergeHostUidOnly) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
 
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, IsolatedUidOnly) {
@@ -164,16 +167,16 @@ TEST(PullerUtilTest, IsolatedUidOnly) {
     // 20->32->31
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
 
     // 20->22->21
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, MultipleIsolatedUidToOneHostUid) {
@@ -198,10 +201,10 @@ TEST(PullerUtilTest, MultipleIsolatedUidToOneHostUid) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(3, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
     EXPECT_EQ(isolatedAdditiveData + hostAdditiveData + hostAdditiveData,
-              actualFieldValues->at(2).mValue.int_value);
+              actualFieldValues->at(2).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, TwoIsolatedUidsOneAtom) {
@@ -223,11 +226,11 @@ TEST(PullerUtilTest, TwoIsolatedUidsOneAtom) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
     EXPECT_EQ(isolatedAdditiveData + hostAdditiveData + hostAdditiveData,
-              actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(hostUid2, actualFieldValues->at(3).mValue.int_value);
+              actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid2, actualFieldValues->at(3).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, NoNeedToMerge) {
@@ -249,13 +252,13 @@ TEST(PullerUtilTest, NoNeedToMerge) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(2, actualFieldValues->size());
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(1).mValue.int_value);
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
 
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(2, actualFieldValues->size());
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(1).mValue.int_value);
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, MergeNoDimensionAttributionChain) {
@@ -275,12 +278,13 @@ TEST(PullerUtilTest, MergeNoDimensionAttributionChain) {
     ASSERT_EQ(1, (int)data.size());
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData + hostAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData + hostAdditiveData,
+              actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, MergeWithDimensionAttributionChain) {
@@ -306,21 +310,22 @@ TEST(PullerUtilTest, MergeWithDimensionAttributionChain) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(200, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(200, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.get<int32_t>());
 
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(200, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(200, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData,
+              actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, NoMergeHostUidOnlyAttributionChain) {
@@ -342,21 +347,21 @@ TEST(PullerUtilTest, NoMergeHostUidOnlyAttributionChain) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.get<int32_t>());
 
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, IsolatedUidOnlyAttributionChain) {
@@ -379,22 +384,22 @@ TEST(PullerUtilTest, IsolatedUidOnlyAttributionChain) {
     // 20->tag1->400->tag2->32->31
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(5).mValue.get<int32_t>());
 
     // 20->tag1->400->tag2->22->21
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedAdditiveData, actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 TEST(PullerUtilTest, MultipleIsolatedUidToOneHostUidAttributionChain) {
@@ -420,13 +425,13 @@ TEST(PullerUtilTest, MultipleIsolatedUidToOneHostUidAttributionChain) {
 
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.str_value);
-    EXPECT_EQ(400, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.str_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ("tag1", actualFieldValues->at(1).mValue.get<string>());
+    EXPECT_EQ(400, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ("tag2", actualFieldValues->at(3).mValue.get<string>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
     EXPECT_EQ(isolatedAdditiveData + hostAdditiveData + hostAdditiveData,
-              actualFieldValues->at(5).mValue.int_value);
+              actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 // Test that repeated fields are treated as non-additive fields even when marked as additive.
@@ -455,18 +460,18 @@ TEST_GUARDED(PullerUtilTest, RepeatedAdditiveField, __ANDROID_API_T__) {
     // are equal.
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(3, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(6, actualFieldValues->at(3).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(3, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(6, actualFieldValues->at(3).mValue.get<int32_t>());
 
     // Event 2 isn't merged - repeated additive field is not equal.
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(6, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(9, actualFieldValues->at(3).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(6, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(9, actualFieldValues->at(3).mValue.get<int32_t>());
 }
 
 // Test that repeated uid events are sorted and merged correctly.
@@ -508,36 +513,36 @@ TEST_GUARDED(PullerUtilTest, RepeatedUidField, __ANDROID_API_T__) {
     // Events 1 and 3 and 6 are merged.
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(2).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
     EXPECT_EQ(hostAdditiveData + isolatedAdditiveData + hostAdditiveData,
-              actualFieldValues->at(3).mValue.int_value);
+              actualFieldValues->at(3).mValue.get<int32_t>());
 
     // Event 4 isn't merged - different non-additive data.
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(3).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(isolatedNonAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(3).mValue.get<int32_t>());
 
     // Event 2 isn't merged - different uid.
     actualFieldValues = &data[2]->getValues();
     ASSERT_EQ(4, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid2, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(3).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid2, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(3).mValue.get<int32_t>());
 
     // Event 5 isn't merged - different repeated uid length.
     actualFieldValues = &data[3]->getValues();
     ASSERT_EQ(5, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(3).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(4).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(hostNonAdditiveData, actualFieldValues->at(3).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(4).mValue.get<int32_t>());
 }
 
 // Test that repeated uid events with multiple repeated non-additive fields are sorted and merged
@@ -604,42 +609,43 @@ TEST_GUARDED(PullerUtilTest, MultipleRepeatedFields, __ANDROID_API_T__) {
     // fields, though length is same.
     const vector<FieldValue>* actualFieldValues = &data[0]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData, actualFieldValues->at(3).mValue.int_value);
-    EXPECT_EQ(1, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(2, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData + isolatedAdditiveData,
+              actualFieldValues->at(3).mValue.get<int32_t>());
+    EXPECT_EQ(1, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(2, actualFieldValues->at(5).mValue.get<int32_t>());
 
     // Events 1 and 4 are merged.
     actualFieldValues = &data[1]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData + hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(1, actualFieldValues->at(3).mValue.int_value);
-    EXPECT_EQ(2, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(3, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData + hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(1, actualFieldValues->at(3).mValue.get<int32_t>());
+    EXPECT_EQ(2, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(3, actualFieldValues->at(5).mValue.get<int32_t>());
 
     // Event 5 isn't merged - different repeated field.
     actualFieldValues = &data[2]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(1, actualFieldValues->at(3).mValue.int_value);
-    EXPECT_EQ(5, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(3, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(1, actualFieldValues->at(3).mValue.get<int32_t>());
+    EXPECT_EQ(5, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(3, actualFieldValues->at(5).mValue.get<int32_t>());
 
     // Event 2 isn't merged - different uid.
     actualFieldValues = &data[3]->getValues();
     ASSERT_EQ(6, actualFieldValues->size());
-    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.int_value);
-    EXPECT_EQ(hostUid2, actualFieldValues->at(1).mValue.int_value);
-    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.int_value);
-    EXPECT_EQ(1, actualFieldValues->at(3).mValue.int_value);
-    EXPECT_EQ(2, actualFieldValues->at(4).mValue.int_value);
-    EXPECT_EQ(3, actualFieldValues->at(5).mValue.int_value);
+    EXPECT_EQ(hostUid, actualFieldValues->at(0).mValue.get<int32_t>());
+    EXPECT_EQ(hostUid2, actualFieldValues->at(1).mValue.get<int32_t>());
+    EXPECT_EQ(hostAdditiveData, actualFieldValues->at(2).mValue.get<int32_t>());
+    EXPECT_EQ(1, actualFieldValues->at(3).mValue.get<int32_t>());
+    EXPECT_EQ(2, actualFieldValues->at(4).mValue.get<int32_t>());
+    EXPECT_EQ(3, actualFieldValues->at(5).mValue.get<int32_t>());
 }
 
 }  // namespace statsd

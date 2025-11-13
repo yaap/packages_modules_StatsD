@@ -58,19 +58,19 @@ static void populateStatsDimensionsValueParcelChildren(StatsDimensionsValueParce
             switch (dim.mValue.getType()) {
                 case INT:
                     child.valueType = STATS_DIMENSIONS_VALUE_INT_TYPE;
-                    child.intValue = dim.mValue.int_value;
+                    child.intValue = dim.mValue.get<int32_t>();
                     break;
                 case LONG:
                     child.valueType = STATS_DIMENSIONS_VALUE_LONG_TYPE;
-                    child.longValue = dim.mValue.long_value;
+                    child.longValue = dim.mValue.get<int64_t>();
                     break;
                 case FLOAT:
                     child.valueType = STATS_DIMENSIONS_VALUE_FLOAT_TYPE;
-                    child.floatValue = dim.mValue.float_value;
+                    child.floatValue = dim.mValue.get<float>();
                     break;
                 case STRING:
                     child.valueType = STATS_DIMENSIONS_VALUE_STRING_TYPE;
-                    child.stringValue = dim.mValue.str_value;
+                    child.stringValue = dim.mValue.get<string>();
                     break;
                 default:
                     ALOGE("Encountered FieldValue with unsupported value type.");
@@ -119,30 +119,31 @@ android::hash_t hashDimension(const HashableDimensionKey& value) {
         hash = android::JenkinsHashMix(hash, android::hash_type((int)fieldValue.mValue.getType()));
         switch (fieldValue.mValue.getType()) {
             case INT:
-                hash = android::JenkinsHashMix(hash,
-                                               android::hash_type(fieldValue.mValue.int_value));
+                hash = android::JenkinsHashMix(
+                        hash, android::hash_type(fieldValue.mValue.get<int32_t>()));
                 break;
             case LONG:
-                hash = android::JenkinsHashMix(hash,
-                                               android::hash_type(fieldValue.mValue.long_value));
+                hash = android::JenkinsHashMix(
+                        hash, android::hash_type(fieldValue.mValue.get<int64_t>()));
                 break;
             case STRING:
                 hash = android::JenkinsHashMix(hash, static_cast<uint32_t>(std::hash<std::string>()(
-                                                             fieldValue.mValue.str_value)));
+                                                             fieldValue.mValue.get<string>())));
                 break;
             case FLOAT: {
                 hash = android::JenkinsHashMix(hash,
-                                               android::hash_type(fieldValue.mValue.float_value));
+                                               android::hash_type(fieldValue.mValue.get<float>()));
                 break;
             }
             case DOUBLE: {
                 hash = android::JenkinsHashMix(hash,
-                                               android::hash_type(fieldValue.mValue.double_value));
+                                               android::hash_type(fieldValue.mValue.get<double>()));
                 break;
             }
             case STORAGE: {
-                hash = android::JenkinsHashMixBytes(hash, fieldValue.mValue.storage_value.data(),
-                                                    fieldValue.mValue.storage_value.size());
+                hash = android::JenkinsHashMixBytes(
+                        hash, fieldValue.mValue.get<vector<uint8_t>>().data(),
+                        fieldValue.mValue.get<vector<uint8_t>>().size());
                 break;
             }
             default:
@@ -229,10 +230,6 @@ bool filterPrimaryKey(const std::vector<FieldValue>& values, HashableDimensionKe
 
 vector<FieldValue> filterValues(const std::vector<Matcher>& matcherFields,
                                 const std::vector<FieldValue>& values, bool omitMatches) {
-    if (matcherFields.empty()) {
-        return values;
-    }
-
     vector<FieldValue> output;
     for (const auto& field : matcherFields) {
         for (const auto& value : values) {

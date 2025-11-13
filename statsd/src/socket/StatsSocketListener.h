@@ -34,6 +34,9 @@ public:
 
     virtual ~StatsSocketListener() = default;
 
+    virtual int startListener() override;
+    virtual int stopListener() override;
+
 protected:
     bool onDataAvailable(SocketClient* cli) override;
 };

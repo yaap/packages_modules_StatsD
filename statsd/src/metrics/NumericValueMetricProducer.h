@@ -188,9 +188,12 @@ private:
 
     // For pulled metrics, this is always set to true whenever a pull succeeds.
     // It is set to false when a pull fails, or upon condition change to false.
+    // It is also set to false when the dimension guardrail is hit.
     // This is used to decide if we have the right base data to compute the
     // diff against.
     bool mHasGlobalBase;
+
+    const bool mDropBucketOnDimensionHardLimitExceeded;
 
     const int64_t mMaxPullDelayNs;
 

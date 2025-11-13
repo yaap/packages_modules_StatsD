@@ -28,6 +28,7 @@
 #ifdef __ANDROID__
 
 using android::util::ProtoReader;
+using std::string;
 
 namespace android {
 namespace os {
@@ -140,22 +141,22 @@ TEST(AtomMatcherTest, TestFilter_ALL) {
 
     ASSERT_EQ((size_t)7, output.getValues().size());
     EXPECT_EQ((int32_t)0x02010101, output.getValues()[0].mField.getField());
-    EXPECT_EQ((int32_t)1111, output.getValues()[0].mValue.int_value);
+    EXPECT_EQ((int32_t)1111, output.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x02010102, output.getValues()[1].mField.getField());
-    EXPECT_EQ("location1", output.getValues()[1].mValue.str_value);
+    EXPECT_EQ("location1", output.getValues()[1].mValue.get<string>());
 
     EXPECT_EQ((int32_t)0x02010201, output.getValues()[2].mField.getField());
-    EXPECT_EQ((int32_t)2222, output.getValues()[2].mValue.int_value);
+    EXPECT_EQ((int32_t)2222, output.getValues()[2].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x02010202, output.getValues()[3].mField.getField());
-    EXPECT_EQ("location2", output.getValues()[3].mValue.str_value);
+    EXPECT_EQ("location2", output.getValues()[3].mValue.get<string>());
 
     EXPECT_EQ((int32_t)0x02010301, output.getValues()[4].mField.getField());
-    EXPECT_EQ((int32_t)3333, output.getValues()[4].mValue.int_value);
+    EXPECT_EQ((int32_t)3333, output.getValues()[4].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x02010302, output.getValues()[5].mField.getField());
-    EXPECT_EQ("location3", output.getValues()[5].mValue.str_value);
+    EXPECT_EQ("location3", output.getValues()[5].mValue.get<string>());
 
     EXPECT_EQ((int32_t)0x00020000, output.getValues()[6].mField.getField());
-    EXPECT_EQ("some value", output.getValues()[6].mValue.str_value);
+    EXPECT_EQ("some value", output.getValues()[6].mValue.get<string>());
 }
 
 TEST(AtomMatcherTest, TestFilter_FIRST) {
@@ -185,11 +186,11 @@ TEST(AtomMatcherTest, TestFilter_FIRST) {
 
     ASSERT_EQ((size_t)3, output.getValues().size());
     EXPECT_EQ((int32_t)0x02010101, output.getValues()[0].mField.getField());
-    EXPECT_EQ((int32_t)1111, output.getValues()[0].mValue.int_value);
+    EXPECT_EQ((int32_t)1111, output.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x02010102, output.getValues()[1].mField.getField());
-    EXPECT_EQ("location1", output.getValues()[1].mValue.str_value);
+    EXPECT_EQ("location1", output.getValues()[1].mValue.get<string>());
     EXPECT_EQ((int32_t)0x00020000, output.getValues()[2].mField.getField());
-    EXPECT_EQ("some value", output.getValues()[2].mValue.str_value);
+    EXPECT_EQ("some value", output.getValues()[2].mValue.get<string>());
 };
 
 TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_FIRST, __ANDROID_API_T__) {
@@ -211,7 +212,7 @@ TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_FIRST, __ANDROID_API_T__) {
 
     ASSERT_EQ((size_t)1, output.getValues().size());
     EXPECT_EQ((int32_t)0x01010100, output.getValues()[0].mField.getField());
-    EXPECT_EQ((int32_t)21, output.getValues()[0].mValue.int_value);
+    EXPECT_EQ((int32_t)21, output.getValues()[0].mValue.get<int32_t>());
 }
 
 TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_LAST, __ANDROID_API_T__) {
@@ -233,7 +234,7 @@ TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_LAST, __ANDROID_API_T__) {
 
     ASSERT_EQ((size_t)1, output.getValues().size());
     EXPECT_EQ((int32_t)0x01018000, output.getValues()[0].mField.getField());
-    EXPECT_EQ((int32_t)13, output.getValues()[0].mValue.int_value);
+    EXPECT_EQ((int32_t)13, output.getValues()[0].mValue.get<int32_t>());
 }
 
 TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_ALL, __ANDROID_API_T__) {
@@ -255,11 +256,11 @@ TEST_GUARDED(AtomMatcherTest, TestFilterRepeated_ALL, __ANDROID_API_T__) {
 
     ASSERT_EQ((size_t)3, output.getValues().size());
     EXPECT_EQ((int32_t)0x01010100, output.getValues()[0].mField.getField());
-    EXPECT_EQ((int32_t)21, output.getValues()[0].mValue.int_value);
+    EXPECT_EQ((int32_t)21, output.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x01010200, output.getValues()[1].mField.getField());
-    EXPECT_EQ((int32_t)9, output.getValues()[1].mValue.int_value);
+    EXPECT_EQ((int32_t)9, output.getValues()[1].mValue.get<int32_t>());
     EXPECT_EQ((int32_t)0x01010300, output.getValues()[2].mField.getField());
-    EXPECT_EQ((int32_t)13, output.getValues()[2].mValue.int_value);
+    EXPECT_EQ((int32_t)13, output.getValues()[2].mValue.get<int32_t>());
 }
 
 TEST(AtomMatcherTest, TestFilterWithOneMatcher) {
@@ -281,7 +282,7 @@ TEST(AtomMatcherTest, TestFilterWithOneMatcher) {
 
     EXPECT_TRUE(filterValues(matchers[0], event.getValues(), &value));
     EXPECT_EQ((int32_t)0x20000, value.mField.getField());
-    EXPECT_EQ("some value", value.mValue.str_value);
+    EXPECT_EQ("some value", value.mValue.get<string>());
 }
 
 TEST(AtomMatcherTest, TestFilterWithOneMatcher_PositionFIRST) {
@@ -306,7 +307,7 @@ TEST(AtomMatcherTest, TestFilterWithOneMatcher_PositionFIRST) {
     // Should only match the first field.
     EXPECT_TRUE(filterValues(matchers[0], event.getValues(), &value));
     EXPECT_EQ((int32_t)0x02010101, value.mField.getField());
-    EXPECT_EQ((int32_t)1111, value.mValue.int_value);
+    EXPECT_EQ((int32_t)1111, value.mValue.get<int32_t>());
 }
 
 TEST(AtomMatcherTest, TestFilterWithOneMatcher_PositionLAST) {
@@ -331,7 +332,7 @@ TEST(AtomMatcherTest, TestFilterWithOneMatcher_PositionLAST) {
     // Should only match the last field.
     EXPECT_TRUE(filterValues(matchers[0], event.getValues(), &value));
     EXPECT_EQ((int32_t)0x02018301, value.mField.getField());
-    EXPECT_EQ((int32_t)3333, value.mValue.int_value);
+    EXPECT_EQ((int32_t)3333, value.mValue.get<int32_t>());
 }
 
 TEST(AtomMatcherTest, TestFilterWithOneMatcher_PositionALL) {
@@ -719,16 +720,16 @@ TEST(AtomMatcherTest, TestSubscriberDimensionWrite) {
     ASSERT_EQ(attributionChainParcel.tupleValue.size(), 2);
     checkAttributionNodeInDimensionsValueParcel(attributionChainParcel.tupleValue[0],
                                                 /*nodeDepthInAttributionChain=*/1,
-                                                value1.int_value, value2.str_value);
+                                                value1.get<int32_t>(), value2.get<string>());
     checkAttributionNodeInDimensionsValueParcel(attributionChainParcel.tupleValue[1],
                                                 /*nodeDepthInAttributionChain=*/2,
-                                                value3.int_value, value4.str_value);
+                                                value3.get<int32_t>(), value4.get<string>());
 
     // Check that the float is populated correctly
     StatsDimensionsValueParcel floatParcel = rootParcel.tupleValue[1];
     EXPECT_EQ(floatParcel.field, 2 /*position at depth 0*/);
     EXPECT_EQ(floatParcel.valueType, STATS_DIMENSIONS_VALUE_FLOAT_TYPE);
-    EXPECT_EQ(floatParcel.floatValue, value5.float_value);
+    EXPECT_EQ(floatParcel.floatValue, value5.get<float>());
 }
 
 TEST(AtomMatcherTest, TestWriteDimensionToProto) {
@@ -1324,6 +1325,27 @@ TEST(FieldValueTest, TestShouldKeepSampleByteArray) {
 
     EXPECT_FALSE(shouldKeepSample(fieldValue1, shardOffset, shardCount));
     EXPECT_TRUE(shouldKeepSample(fieldValue2, shardOffset, shardCount));
+}
+
+TEST(FieldValueTest, TestValueType) {
+    Value v(3);
+    EXPECT_EQ(v.getType(), INT);
+
+    v = "foo";
+    EXPECT_EQ(v.getType(), STRING);
+
+    v = (int64_t)25;
+    EXPECT_EQ(v.getType(), LONG);
+
+    v = 0.5f;
+    EXPECT_EQ(v.getType(), FLOAT);
+
+    v = -3.14;
+    EXPECT_EQ(v.getType(), DOUBLE);
+
+    vector<uint8_t> test{'t', 'e', 's', 't'};
+    v = test;
+    EXPECT_EQ(v.getType(), STORAGE);
 }
 
 }  // namespace statsd

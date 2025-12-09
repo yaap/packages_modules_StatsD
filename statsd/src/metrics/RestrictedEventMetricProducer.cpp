@@ -22,12 +22,14 @@
 #include "stats_log_util.h"
 #include "utils/DbUtils.h"
 
-using std::lock_guard;
-using std::vector;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using std::shared_ptr;
+using std::string;
+using std::unordered_map;
+using std::vector;
 
 #define NS_PER_DAY (24 * 3600 * NS_PER_SEC)
 
@@ -73,7 +75,7 @@ void RestrictedEventMetricProducer::onDumpReportLocked(
 }
 
 void RestrictedEventMetricProducer::onMetricRemove() {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     if (!mIsMetricTableCreated) {
         return;
     }
@@ -99,7 +101,7 @@ void RestrictedEventMetricProducer::dropDataLocked(const int64_t dropTimeNs) {
 }
 
 void RestrictedEventMetricProducer::flushRestrictedData() {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     if (mLogEvents.empty()) {
         return;
     }

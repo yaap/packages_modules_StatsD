@@ -17,7 +17,9 @@
 #include <gtest/gtest.h>
 
 using namespace android::os::statsd;
+using std::set;
 using std::shared_ptr;
+using std::unordered_set;
 
 #ifdef __ANDROID__
 TEST(AlarmMonitor, popSoonerThan) {

@@ -23,6 +23,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
 using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
@@ -31,48 +32,41 @@ SimpleAtomMatchingTracker::SimpleAtomMatchingTracker(const int64_t id, const uin
                                                      const SimpleAtomMatcher& matcher,
                                                      const sp<UidMap>& uidMap)
     : AtomMatchingTracker(id, protoHash), mMatcher(matcher), mUidMap(uidMap) {
-    if (!matcher.has_atom_id()) {
-        mInitialized = false;
-    } else {
+    if (matcher.has_atom_id()) {
         mAtomIds.insert(matcher.atom_id());
-        mInitialized = true;
     }
 }
 
 SimpleAtomMatchingTracker::~SimpleAtomMatchingTracker() {
 }
 
-MatcherInitResult SimpleAtomMatchingTracker::init(
-        int matcherIndex, const vector<AtomMatcher>& allAtomMatchers,
-        const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
-        const unordered_map<int64_t, int>& matcherMap, vector<uint8_t>& stack) {
-    MatcherInitResult result{nullopt /* invalidConfigReason */,
-                             false /* hasStringTransformation */};
-    // no need to do anything.
-    if (!mInitialized) {
+void SimpleAtomMatchingTracker::init(
+        const unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+        const unordered_map<int64_t, int>& matcherMap) {
+    return;
+}
+
+MatcherValidResult SimpleAtomMatchingTracker::isTrackerValid(
+        const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+        std::unordered_set<int64_t>& stack) const {
+    MatcherValidResult result{nullopt /* invalidConfigReason */,
+                              false /* hasStringTransformation */};
+    if (!mMatcher.has_atom_id()) {
         result.invalidConfigReason = createInvalidConfigReasonWithMatcher(
                 INVALID_CONFIG_REASON_MATCHER_TRACKER_NOT_INITIALIZED, mId);
-        return result;
     }
-
     for (const FieldValueMatcher& fvm : mMatcher.field_value_matcher()) {
         if (fvm.has_replace_string()) {
             result.hasStringTransformation = true;
             break;
         }
     }
-
     return result;
 }
 
-optional<InvalidConfigReason> SimpleAtomMatchingTracker::onConfigUpdated(
+void SimpleAtomMatchingTracker::onConfigUpdated(
         const AtomMatcher& matcher, const unordered_map<int64_t, int>& atomMatchingTrackerMap) {
-    // Do not need to update mMatcher since the matcher must be identical across the update.
-    if (!mInitialized) {
-        return createInvalidConfigReasonWithMatcher(
-                INVALID_CONFIG_REASON_MATCHER_TRACKER_NOT_INITIALIZED, mId);
-    }
-    return nullopt;
+    return;
 }
 
 void SimpleAtomMatchingTracker::onLogEvent(

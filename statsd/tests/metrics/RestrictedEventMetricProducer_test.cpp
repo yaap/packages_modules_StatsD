@@ -8,16 +8,17 @@
 #include "tests/statsd_test_util.h"
 #include "utils/DbUtils.h"
 
-using namespace testing;
-using std::string;
-using std::stringstream;
-using std::vector;
-
 #ifdef __ANDROID__
 
 namespace android {
 namespace os {
 namespace statsd {
+
+using namespace testing;
+using std::string;
+using std::stringstream;
+using std::to_string;
+using std::vector;
 
 namespace {
 const ConfigKey configKey(/*uid=*/0, /*id=*/12345);
@@ -71,7 +72,7 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventMultipleEvents) {
     query << "SELECT * FROM metric_" << metricId1;
     string err;
     vector<int32_t> columnTypes;
-    std::vector<string> columnNames;
+    vector<string> columnNames;
     vector<vector<string>> rows;
     dbutils::query(configKey, query.str(), rows, columnTypes, columnNames, err);
     ASSERT_EQ(rows.size(), 2);
@@ -113,7 +114,7 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventMultipleFields) {
     query << "SELECT * FROM metric_" << metricId2;
     string err;
     vector<int32_t> columnTypes;
-    std::vector<string> columnNames;
+    vector<string> columnNames;
     vector<vector<string>> rows;
     EXPECT_TRUE(dbutils::query(configKey, query.str(), rows, columnTypes, columnNames, err));
     ASSERT_EQ(rows.size(), 1);
@@ -150,9 +151,9 @@ TEST_F(RestrictedEventMetricProducerTest, TestOnMatchedLogEventWithCondition) {
     std::stringstream query;
     query << "SELECT * FROM metric_" << metricId1;
     string err;
-    std::vector<int32_t> columnTypes;
-    std::vector<string> columnNames;
-    std::vector<std::vector<std::string>> rows;
+    vector<int32_t> columnTypes;
+    vector<string> columnNames;
+    vector<vector<std::string>> rows;
     dbutils::query(configKey, query.str(), rows, columnTypes, columnNames, err);
     ASSERT_EQ(rows.size(), 1);
     EXPECT_EQ(columnTypes.size(), 3 + event1->getValues().size());
@@ -231,17 +232,17 @@ TEST_F(RestrictedEventMetricProducerTest, TestRestrictedEventMetricTtlDeletesFir
     std::stringstream query;
     query << "SELECT * FROM metric_" << metricId1;
     string err;
-    std::vector<int32_t> columnTypes;
-    std::vector<string> columnNames;
-    std::vector<std::vector<std::string>> rows;
+    vector<int32_t> columnTypes;
+    vector<string> columnNames;
+    vector<vector<std::string>> rows;
     dbutils::query(configKey, query.str(), rows, columnTypes, columnNames, err);
     ASSERT_EQ(rows.size(), 1);
     EXPECT_EQ(columnTypes.size(), 3 + event1->getValues().size());
     EXPECT_THAT(columnNames,
                 ElementsAre("atomId", "elapsedTimestampNs", "wallTimestampNs", "field_1"));
-    EXPECT_THAT(rows[0], ElementsAre(to_string(event2->GetTagId()),
-                                     to_string(event2->GetElapsedTimestampNs()),
-                                     to_string(currentTimeNs), _));
+    EXPECT_THAT(rows[0], ElementsAre(std::to_string(event2->GetTagId()),
+                                     std::to_string(event2->GetElapsedTimestampNs()),
+                                     std::to_string(currentTimeNs), _));
 }
 
 TEST_F(RestrictedEventMetricProducerTest, TestLoadMetricMetadataSetsCategory) {

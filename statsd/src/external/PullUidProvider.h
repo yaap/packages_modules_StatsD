@@ -31,7 +31,7 @@ public:
     /**
      * @param atomId The atom for which to get the uids.
      */
-    virtual vector<int32_t> getPullAtomUids(int32_t atomId) = 0;
+    virtual std::vector<int32_t> getPullAtomUids(int32_t atomId) = 0;
 };
 
 }  // namespace statsd

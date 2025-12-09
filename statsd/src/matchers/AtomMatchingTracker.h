@@ -21,6 +21,7 @@
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "guardrail/StatsdStats.h"
@@ -32,40 +33,43 @@ namespace android {
 namespace os {
 namespace statsd {
 
-struct MatcherInitResult {
-    optional<InvalidConfigReason> invalidConfigReason;
+struct MatcherValidResult {
+    std::optional<InvalidConfigReason> invalidConfigReason;
     bool hasStringTransformation;
 };
+
+struct AtomMatcherValue;
 
 class AtomMatchingTracker : public virtual RefBase {
 public:
     AtomMatchingTracker(const int64_t id, const uint64_t protoHash)
-        : mId(id), mInitialized(false), mProtoHash(protoHash){};
+        : mId(id), mProtoHash(protoHash) {};
 
     virtual ~AtomMatchingTracker(){};
 
     // Initialize this AtomMatchingTracker.
-    // matcherIndex: index of this AtomMatchingTracker in allAtomMatchingTrackers.
-    // allAtomMatchers: the list of the AtomMatcher proto config. This is needed because we don't
-    //                  store the proto object in memory. We only need it during initilization.
-    // allAtomMatchingTrackers: the list of the AtomMatchingTracker objects. It's a one-to-one
-    //                          mapping with allAtomMatchers. This is needed because the
-    //                          initialization is done recursively for
-    //                          CombinationAtomMatchingTrackers using DFS.
-    // stack: a bit map to record which matcher has been visited on the stack. This is for detecting
-    //        circle dependency.
-    virtual MatcherInitResult init(
-            int matcherIndex, const std::vector<AtomMatcher>& allAtomMatchers,
-            const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
-            const std::unordered_map<int64_t, int>& matcherMap, std::vector<uint8_t>& stack) = 0;
+    // allAtomMatcherMap: the map of all matchers keyed by matcher id. We only need it during
+    // initialization.
+    // allAtomMatchingTrackers: the map of atom matching trackers keyed by matcher id. We only need
+    // it during initialization.
+    // matcherMap: map of matcherId to index in mAllAtomMatchingTrackers
+    virtual void init(const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+                      const std::unordered_map<int64_t, int>& matcherMap) = 0;
 
     // Update appropriate state on config updates. Primarily, all indices need to be updated.
     // This matcher and all of its children are guaranteed to be preserved across the update.
     // matcher: the AtomMatcher proto from the config.
     // atomMatchingTrackerMap: map from matcher id to index in mAllAtomMatchingTrackers
-    virtual optional<InvalidConfigReason> onConfigUpdated(
+    virtual void onConfigUpdated(
             const AtomMatcher& matcher,
             const std::unordered_map<int64_t, int>& atomMatchingTrackerMap) = 0;
+
+    // Checks whether this tracker is valid. This method can be called multiple times.
+    // allAtomMatcherMap: map of atom id to atom matcher in the statsd config.
+    // stack: used during validation to check for cycles.
+    virtual MatcherValidResult isTrackerValid(
+            const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+            std::unordered_set<int64_t>& stack) const = 0;
 
     // Called when a log event comes.
     // event: the log event.
@@ -96,16 +100,9 @@ public:
         return mProtoHash;
     }
 
-    bool isInitialized() {
-        return mInitialized;
-    }
-
 protected:
     // Name of this matching. We don't really need the name, but it makes log message easy to debug.
     const int64_t mId;
-
-    // Whether this AtomMatchingTracker has been properly initialized.
-    bool mInitialized;
 
     // The collection of the event tag ids that this AtomMatchingTracker cares. So we can quickly
     // return kNotMatched when we receive an event with an id not in the list. This is especially
@@ -119,6 +116,11 @@ protected:
     FRIEND_TEST(MetricsManagerUtilTest, TestCreateAtomMatchingTrackerSimple);
     FRIEND_TEST(MetricsManagerUtilTest, TestCreateAtomMatchingTrackerCombination);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateMatchers);
+};
+
+struct AtomMatcherValue {
+    AtomMatcher atomMatcher;
+    sp<AtomMatchingTracker> atomMatchingTracker;
 };
 
 }  // namespace statsd

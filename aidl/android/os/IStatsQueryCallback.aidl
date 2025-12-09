@@ -18,7 +18,7 @@ package android.os;
 
 /**
   * Binder interface to hold a Callback for Stats SQL queries.
-  * {@hide}
+  * @hide
   */
 interface IStatsQueryCallback {
       oneway void sendResults(in String[] queryData, in String[] columnNames,

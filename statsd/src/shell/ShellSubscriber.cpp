@@ -26,17 +26,22 @@
 #include "stats_log_util.h"
 #include "utils/api_tracing.h"
 
-using aidl::android::os::IStatsSubscriptionCallback;
-
 namespace android {
 namespace os {
 namespace statsd {
 
+using aidl::android::os::IStatsSubscriptionCallback;
+
+using namespace std::chrono_literals;
+using std::shared_ptr;
+using std::unique_ptr;
+using std::vector;
+
 ShellSubscriber::~ShellSubscriber() {
     {
-        std::unique_lock<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         mClientSet.clear();
-        updateLogEventFilterLocked();
+        updateAtomIdsInUseLocked();
     }
     mThreadSleepCV.notify_one();
     if (mThread.joinable()) {
@@ -45,7 +50,7 @@ ShellSubscriber::~ShellSubscriber() {
 }
 
 bool ShellSubscriber::startNewSubscription(int in, int out, int64_t timeoutSec) {
-    std::unique_lock<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     VLOG("ShellSubscriber: new subscription has come in");
     if (mClientSet.size() >= kMaxSubscriptions) {
         ALOGE("ShellSubscriber: cannot have another active subscription. Current Subscriptions: "
@@ -60,7 +65,7 @@ bool ShellSubscriber::startNewSubscription(int in, int out, int64_t timeoutSec) 
 
 bool ShellSubscriber::startNewSubscription(const vector<uint8_t>& subscriptionConfig,
                                            const shared_ptr<IStatsSubscriptionCallback>& callback) {
-    std::unique_lock<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     VLOG("ShellSubscriber: new subscription has come in");
     if (mClientSet.size() >= kMaxSubscriptions) {
         ALOGE("ShellSubscriber: cannot have another active subscription. Current Subscriptions: "
@@ -78,7 +83,7 @@ bool ShellSubscriber::startNewSubscriptionLocked(unique_ptr<ShellSubscriberClien
 
     // Add new valid client to the client set
     mClientSet.insert(std::move(client));
-    updateLogEventFilterLocked();
+    updateAtomIdsInUseLocked();
 
     // Only spawn one thread to manage pulling atoms and sending
     // heartbeats.
@@ -87,7 +92,12 @@ bool ShellSubscriber::startNewSubscriptionLocked(unique_ptr<ShellSubscriberClien
         if (mThread.joinable()) {
             mThread.join();
         }
-        mThread = thread([this] { pullAndSendHeartbeats(); });
+        mThread = std::thread([this] { pullAndSendHeartbeats(); });
+    } else {
+        // If pullAndSendHeartbeats() thread is sleeping, force a wake-up to trigger the initial
+        // pull for the newly added subscription.
+        mShouldWakeupThread = true;
+        mThreadSleepCV.notify_one();
     }
 
     return true;
@@ -99,6 +109,7 @@ void ShellSubscriber::pullAndSendHeartbeats() {
     std::unique_lock<std::mutex> lock(mMutex);
     while (true) {
         StatsdStats::getInstance().noteSubscriptionPullThreadWakeup();
+        mShouldWakeupThread = false;
         int64_t sleepTimeMs = 24 * 60 * 60 * 1000;  // 24 hours.
         const int64_t nowNanos = getElapsedRealtimeNs();
         const int64_t nowMillis = nanoseconds_to_milliseconds(nowNanos);
@@ -113,7 +124,7 @@ void ShellSubscriber::pullAndSendHeartbeats() {
                 VLOG("ShellSubscriber: removing client!");
                 (*clientIt)->onUnsubscribe();
                 clientIt = mClientSet.erase(clientIt);
-                updateLogEventFilterLocked();
+                updateAtomIdsInUseLocked();
             }
         }
         if (mClientSet.empty()) {
@@ -122,7 +133,8 @@ void ShellSubscriber::pullAndSendHeartbeats() {
             return;
         }
         VLOG("ShellSubscriber: helper thread sleeping for %" PRId64 "ms", sleepTimeMs);
-        mThreadSleepCV.wait_for(lock, sleepTimeMs * 1ms, [this] { return mClientSet.empty(); });
+        mThreadSleepCV.wait_for(lock, sleepTimeMs * 1ms,
+                                [this] { return mClientSet.empty() || mShouldWakeupThread; });
     }
 }
 
@@ -136,7 +148,7 @@ void ShellSubscriber::onLogEvent(const LogEvent& event) {
     if (event.isRestricted()) {
         return;
     }
-    std::unique_lock<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     for (auto clientIt = mClientSet.begin(); clientIt != mClientSet.end();) {
         (*clientIt)->onLogEvent(event);
         if ((*clientIt)->isAlive()) {
@@ -146,13 +158,13 @@ void ShellSubscriber::onLogEvent(const LogEvent& event) {
 
             (*clientIt)->onUnsubscribe();
             clientIt = mClientSet.erase(clientIt);
-            updateLogEventFilterLocked();
+            updateAtomIdsInUseLocked();
         }
     }
 }
 
 void ShellSubscriber::flushSubscription(const shared_ptr<IStatsSubscriptionCallback>& callback) {
-    std::unique_lock<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     // TODO(b/268822860): Consider storing callback clients in a map keyed by
     // IStatsSubscriptionCallback to avoid this linear search.
@@ -169,7 +181,7 @@ void ShellSubscriber::flushSubscription(const shared_ptr<IStatsSubscriptionCallb
                 // moves the iterator, skipping a value. This is fine because we do an early return
                 // before next iteration of the loop.
                 clientIt = mClientSet.erase(clientIt);
-                updateLogEventFilterLocked();
+                updateAtomIdsInUseLocked();
             }
             return;
         }
@@ -177,7 +189,7 @@ void ShellSubscriber::flushSubscription(const shared_ptr<IStatsSubscriptionCallb
 }
 
 void ShellSubscriber::unsubscribe(const shared_ptr<IStatsSubscriptionCallback>& callback) {
-    std::unique_lock<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     // TODO(b/268822860): Consider storing callback clients in a map keyed by
     // IStatsSubscriptionCallback to avoid this linear search.
@@ -191,19 +203,19 @@ void ShellSubscriber::unsubscribe(const shared_ptr<IStatsSubscriptionCallback>& 
             // moves the iterator, skipping a value. This is fine because we do an early return
             // before next iteration of the loop.
             clientIt = mClientSet.erase(clientIt);
-            updateLogEventFilterLocked();
+            updateAtomIdsInUseLocked();
             return;
         }
     }
 }
 
-void ShellSubscriber::updateLogEventFilterLocked() const {
-    LogEventFilter::AtomIdSet allAtomIds;
+void ShellSubscriber::updateAtomIdsInUseLocked() const {
+    AtomsInUseChangeListener::AtomIdSet allAtomIds;
     for (const auto& client : mClientSet) {
         client->addAllAtomIds(allAtomIds);
     }
     VLOG("ShellSubscriber: Updating allAtomIds done. Total atoms %d", (int)allAtomIds.size());
-    mLogEventFilter->setAtomIds(std::move(allAtomIds), this);
+    mAtomsInUseChangeListener->setAtomIds(std::move(allAtomIds), this);
 }
 
 }  // namespace statsd

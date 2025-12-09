@@ -19,14 +19,13 @@
 #include <aidl/android/os/IStatsCompanionService.h>
 
 using aidl::android::os::IStatsCompanionService;
-using std::shared_ptr;
 
 namespace android {
 namespace os {
 namespace statsd {
 
 /** Fetches and returns the StatsCompanionService. */
-shared_ptr<IStatsCompanionService> getStatsCompanionService(const bool blocking);
+std::shared_ptr<IStatsCompanionService> getStatsCompanionService(const bool blocking);
 
 }  // namespace statsd
 }  // namespace os

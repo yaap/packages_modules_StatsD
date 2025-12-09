@@ -18,11 +18,12 @@
 #define SIMPLE_ATOM_MATCHING_TRACKER_H
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "AtomMatchingTracker.h"
-#include "src/statsd_config.pb.h"
 #include "packages/UidMap.h"
+#include "src/statsd_config.pb.h"
 
 namespace android {
 namespace os {
@@ -35,14 +36,15 @@ public:
 
     ~SimpleAtomMatchingTracker();
 
-    MatcherInitResult init(int matcherIndex, const std::vector<AtomMatcher>& allAtomMatchers,
-                           const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
-                           const std::unordered_map<int64_t, int>& matcherMap,
-                           std::vector<uint8_t>& stack) override;
+    void init(const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+              const std::unordered_map<int64_t, int>& matcherMap) override;
 
-    optional<InvalidConfigReason> onConfigUpdated(
-            const AtomMatcher& matcher,
-            const std::unordered_map<int64_t, int>& atomMatchingTrackerMap) override;
+    void onConfigUpdated(const AtomMatcher& matcher,
+                         const std::unordered_map<int64_t, int>& atomMatchingTrackerMap) override;
+
+    MatcherValidResult isTrackerValid(
+            const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+            std::unordered_set<int64_t>& stack) const override;
 
     void onLogEvent(const LogEvent& event, int matcherIndex,
                     const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,

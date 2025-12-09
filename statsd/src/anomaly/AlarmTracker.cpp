@@ -29,6 +29,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::unordered_set;
+
 AlarmTracker::AlarmTracker(const int64_t startMillis,
                            const int64_t currentMillis,
                            const Alarm& alarm, const ConfigKey& configKey,

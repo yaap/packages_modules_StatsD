@@ -20,11 +20,11 @@
 
 #include "utils/DbUtils.h"
 
+#include <android-base/properties.h>
+#include <android-base/stringprintf.h>
 #include <android/api-level.h>
 
 #include "FieldValue.h"
-#include "android-base/properties.h"
-#include "android-base/stringprintf.h"
 #include "stats_log_util.h"
 #include "storage/StorageManager.h"
 
@@ -40,6 +40,9 @@ using ::android::os::statsd::StorageManager;
 using ::android::os::statsd::STRING;
 using base::GetProperty;
 using base::StringPrintf;
+
+using std::string;
+using std::vector;
 
 const string TABLE_NAME_PREFIX = "metric_";
 const string COLUMN_NAME_ATOM_TAG = "atomId";

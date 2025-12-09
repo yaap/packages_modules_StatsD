@@ -22,11 +22,12 @@
 
 #ifdef __ANDROID__
 
-using android::util::ProtoReader;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using android::util::ProtoReader;
+using std::vector;
 
 /**
  * Test that #containsLinkedStateValues returns false when the whatKey is

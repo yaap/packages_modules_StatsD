@@ -86,7 +86,7 @@ enum BucketSplitEvent { APP_UPGRADE, BOOT_COMPLETE };
 class MockUidMap : public UidMap {
 public:
     MOCK_METHOD(int, getHostUidOrSelf, (int uid), (const));
-    MOCK_METHOD(std::set<int32_t>, getAppUid, (const string& package), (const));
+    MOCK_METHOD(std::set<int32_t>, getAppUid, (const std::string& package), (const));
 };
 
 class BasicMockLogEventFilter : public LogEventFilter {
@@ -98,11 +98,12 @@ public:
 class MockPendingIntentRef : public aidl::android::os::BnPendingIntentRef {
 public:
     MOCK_METHOD1(sendDataBroadcast, Status(int64_t lastReportTimeNs));
-    MOCK_METHOD1(sendActiveConfigsChangedBroadcast, Status(const vector<int64_t>& configIds));
-    MOCK_METHOD1(sendRestrictedMetricsChangedBroadcast, Status(const vector<int64_t>& metricIds));
+    MOCK_METHOD1(sendActiveConfigsChangedBroadcast, Status(const std::vector<int64_t>& configIds));
+    MOCK_METHOD1(sendRestrictedMetricsChangedBroadcast,
+                 Status(const std::vector<int64_t>& metricIds));
     MOCK_METHOD6(sendSubscriberBroadcast,
                  Status(int64_t configUid, int64_t configId, int64_t subscriptionId,
-                        int64_t subscriptionRuleId, const vector<string>& cookies,
+                        int64_t subscriptionRuleId, const std::vector<string>& cookies,
                         const StatsDimensionsValueParcel& dimensionsValueParcel));
 };
 
@@ -110,10 +111,10 @@ typedef StrictMock<BasicMockLogEventFilter> MockLogEventFilter;
 
 class MockStatsQueryCallback : public BnStatsQueryCallback {
 public:
-    MOCK_METHOD4(sendResults,
-                 Status(const vector<string>& queryData, const vector<string>& columnNames,
-                        const vector<int32_t>& columnTypes, int32_t rowCount));
-    MOCK_METHOD1(sendFailure, Status(const string& in_error));
+    MOCK_METHOD4(sendResults, Status(const std::vector<string>& queryData,
+                                     const std::vector<string>& columnNames,
+                                     const std::vector<int32_t>& columnTypes, int32_t rowCount));
+    MOCK_METHOD1(sendFailure, Status(const std::string& in_error));
 };
 
 class MockStatsSubscriptionCallback : public BnStatsSubscriptionCallback {
@@ -126,12 +127,12 @@ public:
 
 class StatsServiceConfigTest : public ::testing::Test {
 protected:
-    shared_ptr<StatsService> service;
+    std::shared_ptr<StatsService> service;
     const int kConfigKey = 789130123;  // Randomly chosen
     const int kCallingUid = 10100;     // Randomly chosen
 
     void SetUp() override {
-        service = createStatsService();
+        service = createStatsService(std::make_shared<LogEventFilter>());
         // Removing config file from data/misc/stats-service and data/misc/stats-data if present
         ConfigKey configKey(kCallingUid, kConfigKey);
         service->removeConfiguration(kConfigKey, kCallingUid);
@@ -149,15 +150,31 @@ protected:
                                           ADB_DUMP, NO_TIME_CONSTRAINTS, nullptr);
     }
 
-    virtual shared_ptr<StatsService> createStatsService() {
-        return SharedRefBase::make<StatsService>(new UidMap(), /* queue */ nullptr,
-                                                 std::make_shared<LogEventFilter>());
+    std::shared_ptr<StatsService> createStatsService(
+            const std::shared_ptr<LogEventFilter>& filter) {
+        return SharedRefBase::make<StatsService>(new UidMap(), /* queue */ nullptr, filter);
     }
 
     bool sendConfig(const StatsdConfig& config);
 
     ConfigMetricsReport getReports(sp<StatsLogProcessor> processor, int64_t timestamp,
                                    bool include_current = false);
+};
+
+class WaitableEvent {
+public:
+    WaitableEvent() = default;
+
+    void Notify();
+
+    bool WaitForNotification();
+
+    bool WaitForNotificationWithTimeoutMillis(int millis);
+
+private:
+    std::mutex m_;
+    std::condition_variable cv_;
+    bool notified_ = false;
 };
 
 static void assertConditionTimer(const ConditionTimer& conditionTimer, bool condition,
@@ -173,7 +190,7 @@ static void assertConditionTimer(const ConditionTimer& conditionTimer, bool cond
 StatsLogReport outputStreamToProto(ProtoOutputStream* proto);
 
 // Create AtomMatcher proto to simply match a specific atom type.
-AtomMatcher CreateSimpleAtomMatcher(const string& name, int atomId);
+AtomMatcher CreateSimpleAtomMatcher(const std::string& name, int atomId);
 
 // Create AtomMatcher proto for temperature atom.
 AtomMatcher CreateTemperatureAtomMatcher();
@@ -239,7 +256,7 @@ AtomMatcher CreateProcessCrashAtomMatcher();
 AtomMatcher CreateAppStartOccurredAtomMatcher();
 
 // Create AtomMatcher proto for test atom repeated state.
-AtomMatcher CreateTestAtomRepeatedStateAtomMatcher(const string& name,
+AtomMatcher CreateTestAtomRepeatedStateAtomMatcher(const std::string& name,
                                                    TestAtomReported::State state,
                                                    Position position);
 
@@ -337,43 +354,47 @@ FieldMatcher CreateAttributionUidAndOtherDimensions(const int atomId,
                                                     const std::vector<Position>& positions,
                                                     const std::vector<int>& fields);
 
-EventMetric createEventMetric(const string& name, int64_t what, const optional<int64_t>& condition,
-                              const vector<int64_t>& states = {});
+EventMetric createEventMetric(const std::string& name, int64_t what,
+                              const std::optional<int64_t>& condition,
+                              const std::vector<int64_t>& states = {});
 
-CountMetric createCountMetric(const string& name, int64_t what, const optional<int64_t>& condition,
-                              const vector<int64_t>& states);
+CountMetric createCountMetric(const std::string& name, int64_t what,
+                              const std::optional<int64_t>& condition,
+                              const std::vector<int64_t>& states);
 
-DurationMetric createDurationMetric(const string& name, int64_t what,
-                                    const optional<int64_t>& condition,
-                                    const vector<int64_t>& states);
+DurationMetric createDurationMetric(const std::string& name, int64_t what,
+                                    const std::optional<int64_t>& condition,
+                                    const std::vector<int64_t>& states);
 
-GaugeMetric createGaugeMetric(const string& name, int64_t what,
+GaugeMetric createGaugeMetric(const std::string& name, int64_t what,
                               const GaugeMetric::SamplingType samplingType,
-                              const optional<int64_t>& condition,
-                              const optional<int64_t>& triggerEvent,
-                              const vector<int64_t>& states = {});
+                              const std::optional<int64_t>& condition,
+                              const std::optional<int64_t>& triggerEvent,
+                              const std::vector<int64_t>& states = {});
 
-ValueMetric createValueMetric(const string& name, const AtomMatcher& what, int valueField,
-                              const optional<int64_t>& condition, const vector<int64_t>& states);
+ValueMetric createValueMetric(const std::string& name, const AtomMatcher& what, int valueField,
+                              const std::optional<int64_t>& condition,
+                              const std::vector<int64_t>& states);
 
-ValueMetric createValueMetric(const string& name, const AtomMatcher& what,
-                              const vector<int>& valueFields,
-                              const vector<ValueMetric::AggregationType>& aggregationTypes,
-                              const optional<int64_t>& condition, const vector<int64_t>& states);
+ValueMetric createValueMetric(const std::string& name, const AtomMatcher& what,
+                              const std::vector<int>& valueFields,
+                              const std::vector<ValueMetric::AggregationType>& aggregationTypes,
+                              const std::optional<int64_t>& condition,
+                              const std::vector<int64_t>& states);
 
 HistogramBinConfig createGeneratedBinConfig(int id, float min, float max, int count,
                                             HistogramBinConfig::GeneratedBins::Strategy strategy);
 
 HistogramBinConfig createExplicitBinConfig(int id, const std::vector<float>& bins);
 
-KllMetric createKllMetric(const string& name, const AtomMatcher& what, int kllField,
-                          const optional<int64_t>& condition);
+KllMetric createKllMetric(const std::string& name, const AtomMatcher& what, int kllField,
+                          const std::optional<int64_t>& condition);
 
-Alert createAlert(const string& name, int64_t metricId, int buckets, const int64_t triggerSum);
+Alert createAlert(const std::string& name, int64_t metricId, int buckets, const int64_t triggerSum);
 
-Alarm createAlarm(const string& name, int64_t offsetMillis, int64_t periodMillis);
+Alarm createAlarm(const std::string& name, int64_t offsetMillis, int64_t periodMillis);
 
-Subscription createSubscription(const string& name, const Subscription_RuleType type,
+Subscription createSubscription(const std::string& name, const Subscription_RuleType type,
                                 const int64_t ruleId);
 
 // START: get primary key functions
@@ -381,15 +402,15 @@ Subscription createSubscription(const string& name, const Subscription_RuleType 
 // given HashableDimensionKey.
 void getUidProcessKey(int uid, HashableDimensionKey* key);
 
-void getOverlayKey(int uid, string packageName, HashableDimensionKey* key);
+void getOverlayKey(int uid, std::string packageName, HashableDimensionKey* key);
 
 void getPartialWakelockKey(int uid, const std::string& tag, HashableDimensionKey* key);
 
 void getPartialWakelockKey(int uid, HashableDimensionKey* key);
 // END: get primary key functions
 
-void writeAttribution(AStatsEvent* statsEvent, const vector<int>& attributionUids,
-                      const vector<string>& attributionTags);
+void writeAttribution(AStatsEvent* statsEvent, const std::vector<int>& attributionUids,
+                      const std::vector<string>& attributionTags);
 
 // Builds statsEvent to get buffer that is parsed into logEvent then releases statsEvent.
 bool parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent);
@@ -397,14 +418,14 @@ bool parseStatsEventToLogEvent(AStatsEvent* statsEvent, LogEvent* logEvent);
 AStatsEvent* makeTwoValueStatsEvent(int atomId, int64_t eventTimeNs, int32_t value1,
                                     int32_t value2);
 
-shared_ptr<LogEvent> CreateTwoValueLogEvent(int atomId, int64_t eventTimeNs, int32_t value1,
-                                            int32_t value2);
+std::shared_ptr<LogEvent> CreateTwoValueLogEvent(int atomId, int64_t eventTimeNs, int32_t value1,
+                                                 int32_t value2);
 
 void CreateTwoValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs, int32_t value1,
                             int32_t value2);
 
-shared_ptr<LogEvent> CreateThreeValueLogEvent(int atomId, int64_t eventTimeNs, int32_t value1,
-                                              int32_t value2, int32_t value3);
+std::shared_ptr<LogEvent> CreateThreeValueLogEvent(int atomId, int64_t eventTimeNs, int32_t value1,
+                                                   int32_t value2, int32_t value3);
 
 void CreateThreeValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs, int32_t value1,
                               int32_t value2, int32_t value3);
@@ -414,52 +435,56 @@ void CreateThreeValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeN
 // in the value of the second field but still need the first field to be populated.
 std::shared_ptr<LogEvent> CreateRepeatedValueLogEvent(int atomId, int64_t eventTimeNs,
                                                       int32_t value);
-
 void CreateRepeatedValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs,
                                  int32_t value);
+void CreateRepeatedValueLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs, float value);
 
 std::shared_ptr<LogEvent> CreateNoValuesLogEvent(int atomId, int64_t eventTimeNs);
 
 void CreateNoValuesLogEvent(LogEvent* logEvent, int atomId, int64_t eventTimeNs);
 
-AStatsEvent* makeAttributionStatsEvent(int atomId, int64_t eventTimeNs, const vector<int>& uids,
-                                       const vector<string>& tags, int data1, int data2);
+AStatsEvent* makeAttributionStatsEvent(int atomId, int64_t eventTimeNs,
+                                       const std::vector<int>& uids,
+                                       const std::vector<string>& tags, int data1, int data2);
 
 AStatsEvent* makeUidStatsEvent(int atomId, int64_t eventTimeNs, int uid, int data1, int data2);
 
 AStatsEvent* makeUidStatsEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
-                               const vector<int>& data2) __INTRODUCED_IN(__ANDROID_API_T__);
+                               const std::vector<int>& data2) __INTRODUCED_IN(__ANDROID_API_T__);
 
 std::shared_ptr<LogEvent> makeUidLogEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
                                           int data2);
 
 std::shared_ptr<LogEvent> makeUidLogEvent(int atomId, int64_t eventTimeNs, int uid, int data1,
-                                          const vector<int>& data2)
+                                          const std::vector<int>& data2)
         __INTRODUCED_IN(__ANDROID_API_T__);
 
-shared_ptr<LogEvent> makeExtraUidsLogEvent(int atomId, int64_t eventTimeNs, int uid1, int data1,
-                                           int data2, const std::vector<int>& extraUids);
+std::shared_ptr<LogEvent> makeExtraUidsLogEvent(int atomId, int64_t eventTimeNs, int uid1,
+                                                int data1, int data2,
+                                                const std::vector<int>& extraUids);
 
 std::shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
                                                   const std::vector<int>& uids)
         __INTRODUCED_IN(__ANDROID_API_T__);
 
-shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
-                                             const vector<int>& uids, int data1, int data2)
-        __INTRODUCED_IN(__ANDROID_API_T__);
+std::shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
+                                                  const std::vector<int>& uids, int data1,
+                                                  int data2) __INTRODUCED_IN(__ANDROID_API_T__);
 
-shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
-                                             const vector<int>& uids, int data1,
-                                             const vector<int>& data2)
+std::shared_ptr<LogEvent> makeRepeatedUidLogEvent(int atomId, int64_t eventTimeNs,
+                                                  const std::vector<int>& uids, int data1,
+                                                  const std::vector<int>& data2)
         __INTRODUCED_IN(__ANDROID_API_T__);
 
 std::shared_ptr<LogEvent> makeAttributionLogEvent(int atomId, int64_t eventTimeNs,
-                                                  const vector<int>& uids,
-                                                  const vector<string>& tags, int data1, int data2);
+                                                  const std::vector<int>& uids,
+                                                  const std::vector<string>& tags, int data1,
+                                                  int data2);
 
-sp<MockUidMap> makeMockUidMapForHosts(const map<int, vector<int>>& hostUidToIsolatedUidsMap);
+sp<MockUidMap> makeMockUidMapForHosts(
+        const std::map<int, std::vector<int>>& hostUidToIsolatedUidsMap);
 
-sp<MockUidMap> makeMockUidMapForPackage(const string& pkg, const set<int32_t>& uids);
+sp<MockUidMap> makeMockUidMapForPackage(const std::string& pkg, const std::set<int32_t>& uids);
 
 // Create log event for screen state changed.
 std::unique_ptr<LogEvent> CreateScreenStateChangedEvent(uint64_t timestampNs,
@@ -471,21 +496,20 @@ std::unique_ptr<LogEvent> CreateScreenBrightnessChangedEvent(uint64_t timestampN
 
 // Create log event when scheduled job starts.
 std::unique_ptr<LogEvent> CreateStartScheduledJobEvent(uint64_t timestampNs,
-                                                       const vector<int>& attributionUids,
-                                                       const vector<string>& attributionTags,
-                                                       const string& jobName);
+                                                       const std::vector<int>& attributionUids,
+                                                       const std::vector<string>& attributionTags,
+                                                       const std::string& jobName);
 
 // Create log event when scheduled job finishes.
 std::unique_ptr<LogEvent> CreateFinishScheduledJobEvent(uint64_t timestampNs,
-                                                        const vector<int>& attributionUids,
-                                                        const vector<string>& attributionTags,
-                                                        const string& jobName);
+                                                        const std::vector<int>& attributionUids,
+                                                        const std::vector<string>& attributionTags,
+                                                        const std::string& jobName);
 
 // Create log event when scheduled job schedules.
-std::unique_ptr<LogEvent> CreateScheduleScheduledJobEvent(uint64_t timestampNs,
-                                                          const vector<int>& attributionUids,
-                                                          const vector<string>& attributionTags,
-                                                          const string& jobName);
+std::unique_ptr<LogEvent> CreateScheduleScheduledJobEvent(
+        uint64_t timestampNs, const std::vector<int>& attributionUids,
+        const std::vector<string>& attributionTags, const std::string& jobName);
 
 // Create log event when battery saver starts.
 std::unique_ptr<LogEvent> CreateBatterySaverOnEvent(uint64_t timestampNs);
@@ -501,8 +525,8 @@ std::unique_ptr<LogEvent> CreateBatteryStateChangedEvent(const uint64_t timestam
 std::unique_ptr<LogEvent> CreateMalformedBatteryStateChangedEvent(const uint64_t timestampNs);
 
 std::unique_ptr<LogEvent> CreateActivityForegroundStateChangedEvent(
-        uint64_t timestampNs, const int uid, const string& pkgName, const string& className,
-        const ActivityForegroundStateChanged::State state);
+        uint64_t timestampNs, const int uid, const std::string& pkgName,
+        const std::string& className, const ActivityForegroundStateChanged::State state);
 
 // Create log event for app moving to background.
 std::unique_ptr<LogEvent> CreateMoveToBackgroundEvent(uint64_t timestampNs, int uid);
@@ -511,12 +535,14 @@ std::unique_ptr<LogEvent> CreateMoveToBackgroundEvent(uint64_t timestampNs, int 
 std::unique_ptr<LogEvent> CreateMoveToForegroundEvent(uint64_t timestampNs, int uid);
 
 // Create log event when the app sync starts.
-std::unique_ptr<LogEvent> CreateSyncStartEvent(uint64_t timestampNs, const vector<int>& uids,
-                                               const vector<string>& tags, const string& name);
+std::unique_ptr<LogEvent> CreateSyncStartEvent(uint64_t timestampNs, const std::vector<int>& uids,
+                                               const std::vector<string>& tags,
+                                               const std::string& name);
 
 // Create log event when the app sync ends.
-std::unique_ptr<LogEvent> CreateSyncEndEvent(uint64_t timestampNs, const vector<int>& uids,
-                                             const vector<string>& tags, const string& name);
+std::unique_ptr<LogEvent> CreateSyncEndEvent(uint64_t timestampNs, const std::vector<int>& uids,
+                                             const std::vector<string>& tags,
+                                             const std::string& name);
 
 // Create log event when the app sync ends.
 std::unique_ptr<LogEvent> CreateAppCrashEvent(uint64_t timestampNs, int uid);
@@ -525,14 +551,16 @@ std::unique_ptr<LogEvent> CreateAppCrashEvent(uint64_t timestampNs, int uid);
 std::unique_ptr<LogEvent> CreateAppCrashOccurredEvent(uint64_t timestampNs, int uid);
 
 // Create log event for acquiring wakelock.
-std::unique_ptr<LogEvent> CreateAcquireWakelockEvent(uint64_t timestampNs, const vector<int>& uids,
-                                                     const vector<string>& tags,
-                                                     const string& wakelockName);
+std::unique_ptr<LogEvent> CreateAcquireWakelockEvent(uint64_t timestampNs,
+                                                     const std::vector<int>& uids,
+                                                     const std::vector<string>& tags,
+                                                     const std::string& wakelockName);
 
 // Create log event for releasing wakelock.
-std::unique_ptr<LogEvent> CreateReleaseWakelockEvent(uint64_t timestampNs, const vector<int>& uids,
-                                                     const vector<string>& tags,
-                                                     const string& wakelockName);
+std::unique_ptr<LogEvent> CreateReleaseWakelockEvent(uint64_t timestampNs,
+                                                     const std::vector<int>& uids,
+                                                     const std::vector<string>& tags,
+                                                     const std::string& wakelockName);
 
 // Create log event for releasing wakelock.
 std::unique_ptr<LogEvent> CreateIsolatedUidChangedEvent(uint64_t timestampNs, int hostUid,
@@ -543,36 +571,38 @@ std::unique_ptr<LogEvent> CreateUidProcessStateChangedEvent(
         uint64_t timestampNs, int uid, const android::app::ProcessStateEnum state);
 
 std::unique_ptr<LogEvent> CreateBleScanStateChangedEvent(uint64_t timestampNs,
-                                                         const vector<int>& attributionUids,
-                                                         const vector<string>& attributionTags,
+                                                         const std::vector<int>& attributionUids,
+                                                         const std::vector<string>& attributionTags,
                                                          const BleScanStateChanged::State state,
                                                          const bool filtered, const bool firstMatch,
                                                          const bool opportunistic);
 
 std::unique_ptr<LogEvent> CreateOverlayStateChangedEvent(int64_t timestampNs, const int32_t uid,
-                                                         const string& packageName,
+                                                         const std::string& packageName,
                                                          const bool usingAlertWindow,
                                                          const OverlayStateChanged::State state);
 
-std::unique_ptr<LogEvent> CreateAppStartOccurredEvent(
-        uint64_t timestampNs, int uid, const string& pkg_name,
-        AppStartOccurred::TransitionType type, const string& activity_name,
-        const string& calling_pkg_name, const bool is_instant_app, int64_t activity_start_msec);
+std::unique_ptr<LogEvent> CreateAppStartOccurredEvent(uint64_t timestampNs, int uid,
+                                                      const std::string& pkg_name,
+                                                      AppStartOccurred::TransitionType type,
+                                                      const std::string& activity_name,
+                                                      const std::string& calling_pkg_name,
+                                                      const bool is_instant_app,
+                                                      int64_t activity_start_msec);
 
-std::unique_ptr<LogEvent> CreateBleScanResultReceivedEvent(uint64_t timestampNs,
-                                                           const vector<int>& attributionUids,
-                                                           const vector<string>& attributionTags,
-                                                           const int numResults);
+std::unique_ptr<LogEvent> CreateBleScanResultReceivedEvent(
+        uint64_t timestampNs, const std::vector<int>& attributionUids,
+        const std::vector<string>& attributionTags, const int numResults);
 
 std::unique_ptr<LogEvent> CreateTestAtomReportedEventVariableRepeatedFields(
-        uint64_t timestampNs, const vector<int>& repeatedIntField,
-        const vector<int64_t>& repeatedLongField, const vector<float>& repeatedFloatField,
-        const vector<string>& repeatedStringField, const bool* repeatedBoolField,
-        const size_t repeatedBoolFieldLength, const vector<int>& repeatedEnumField);
+        uint64_t timestampNs, const std::vector<int>& repeatedIntField,
+        const std::vector<int64_t>& repeatedLongField, const std::vector<float>& repeatedFloatField,
+        const std::vector<string>& repeatedStringField, const bool* repeatedBoolField,
+        const size_t repeatedBoolFieldLength, const std::vector<int>& repeatedEnumField);
 
 std::unique_ptr<LogEvent> CreateTestAtomReportedEventWithPrimitives(
         uint64_t timestampNs, int intField, long longField, float floatField,
-        const string& stringField, bool boolField, TestAtomReported::State enumField);
+        const std::string& stringField, bool boolField, TestAtomReported::State enumField);
 
 std::unique_ptr<LogEvent> CreateRestrictedLogEvent(int atomTag, int64_t timestampNs = 0);
 std::unique_ptr<LogEvent> CreateNonRestrictedLogEvent(int atomTag, int64_t timestampNs = 0);
@@ -581,14 +611,14 @@ std::unique_ptr<LogEvent> CreatePhoneSignalStrengthChangedEvent(
         int64_t timestampNs, ::telephony::SignalStrengthEnum state);
 
 std::unique_ptr<LogEvent> CreateTestAtomReportedEvent(
-        uint64_t timestampNs, const vector<int>& attributionUids,
-        const vector<string>& attributionTags, int intField, const long longField,
-        const float floatField, const string& stringField, const bool boolField,
-        const TestAtomReported::State enumField, const vector<uint8_t>& bytesField,
-        const vector<int>& repeatedIntField, const vector<int64_t>& repeatedLongField,
-        const vector<float>& repeatedFloatField, const vector<string>& repeatedStringField,
-        const bool* repeatedBoolField, const size_t repeatedBoolFieldLength,
-        const vector<int>& repeatedEnumField);
+        uint64_t timestampNs, const std::vector<int>& attributionUids,
+        const std::vector<string>& attributionTags, int intField, const long longField,
+        const float floatField, const std::string& stringField, const bool boolField,
+        const TestAtomReported::State enumField, const std::vector<uint8_t>& bytesField,
+        const std::vector<int>& repeatedIntField, const std::vector<int64_t>& repeatedLongField,
+        const std::vector<float>& repeatedFloatField,
+        const std::vector<string>& repeatedStringField, const bool* repeatedBoolField,
+        const size_t repeatedBoolFieldLength, const std::vector<int>& repeatedEnumField);
 
 void createStatsEvent(AStatsEvent* statsEvent, uint8_t typeId, uint32_t atomId);
 
@@ -603,26 +633,26 @@ std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t loss
 // Create a statsd log event processor upon the start time in seconds, config and key.
 sp<StatsLogProcessor> CreateStatsLogProcessor(
         const int64_t timeBaseNs, int64_t currentTimeNs, const StatsdConfig& config,
-        const ConfigKey& key, const shared_ptr<IPullAtomCallback>& puller = nullptr,
+        const ConfigKey& key, const std::shared_ptr<IPullAtomCallback>& puller = nullptr,
         const int32_t atomTag = 0 /*for puller only*/, const sp<UidMap> = new UidMap(),
-        const shared_ptr<LogEventFilter>& logEventFilter = std::make_shared<LogEventFilter>());
+        const std::shared_ptr<LogEventFilter>& logEventFilter = std::make_shared<LogEventFilter>());
 
 sp<NumericValueMetricProducer> createNumericValueMetricProducer(
         sp<MockStatsPullerManager>& pullerManager, const ValueMetric& metric, const int atomId,
         bool isPulled, const ConfigKey& configKey, const uint64_t protoHash,
         const int64_t timeBaseNs, const int64_t startTimeNs, const int logEventMatcherIndex,
-        optional<ConditionState> conditionAfterFirstBucketPrepared = nullopt,
-        vector<int32_t> slicedStateAtoms = {},
-        unordered_map<int, unordered_map<int, int64_t>> stateGroupMap = {},
+        std::optional<ConditionState> conditionAfterFirstBucketPrepared = std::nullopt,
+        std::vector<int32_t> slicedStateAtoms = {},
+        std::unordered_map<int, std::unordered_map<int, int64_t>> stateGroupMap = {},
         sp<EventMatcherWizard> eventMatcherWizard = nullptr);
 
-LogEventFilter::AtomIdSet CreateAtomIdSetDefault();
-LogEventFilter::AtomIdSet CreateAtomIdSetFromConfig(const StatsdConfig& config);
+AtomsInUseChangeListener::AtomIdSet CreateAtomIdSetDefault();
+AtomsInUseChangeListener::AtomIdSet CreateAtomIdSetFromConfig(const StatsdConfig& config);
 
 // Util function to sort the log events by timestamp.
 void sortLogEventsByTimestamp(std::vector<std::unique_ptr<LogEvent>> *events);
 
-int64_t StringToId(const string& str);
+int64_t StringToId(const std::string& str);
 
 sp<EventMatcherWizard> createEventMatcherWizard(
         int tagId, int matcherIndex, const std::vector<FieldValueMatcher>& fieldValueMatchers = {});
@@ -632,7 +662,7 @@ StatsDimensionsValueParcel CreateAttributionUidDimensionsValueParcel(const int a
 
 void ValidateUidDimension(const DimensionsValue& value, int atomId, int uid);
 void ValidateWakelockAttributionUidAndTagDimension(const DimensionsValue& value, int atomId,
-                                                   const int uid, const string& tag);
+                                                   const int uid, const std::string& tag);
 void ValidateUidDimension(const DimensionsValue& value, int node_idx, int atomId, int uid);
 void ValidateAttributionUidDimension(const DimensionsValue& value, int atomId, int uid);
 void ValidateAttributionUidAndTagDimension(
@@ -647,9 +677,9 @@ void ValidateCountBucket(const CountBucketInfo& countBucket, int64_t startTimeNs
 void ValidateDurationBucket(const DurationBucketInfo& bucket, int64_t startTimeNs,
                             int64_t endTimeNs, int64_t durationNs, int64_t conditionTrueNs = 0);
 void ValidateGaugeBucketTimes(const GaugeBucketInfo& gaugeBucket, int64_t startTimeNs,
-                              int64_t endTimeNs, vector<int64_t> eventTimesNs);
+                              int64_t endTimeNs, std::vector<int64_t> eventTimesNs);
 void ValidateValueBucket(const ValueBucketInfo& bucket, int64_t startTimeNs, int64_t endTimeNs,
-                         const vector<int64_t>& values, int64_t conditionTrueNs,
+                         const std::vector<int64_t>& values, int64_t conditionTrueNs,
                          int64_t conditionCorrectionNs);
 void ValidateKllBucket(const KllBucketInfo& bucket, int64_t startTimeNs, int64_t endTimeNs,
                        const std::vector<int64_t> sketchSizes, int64_t conditionTrueNs);
@@ -671,7 +701,7 @@ void backfillStartEndTimestamp(ConfigMetricsReport *config_report);
 void backfillStartEndTimestamp(ConfigMetricsReportList *config_report_list);
 
 void backfillStringInReport(ConfigMetricsReportList *config_report_list);
-void backfillStringInDimension(const std::map<uint64_t, string>& str_map,
+void backfillStringInDimension(const std::map<uint64_t, std::string>& str_map,
                                DimensionsValue* dimension);
 
 void backfillAggregatedAtoms(ConfigMetricsReportList* config_report_list);
@@ -680,11 +710,10 @@ void backfillAggregatedAtoms(StatsLogReport* report);
 void backfillAggregatedAtomsInEventMetric(StatsLogReport::EventMetricDataWrapper* wrapper);
 void backfillAggregatedAtomsInGaugeMetric(StatsLogReport::GaugeMetricDataWrapper* wrapper);
 
-vector<pair<Atom, int64_t>> unnestGaugeAtomData(const GaugeBucketInfo& bucketInfo);
+std::vector<std::pair<Atom, int64_t>> unnestGaugeAtomData(const GaugeBucketInfo& bucketInfo);
 
 template <typename T>
-void backfillStringInDimension(const std::map<uint64_t, string>& str_map,
-                               T* metrics) {
+void backfillStringInDimension(const std::map<uint64_t, std::string>& str_map, T* metrics) {
     for (int i = 0; i < metrics->data_size(); ++i) {
         auto data = metrics->mutable_data(i);
         if (data->has_dimensions_in_what()) {
@@ -708,7 +737,7 @@ public:
     // Track the number of pulls.
     int pullNum = 1;
     Status onPullAtom(int atomTag,
-                      const shared_ptr<IPullAtomResultReceiver>& resultReceiver) override;
+                      const std::shared_ptr<IPullAtomResultReceiver>& resultReceiver) override;
 };
 
 class FakeCpuTimeCallback : public BnPullAtomCallback {
@@ -716,8 +745,23 @@ public:
     // Track the number of pulls.
     int pullNum = 1;
     Status onPullAtom(int atomTag,
-                      const shared_ptr<IPullAtomResultReceiver>& resultReceiver) override;
+                      const std::shared_ptr<IPullAtomResultReceiver>& resultReceiver) override;
 };
+
+template <typename T>
+void CreateLogEventNumeric(LogEvent* logEvent, int atomId, int64_t eventTimeNs, T val) {
+    AStatsEvent* statsEvent = AStatsEvent_obtain();
+    AStatsEvent_setAtomId(statsEvent, atomId);
+    AStatsEvent_overwriteTimestamp(statsEvent, eventTimeNs);
+    if (std::is_same_v<T, int32_t>) {
+        AStatsEvent_writeInt32(statsEvent, val);
+    } else if (std::is_same_v<T, float>) {
+        AStatsEvent_writeFloat(statsEvent, val);
+    } else if (std::is_same_v<T, int64_t>) {
+        AStatsEvent_writeInt64(statsEvent, val);
+    }
+    parseStatsEventToLogEvent(statsEvent, logEvent);
+}
 
 template <typename T>
 void backfillDimensionPath(const DimensionsValue& whatPath, T* metricData) {
@@ -813,7 +857,7 @@ void backfillStartEndTimestampForSkippedBuckets(const int64_t timeBaseNs, T* met
 
 template <typename P>
 void outputStreamToProto(ProtoOutputStream* outputStream, P* proto) {
-    vector<uint8_t> bytes;
+    std::vector<uint8_t> bytes;
     outputStream->serializeToVector(&bytes);
     proto->ParseFromArray(bytes.data(), bytes.size());
 }
@@ -849,14 +893,14 @@ void writeBootFlag(const std::string& flagName, const std::string& flagValue);
 
 PackageInfoSnapshot getPackageInfoSnapshot(const sp<UidMap> uidMap);
 
-ApplicationInfo createApplicationInfo(int32_t uid, int64_t version, const string& versionString,
-                                      const string& package);
+ApplicationInfo createApplicationInfo(int32_t uid, int64_t version,
+                                      const std::string& versionString, const std::string& package);
 
 PackageInfo buildPackageInfo(const std::string& name, const int32_t uid, int64_t version,
                              const std::string& versionString,
                              const std::optional<std::string> installer,
                              const std::vector<uint8_t>& certHash, const bool deleted,
-                             const bool hashStrings, const optional<uint32_t> installerIndex);
+                             const bool hashStrings, const std::optional<uint32_t> installerIndex);
 
 std::vector<PackageInfo> buildPackageInfos(
         const std::vector<string>& names, const std::vector<int32_t>& uids,
@@ -866,8 +910,8 @@ std::vector<PackageInfo> buildPackageInfos(
         const std::vector<uint32_t>& installerIndices, const bool hashStrings);
 
 template <typename T>
-std::vector<T> concatenate(const vector<T>& a, const vector<T>& b) {
-    vector<T> result(a);
+std::vector<T> concatenate(const std::vector<T>& a, const std::vector<T>& b) {
+    std::vector<T> result(a);
     result.insert(result.end(), b.begin(), b.end());
     return result;
 }
@@ -881,7 +925,7 @@ StatsdStatsReport_PulledAtomStats getPulledAtomStats(int atom_id);
 template <typename P>
 std::vector<uint8_t> protoToBytes(const P& proto) {
     const size_t byteSize = proto.ByteSizeLong();
-    vector<uint8_t> bytes(byteSize);
+    std::vector<uint8_t> bytes(byteSize);
     proto.SerializeToArray(bytes.data(), byteSize);
     return bytes;
 }

@@ -47,7 +47,7 @@ StatsPuller::StatsPuller(const int tagId, const int64_t coolDownNs, const int64_
 PullErrorCode StatsPuller::Pull(const int64_t eventTimeNs,
                                 std::vector<std::shared_ptr<LogEvent>>* data) {
     ATRACE_CALL();
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     const int64_t elapsedTimeNs = getElapsedRealtimeNs();
     const int64_t systemUptimeMillis = getSystemUptimeMillis();
     StatsdStats::getInstance().notePull(mTagId);
@@ -106,7 +106,7 @@ int StatsPuller::ForceClearCache() {
 }
 
 int StatsPuller::clearCache() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     return clearCacheLocked();
 }
 

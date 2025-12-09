@@ -24,6 +24,7 @@
 #include "logging_rate_limiter.h"
 #include "stats_buffer_writer_impl.h"
 #include "stats_buffer_writer_queue.h"
+#include "stats_socket_loss_reporter.h"
 #include "statsd_writer.h"
 
 static const uint32_t kStatsEventTag = 1937006964;
@@ -80,13 +81,13 @@ int write_buffer_to_statsd(void* buffer, size_t size, uint32_t atomId) {
                 write_buffer_to_statsd_queue(static_cast<const uint8_t*>(buffer), size, atomId);
         if (!ret) {
             // to account on the loss, note atom drop with predefined internal error code
-            note_log_drop(kQueueOverflowErrorCode, atomId);
+            StatsSocketLossReporter::getInstance().noteDrop(kQueueOverflowErrorCode, atomId);
         }
         return ret;
     }
 
     if (flags::logging_rate_limit_enabled() && !can_log_atom(atomId)) {
-        note_log_drop(kLoggingRateLimitExceededErrorCode, atomId);
+        StatsSocketLossReporter::getInstance().noteDrop(kLoggingRateLimitExceededErrorCode, atomId);
         return 0;
     }
 

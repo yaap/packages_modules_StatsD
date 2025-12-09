@@ -47,10 +47,12 @@ import androidx.annotation.RequiresApi;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.os.statsd.flags.Flags;
 
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -66,6 +68,7 @@ import java.util.concurrent.Executor;
 public final class StatsManager {
     private static final String TAG = "StatsManager";
     private static final boolean DEBUG = false;
+    private static final int ADD_CONFIG_FD_THRESHOLD_BYTES = 25 * 1024;  // 25 KB.
 
     private static final Object sLock = new Object();
     private final Context mContext;
@@ -168,8 +171,12 @@ public final class StatsManager {
         synchronized (sLock) {
             try {
                 IStatsManagerService service = getIStatsManagerServiceLocked();
-                // can throw IllegalArgumentException
-                service.addConfiguration(configKey, config, mContext.getOpPackageName());
+                if (Flags.addConfigFd() && config.length >= ADD_CONFIG_FD_THRESHOLD_BYTES) {
+                    addConfigurationWithFd(service, configKey, config, mContext.getOpPackageName());
+                } else {
+                    // can throw IllegalArgumentException
+                    service.addConfiguration(configKey, config, mContext.getOpPackageName());
+                }
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to connect to statsmanager when adding configuration");
                 throw new StatsUnavailableException("could not connect", e);
@@ -210,6 +217,10 @@ public final class StatsManager {
         synchronized (sLock) {
             try {
                 IStatsManagerService service = getIStatsManagerServiceLocked();
+                if (service == null) {
+                    Log.e(TAG, "StatsManagerService is null when removing configuration");
+                    throw new StatsUnavailableException("could not connect");
+                }
                 service.removeConfiguration(configKey, mContext.getOpPackageName());
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to connect to statsmanager when removing configuration");
@@ -999,6 +1010,40 @@ public final class StatsManager {
         } catch (IOException e) {
             Log.e(TAG, "Failed to read report data from StatsManagerService", e);
             throw new IllegalStateException("Failed to read report data from StatsManagerService.",
+                    e);
+        }
+    }
+
+    /**
+     * Executes a binder transaction with file descriptors to send serialized config to
+     * StatsManagerService.
+     */
+    private static void addConfigurationWithFd(IStatsManagerService service, long configKey,
+            byte[] config, String packageName) throws IllegalStateException, RemoteException {
+        ParcelFileDescriptor[] pipe;
+        try {
+            pipe = ParcelFileDescriptor.createPipe();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to create a pipe to add config to statsd.", e);
+            throw new IllegalStateException("Failed to create a pipe to add config to statsd.", e);
+        }
+
+        ParcelFileDescriptor readFd = pipe[0];
+        ParcelFileDescriptor writeFd = pipe[1];
+
+        service.addConfigurationFd(configKey, readFd, packageName);
+        try {
+            readFd.close();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to pass configFd to StatsManagerService", e);
+            throw new IllegalStateException("Failed to pass configFd to StatsManagerService.", e);
+        }
+
+        try (OutputStream outputStream = new ParcelFileDescriptor.AutoCloseOutputStream(writeFd)) {
+            outputStream.write(config);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to write config from StatsManagerService", e);
+            throw new IllegalStateException("Failed to write config from from StatsManagerService.",
                     e);
         }
     }

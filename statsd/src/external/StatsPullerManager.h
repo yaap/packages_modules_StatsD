@@ -33,7 +33,6 @@
 
 using aidl::android::os::IPullAtomCallback;
 using aidl::android::os::IStatsCompanionService;
-using std::shared_ptr;
 
 namespace android {
 namespace os {
@@ -87,14 +86,14 @@ public:
     typedef struct {
         PullerKey key;
         sp<StatsPuller> puller;
-        vector<ReceiverInfo*> receivers;
+        std::vector<ReceiverInfo*> receivers;
     } PullerParams;
 
     typedef struct {
         PullErrorCode pullErrorCode;
         PullerKey pullerKey;
         std::vector<ReceiverInfo*> receiverInfo;
-        std::vector<shared_ptr<LogEvent>> data;
+        std::vector<std::shared_ptr<LogEvent>> data;
     } PulledInfo;
 
     // Registers a receiver for tagId. It will be pulled on the nextPullTimeNs
@@ -133,11 +132,11 @@ public:
     // If the metric wants to make any change to the data, like timestamps, they
     // should make a copy as this data may be shared with multiple metrics.
     virtual bool Pull(int tagId, const ConfigKey& configKey, int64_t eventTimeNs,
-                      vector<std::shared_ptr<LogEvent>>* data);
+                      std::vector<std::shared_ptr<LogEvent>>* data);
 
     // Same as above, but directly specify the allowed uids to pull from.
-    virtual bool Pull(int tagId, const vector<int32_t>& uids, int64_t eventTimeNs,
-                      vector<std::shared_ptr<LogEvent>>* data);
+    virtual bool Pull(int tagId, const std::vector<int32_t>& uids, int64_t eventTimeNs,
+                      std::vector<std::shared_ptr<LogEvent>>* data);
 
     // Clear pull data cache immediately.
     int ForceClearPullerCache();
@@ -145,11 +144,13 @@ public:
     // Clear pull data cache if it is beyond respective cool down time.
     int ClearPullerCacheIfNecessary(int64_t timestampNs);
 
-    void SetStatsCompanionService(const shared_ptr<IStatsCompanionService>& statsCompanionService);
+    void SetStatsCompanionService(
+            const std::shared_ptr<IStatsCompanionService>& statsCompanionService);
 
     void RegisterPullAtomCallback(const int uid, const int32_t atomTag, int64_t coolDownNs,
-                                  const int64_t timeoutNs, const vector<int32_t>& additiveFields,
-                                  const shared_ptr<IPullAtomCallback>& callback);
+                                  const int64_t timeoutNs,
+                                  const std::vector<int32_t>& additiveFields,
+                                  const std::shared_ptr<IPullAtomCallback>& callback);
 
     void UnregisterPullAtomCallback(const int uid, const int32_t atomTag);
 
@@ -158,7 +159,7 @@ public:
 private:
     const static int64_t kMinCoolDownNs = NS_PER_SEC;
     const static int64_t kMaxTimeoutNs = 10 * NS_PER_SEC;
-    shared_ptr<IStatsCompanionService> mStatsCompanionService = nullptr;
+    std::shared_ptr<IStatsCompanionService> mStatsCompanionService = nullptr;
 
     // mapping from Receiver Key to receivers
     std::map<ReceiverKey, std::list<ReceiverInfo>> mReceivers;
@@ -167,12 +168,13 @@ private:
     std::map<ConfigKey, wp<PullUidProvider>> mPullUidProviders;
 
     bool PullLocked(int tagId, const ConfigKey& configKey, int64_t eventTimeNs,
-                    vector<std::shared_ptr<LogEvent>>* data);
+                    std::vector<std::shared_ptr<LogEvent>>* data);
 
-    bool PullLocked(int tagId, const vector<int32_t>& uids, int64_t eventTimeNs,
-                    vector<std::shared_ptr<LogEvent>>* data);
+    bool PullLocked(int tagId, const std::vector<int32_t>& uids, int64_t eventTimeNs,
+                    std::vector<std::shared_ptr<LogEvent>>* data);
 
-    bool getPullerUidsLocked(const int tagId, const ConfigKey& configKey, vector<int32_t>& uids);
+    bool getPullerUidsLocked(const int tagId, const ConfigKey& configKey,
+                             std::vector<int32_t>& uids);
 
     void initPullerQueue(ThreadSafeQueue<PullerParams>& pullerQueue,
                          std::queue<PulledInfo>& pulledData, int64_t elapsedTimeNs,

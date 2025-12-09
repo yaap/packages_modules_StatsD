@@ -25,15 +25,19 @@
 
 #include <aidl/android/util/StatsEventParcel.h>
 
-using namespace std;
+namespace android {
+namespace os {
+namespace statsd {
 
 using Status = ::ndk::ScopedAStatus;
 using aidl::android::util::StatsEventParcel;
 using ::ndk::SharedRefBase;
 
-namespace android {
-namespace os {
-namespace statsd {
+using std::make_shared;
+using std::mutex;
+using std::shared_ptr;
+using std::unique_lock;
+using std::vector;
 
 StatsCallbackPuller::StatsCallbackPuller(int tagId, const shared_ptr<IPullAtomCallback>& callback,
                                          const int64_t coolDownNs, int64_t timeoutNs,
@@ -51,7 +55,7 @@ PullErrorCode StatsCallbackPuller::PullInternal(vector<shared_ptr<LogEvent>>* da
 
     // Shared variables needed in the result receiver.
     shared_ptr<mutex> cv_mutex = make_shared<mutex>();
-    shared_ptr<condition_variable> cv = make_shared<condition_variable>();
+    shared_ptr<std::condition_variable> cv = make_shared<std::condition_variable>();
     shared_ptr<bool> pullFinish = make_shared<bool>(false);
     shared_ptr<bool> pullSuccess = make_shared<bool>(false);
     shared_ptr<vector<shared_ptr<LogEvent>>> sharedData =
@@ -64,7 +68,7 @@ PullErrorCode StatsCallbackPuller::PullInternal(vector<shared_ptr<LogEvent>>* da
                 // The pull could have taken a long time, and we should only modify
                 // data (the output param) if the pointer is in scope and the pull did not time out.
                 {
-                    lock_guard<mutex> lk(*cv_mutex);
+                    std::lock_guard lk(*cv_mutex);
                     for (const StatsEventParcel& parcel: output) {
                         shared_ptr<LogEvent> event = make_shared<LogEvent>(/*uid=*/-1, /*pid=*/-1);
                         bool valid = event->parseBuffer((uint8_t*)parcel.buffer.data(),
@@ -95,9 +99,9 @@ PullErrorCode StatsCallbackPuller::PullInternal(vector<shared_ptr<LogEvent>>* da
     }
 
     {
-        unique_lock<mutex> unique_lk(*cv_mutex);
+        unique_lock unique_lk(*cv_mutex);
         // Wait until the pull finishes, or until the pull timeout.
-        cv->wait_for(unique_lk, chrono::nanoseconds(mPullTimeoutNs),
+        cv->wait_for(unique_lk, std::chrono::nanoseconds(mPullTimeoutNs),
                      [pullFinish] { return *pullFinish; });
         if (!*pullFinish) {
             // Note: The parent stats puller will also note that there was a timeout and that the

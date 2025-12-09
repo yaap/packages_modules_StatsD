@@ -26,6 +26,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+
 namespace {
 
 const int64_t metricId = 123456;
@@ -108,7 +110,7 @@ TEST(StringReplaceE2eTest, TestPushedDimension) {
     }
 
     // Check dump report.
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     ConfigMetricsReportList reports;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
@@ -205,7 +207,7 @@ TEST(StringReplaceE2eTest, TestPushedWhat) {
     }
 
     // Check dump report.
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     ConfigMetricsReportList reports;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
@@ -268,7 +270,7 @@ TEST(StringReplaceE2eTest, TestPulledDimension) {
     processor->informPullAlarmFired(baseTimeNs + 2 * bucketSizeNs + 1);
 
     ConfigMetricsReportList reports;
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     processor->onDumpReport(cfgKey, configAddedTimeNs + 3 * bucketSizeNs + 10, false, true,
                             ADB_DUMP, FAST, &buffer);
     EXPECT_GT(buffer.size(), 0);
@@ -335,7 +337,7 @@ TEST(StringReplaceE2eTest, TestPulledWhat) {
     processor->informPullAlarmFired(baseTimeNs + 2 * bucketSizeNs + 1);
 
     ConfigMetricsReportList reports;
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     processor->onDumpReport(cfgKey, configAddedTimeNs + 3 * bucketSizeNs + 10, false, true,
                             ADB_DUMP, FAST, &buffer);
     EXPECT_GT(buffer.size(), 0);
@@ -432,7 +434,7 @@ TEST(StringReplaceE2eTest, TestCondition) {
     }
 
     // Check dump report.
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     ConfigMetricsReportList reports;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
@@ -572,7 +574,7 @@ TEST(StringReplaceE2eTest, TestDurationMetric) {
         processor->OnLogEvent(event.get());
     }
 
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     ConfigMetricsReportList reports;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
@@ -653,7 +655,7 @@ TEST(StringReplaceE2eTest, TestMultipleMatchersForAtom) {
     processor->informPullAlarmFired(baseTimeNs + 2 * bucketSizeNs + 1);
 
     ConfigMetricsReportList reports;
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     processor->onDumpReport(cfgKey, configAddedTimeNs + 3 * bucketSizeNs + 10, false, true,
                             ADB_DUMP, FAST, &buffer);
     EXPECT_GT(buffer.size(), 0);

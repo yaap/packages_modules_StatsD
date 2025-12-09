@@ -16,69 +16,77 @@
 
 #pragma once
 
-#include "condition/condition_util.h"
-#include "src/statsd_config.pb.h"
-#include "matchers/AtomMatchingTracker.h"
-#include "matchers/matcher_util.h"
-
 #include <utils/RefBase.h>
 
 #include <unordered_map>
+
+#include "condition/condition_util.h"
+#include "matchers/AtomMatchingTracker.h"
+#include "matchers/matcher_util.h"
+#include "src/statsd_config.pb.h"
+#include "stats_util.h"
 
 namespace android {
 namespace os {
 namespace statsd {
 
+struct ConditionProtoAndTracker;
+
 class ConditionTracker : public virtual RefBase {
 public:
-    ConditionTracker(int64_t id, int index, const uint64_t protoHash)
+    ConditionTracker(int64_t id, const uint64_t protoHash)
         : mConditionId(id),
-          mIndex(index),
-          mInitialized(false),
           mTrackerIndex(),
           mUnSlicedPartCondition(ConditionState::kUnknown),
           mSliced(false),
-          mProtoHash(protoHash){};
+          mProtoHash(protoHash) {};
 
     virtual ~ConditionTracker(){};
 
-    // Initialize this ConditionTracker. This initialization is done recursively (DFS). It can also
-    // be done in the constructor, but we do it separately because (1) easy to return a bool to
-    // indicate whether the initialization is successful. (2) makes unit test easier.
-    // This function can also be called on config updates, in which case it does nothing other than
-    // fill the condition cache with the current condition.
-    // allConditionConfig: the list of all Predicate config from statsd_config.
+    // allConditionsMap: a map of predicate ids to conditions from the statsd_config
+    // stack: a set to keep track which nodes have been visited on the stack in the recursion.
+    virtual const std::optional<InvalidConfigReason> isTrackerValid(
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+            std::unordered_set<int64_t>& stack) const = 0;
+
+    // Initialize this ConditionTracker. This is not done in the constructor because
+    // doing it separately allows testing for validity before initialization.
+    // index: index of this tracker in allConditionsMap and allConditionTrackers.
+    // allConditionsMap: a map of predicate ids to predicates from the statsd config
     // allConditionTrackers: the list of all ConditionTrackers (this is needed because we may also
     //                       need to call init() on child conditions)
     // conditionIdIndexMap: the mapping from condition id to its index.
-    // stack: a bit map to keep track which nodes have been visited on the stack in the recursion.
+    // atomMatchingTrackerMap: map of atom matcher id to index after the config update.
+    // initializedTrackers: set of trackers already initialized. Used during initialization.
     // conditionCache: tracks initial conditions of all ConditionTrackers. returns the
     //                        current condition if called on a config update.
-    virtual optional<InvalidConfigReason> init(
-            const std::vector<Predicate>& allConditionConfig,
-            const std::vector<sp<ConditionTracker>>& allConditionTrackers,
-            const std::unordered_map<int64_t, int>& conditionIdIndexMap,
-            std::vector<uint8_t>& stack, std::vector<ConditionState>& conditionCache) = 0;
+    virtual void init(const int index,
+                      const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+                      const std::vector<sp<ConditionTracker>>& allConditionTrackers,
+                      const std::unordered_map<int64_t, int>& conditionIdIndexMap,
+                      const std::unordered_map<int64_t, int>& atomMatchingTrackerMap,
+                      std::unordered_set<int64_t>& initializedTrackers,
+                      std::vector<ConditionState>& conditionCache) = 0;
 
     // Update appropriate state on config updates. Primarily, all indices need to be updated.
     // This predicate and all of its children are guaranteed to be preserved across the update.
     // This function is recursive and will call onConfigUpdated on child conditions. It does not
     // manage cycle detection since all preserved conditions should not have any cycles.
     //
-    // allConditionProtos: the new predicates.
-    // index: the new index of this tracker in allConditionProtos and allConditionTrackers.
+    // allConditionsMap: the new predicates.
+    // index: the new index of this tracker in allConditionsMap and allConditionTrackers.
     // allConditionTrackers: the list of all ConditionTrackers (this is needed because we may also
     //                       need to call onConfigUpdated() on child conditions)
     // atomMatchingTrackerMap: map of atom matcher id to index after the config update.
     // conditionTrackerMap: map of condition tracker id to index after the config update.
     // returns whether or not the update is successful.
-    virtual optional<InvalidConfigReason> onConfigUpdated(
-            const std::vector<Predicate>& allConditionProtos, int index,
-            const std::vector<sp<ConditionTracker>>& allConditionTrackers,
+    virtual void onConfigUpdated(
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+            int index, const std::vector<sp<ConditionTracker>>& allConditionTrackers,
             const std::unordered_map<int64_t, int>& atomMatchingTrackerMap,
             const std::unordered_map<int64_t, int>& conditionTrackerMap) {
         mIndex = index;
-        return nullopt;
+        return;
     }
 
     // evaluate current condition given the new event.
@@ -144,9 +152,8 @@ public:
 
     virtual bool IsSimpleCondition() const = 0;
 
-    virtual bool equalOutputDimensions(
-        const std::vector<sp<ConditionTracker>>& allConditions,
-        const vector<Matcher>& dimensions) const = 0;
+    virtual bool equalOutputDimensions(const std::vector<sp<ConditionTracker>>& allConditions,
+                                       const std::vector<Matcher>& dimensions) const = 0;
 
     // Return the current condition state of the unsliced part of the condition.
     inline ConditionState getUnSlicedPartConditionState() const  {
@@ -158,9 +165,6 @@ protected:
 
     // the index of this condition in the manager's condition list.
     int mIndex;
-
-    // if it's properly initialized.
-    bool mInitialized;
 
     // the list of AtomMatchingTracker index that this ConditionTracker uses.
     std::set<int> mTrackerIndex;
@@ -181,6 +185,11 @@ protected:
     const uint64_t mProtoHash;
 
     FRIEND_TEST(ConfigUpdateTest, TestUpdateConditions);
+};
+
+struct ConditionProtoAndTracker {
+    Predicate predicate;
+    sp<ConditionTracker> conditionTracker;
 };
 
 }  // namespace statsd

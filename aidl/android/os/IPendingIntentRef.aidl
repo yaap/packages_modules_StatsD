@@ -20,7 +20,7 @@ import android.os.StatsDimensionsValueParcel;
 
 /**
   * Binder interface to hold a PendingIntent for StatsCompanionService.
-  * {@hide}
+  * @hide
   */
 interface IPendingIntentRef {
 

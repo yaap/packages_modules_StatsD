@@ -77,8 +77,8 @@ public:
         const int64_t startTimeNs;
         const int64_t bucketSizeNs;
         const int64_t minBucketSizeNs;
-        const optional<int64_t> conditionCorrectionThresholdNs;
-        const optional<bool> splitBucketForAppUpgrade;
+        const std::optional<int64_t> conditionCorrectionThresholdNs;
+        const std::optional<bool> splitBucketForAppUpgrade;
     };
 
     struct WhatOptions {
@@ -87,22 +87,22 @@ public:
         const int whatMatcherIndex;
         const sp<EventMatcherWizard>& matcherWizard;
         const FieldMatcher& dimensionsInWhat;
-        const vector<Matcher>& fieldMatchers;
-        const vector<ValueMetric::AggregationType> aggregationTypes;
+        const std::vector<Matcher>& fieldMatchers;
+        const std::vector<ValueMetric::AggregationType> aggregationTypes;
         const std::vector<std::optional<const BinStarts>> binStartsList;
     };
 
     struct ConditionOptions {
         const int conditionIndex;
         const ConditionLinks& conditionLinks;
-        const vector<ConditionState>& initialConditionCache;
+        const std::vector<ConditionState>& initialConditionCache;
         const sp<ConditionWizard>& conditionWizard;
     };
 
     struct StateOptions {
         const StateLinks& stateLinks;
-        const vector<int>& slicedStateAtoms;
-        const unordered_map<int, unordered_map<int, int64_t>>& stateGroupMap;
+        const std::vector<int>& slicedStateAtoms;
+        const std::unordered_map<int, std::unordered_map<int, int64_t>>& stateGroupMap;
     };
 
     struct ActivationOptions {
@@ -157,7 +157,7 @@ protected:
 
     void onDumpReportLocked(const int64_t dumpTimeNs, const bool includeCurrentPartialBucket,
                             const bool eraseData, const DumpLatency dumpLatency,
-                            std::set<string>* strSet, std::set<int32_t>& usedUids,
+                            std::set<std::string>* strSet, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
 
     struct DumpProtoFields {
@@ -166,7 +166,7 @@ protected:
         const int startBucketMsFieldId;
         const int endBucketMsFieldId;
         const int conditionTrueNsFieldId;
-        const optional<int> conditionCorrectionNsFieldId;
+        const std::optional<int> conditionCorrectionNsFieldId;
     };
 
     virtual DumpProtoFields getDumpProtoFields() const = 0;
@@ -217,7 +217,7 @@ protected:
     // causes the bucket to be invalidated will not notify StatsdStats.
     void skipCurrentBucket(const int64_t dropTimeNs, const BucketDropReason reason);
 
-    optional<InvalidConfigReason> onConfigUpdatedLocked(
+    std::optional<InvalidConfigReason> onConfigUpdatedLocked(
             const StatsdConfig& config, int configIndex, int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -239,8 +239,8 @@ protected:
 
     virtual size_t getAggregatedValueSize(const AggregatedValue& value) const = 0;
 
-    virtual optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
-                                                      const int configIndex) const = 0;
+    virtual std::optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
+                                                           const int configIndex) const = 0;
 
     virtual int64_t getWhatAtomMatcherIdForMetric(const StatsdConfig& config,
                                                   const int configIndex) const = 0;
@@ -263,7 +263,7 @@ protected:
     // Holds the atom id, primary key pair from a state change.
     // Only used for pulled metrics.
     // TODO(b/185796114): can be passed as function arguments instead.
-    pair<int32_t, HashableDimensionKey> mStateChangePrimaryKey;
+    std::pair<int32_t, HashableDimensionKey> mStateChangePrimaryKey;
 
     // Atom Id for pulled data. -1 if this is not pulled.
     const int mPullAtomId;
@@ -362,7 +362,7 @@ protected:
     bool mCurrentBucketIsSkipped;
 
     /** Stores condition correction threshold from the ValueMetric configuration */
-    optional<int64_t> mConditionCorrectionThresholdNs;
+    std::optional<int64_t> mConditionCorrectionThresholdNs;
 
     inline bool isEventLateLocked(const int64_t eventTimeNs) const {
         return eventTimeNs < mCurrentBucketStartTimeNs;

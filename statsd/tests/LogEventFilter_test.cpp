@@ -66,12 +66,8 @@ TEST_F(LogEventFilterTest, TestEmptyFilter) {
 TEST_F(LogEventFilterTest, TestRemoveNonExistingEmptyFilter) {
     EXPECT_FALSE(filter.isAtomInUse(1));
     LogEventFilter::AtomIdSet emptyAtomIdsSet;
-    EXPECT_EQ(0, filter.mTagIdsPerConsumer.size());
-    EXPECT_EQ(0, filter.mLocalTagIds.size());
     filter.setAtomIds(std::move(emptyAtomIdsSet), reinterpret_cast<LogEventFilter::ConsumerId>(0));
     EXPECT_FALSE(filter.isAtomInUse(1));
-    EXPECT_EQ(0, filter.mLocalTagIds.size());
-    EXPECT_EQ(0, filter.mTagIdsPerConsumer.size());
 }
 
 TEST_F(LogEventFilterTest, TestEmptyFilterDisabled) {
@@ -85,7 +81,6 @@ TEST_F(LogEventFilterTest, TestEmptyFilterDisabled) {
 TEST_F(LogEventFilterTest, TestNonEmptyFilterFullOverlap) {
     auto filterIds = generateAtomIds(1, kAtomIdsCount);
     filter.setAtomIds(std::move(filterIds), reinterpret_cast<LogEventFilter::ConsumerId>(0));
-    EXPECT_EQ(1, filter.mTagIdsPerConsumer.size());
 
     // inner copy updated only during fetch if required
     EXPECT_EQ(0, filter.mLocalTagIds.size());
@@ -150,7 +145,6 @@ TEST_F(LogEventFilterTest, TestMultipleConsumerEmptyFilter) {
     auto filterIds2 = generateAtomIds(kAtomIdsCount + 1, kAtomIdsCount * 2);
     filter.setAtomIds(std::move(filterIds1), reinterpret_cast<LogEventFilter::ConsumerId>(0));
     filter.setAtomIds(std::move(filterIds2), reinterpret_cast<LogEventFilter::ConsumerId>(1));
-    EXPECT_EQ(2, filter.mTagIdsPerConsumer.size());
     // inner copy updated only during fetch if required
     EXPECT_EQ(0, filter.mLocalTagIds.size());
     const auto sampleIds = generateAtomIds(1, kAtomIdsCount * 2);
@@ -163,7 +157,6 @@ TEST_F(LogEventFilterTest, TestMultipleConsumerEmptyFilter) {
     // set empty filter for first consumer
     LogEventFilter::AtomIdSet emptyAtomIdsSet;
     filter.setAtomIds(emptyAtomIdsSet, reinterpret_cast<LogEventFilter::ConsumerId>(0));
-    EXPECT_EQ(1, filter.mTagIdsPerConsumer.size());
     EXPECT_EQ(kAtomIdsCount * 2, filter.mLocalTagIds.size());
     for (const auto& atomId : sampleIds) {
         bool const atomInUse = atomId > kAtomIdsCount;
@@ -174,7 +167,6 @@ TEST_F(LogEventFilterTest, TestMultipleConsumerEmptyFilter) {
 
     // set empty filter for second consumer
     filter.setAtomIds(emptyAtomIdsSet, reinterpret_cast<LogEventFilter::ConsumerId>(1));
-    EXPECT_EQ(0, filter.mTagIdsPerConsumer.size());
     EXPECT_EQ(kAtomIdsCount, filter.mLocalTagIds.size());
     for (const auto& atomId : sampleIds) {
         EXPECT_FALSE(filter.isAtomInUse(atomId));

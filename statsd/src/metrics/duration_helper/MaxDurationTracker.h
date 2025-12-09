@@ -42,10 +42,10 @@ public:
     void noteStopAll(const int64_t eventTime) override;
 
     bool flushIfNeeded(
-            int64_t timestampNs, const optional<UploadThreshold>& uploadThreshold,
+            int64_t timestampNs, const std::optional<UploadThreshold>& uploadThreshold,
             std::unordered_map<MetricDimensionKey, std::vector<DurationBucket>>* output) override;
     bool flushCurrentBucket(
-            int64_t eventTimeNs, const optional<UploadThreshold>& uploadThreshold,
+            int64_t eventTimeNs, const std::optional<UploadThreshold>& uploadThreshold,
             const int64_t globalConditionTrueNs,
             std::unordered_map<MetricDimensionKey, std::vector<DurationBucket>>*) override;
 

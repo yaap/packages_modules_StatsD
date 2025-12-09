@@ -25,14 +25,14 @@
 #include "stats_util.h"
 #include "utils/Regex.h"
 
-using std::set;
-using std::string;
-using std::unique_ptr;
-using std::vector;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using std::pair;
+using std::string;
+using std::unique_ptr;
+using std::vector;
 
 bool combinationMatch(const vector<int>& children, const LogicalOperation& operation,
                       const vector<MatchingState>& matcherResults) {

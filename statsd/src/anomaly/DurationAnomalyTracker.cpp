@@ -24,6 +24,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::unordered_set;
+
 DurationAnomalyTracker::DurationAnomalyTracker(const Alert& alert, const ConfigKey& configKey,
                                                const sp<AlarmMonitor>& alarmMonitor)
         : AnomalyTracker(alert, configKey), mAlarmMonitor(alarmMonitor) {

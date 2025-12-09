@@ -13,7 +13,7 @@
 // limitations under the License.
 
 package {
-    default_visibility: [ ":__pkg__" ],
+    default_visibility: [":__pkg__"],
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
@@ -21,7 +21,7 @@ genrule {
     name: "statslog-statsd-java-gen",
     tools: ["stats-log-api-gen"],
     cmd: "$(location stats-log-api-gen) --java $(out) --module statsd" +
-         " --javaPackage com.android.internal.statsd --javaClass StatsdStatsLog",
+        " --javaPackage com.android.internal.statsd --javaClass StatsdStatsLog",
     out: ["com/android/internal/statsd/StatsdStatsLog.java"],
 }
 
@@ -67,7 +67,8 @@ java_sdk_library {
     ],
 
     static_libs: [
-         "modules-utils-build",
+        "modules-utils-build",
+        "statsd_flags_java_lib",
     ],
 
     permitted_packages: [
@@ -87,7 +88,7 @@ java_sdk_library {
     hostdex: true, // for hiddenapi check
 
     lint: {
-        strict_updatability_linting: true
+        strict_updatability_linting: true,
     },
 
     impl_library_visibility: [
@@ -118,7 +119,7 @@ cc_library_shared {
     srcs: ["jni/**/*.cpp"],
     header_libs: ["libnativehelper_header_only"],
     shared_libs: [
-        "liblog",  // Has a stable abi - should not be copied into apex.
+        "liblog", // Has a stable abi - should not be copied into apex.
         "libstatssocket#impl",
     ],
     stl: "libc++_static",

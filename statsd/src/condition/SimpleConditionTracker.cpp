@@ -24,66 +24,74 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+using std::optional;
 using std::unordered_map;
+using std::unordered_set;
+using std::vector;
 
-SimpleConditionTracker::SimpleConditionTracker(
-        const ConfigKey& key, const int64_t id, const uint64_t protoHash, const int index,
-        const SimplePredicate& simplePredicate,
-        const unordered_map<int64_t, int>& atomMatchingTrackerMap)
-    : ConditionTracker(id, index, protoHash),
+SimpleConditionTracker::SimpleConditionTracker(const ConfigKey& key, const int64_t id,
+                                               const uint64_t protoHash)
+    : ConditionTracker(id, protoHash),
       mConfigKey(key),
       mContainANYPositionInInternalDimensions(false) {
     VLOG("creating SimpleConditionTracker %lld", (long long)mConditionId);
-    mCountNesting = simplePredicate.count_nesting();
-
-    setMatcherIndices(simplePredicate, atomMatchingTrackerMap);
-
-    if (simplePredicate.has_dimensions()) {
-        translateFieldMatcher(simplePredicate.dimensions(), &mOutputDimensions);
-        if (mOutputDimensions.size() > 0) {
-            mSliced = true;
-        }
-        mContainANYPositionInInternalDimensions = HasPositionANY(simplePredicate.dimensions());
-    }
-    // If an initial value isn't specified, default to false if sliced and unknown if not sliced.
-    mInitialValue = simplePredicate.has_initial_value()
-                            ? convertInitialValue(simplePredicate.initial_value())
-                            : mSliced ? ConditionState::kFalse : ConditionState::kUnknown;
-    mInitialized = true;
 }
 
 SimpleConditionTracker::~SimpleConditionTracker() {
     VLOG("~SimpleConditionTracker()");
 }
 
-optional<InvalidConfigReason> SimpleConditionTracker::init(
-        const vector<Predicate>& allConditionConfig,
+void SimpleConditionTracker::init(
+        const int index, const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
         const vector<sp<ConditionTracker>>& allConditionTrackers,
-        const unordered_map<int64_t, int>& conditionIdIndexMap, vector<uint8_t>& stack,
-        vector<ConditionState>& conditionCache) {
-    // SimpleConditionTracker does not have dependency on other conditions, thus we just return
-    // if the initialization was successful.
+        const unordered_map<int64_t, int>& conditionIdIndexMap,
+        const unordered_map<int64_t, int>& atomMatchingTrackerMap,
+        unordered_set<int64_t>& initializedTrackers, vector<ConditionState>& conditionCache) {
+    if (!initializedTrackers.contains(mConditionId)) {
+        SimplePredicate simplePredicate =
+                allConditionsMap.find(mConditionId)->second.predicate.simple_predicate();
+        mIndex = index;
+        mCountNesting = simplePredicate.count_nesting();
+        setMatcherIndices(simplePredicate, atomMatchingTrackerMap);
+        if (simplePredicate.has_dimensions()) {
+            translateFieldMatcher(simplePredicate.dimensions(), &mOutputDimensions);
+            if (mOutputDimensions.size() > 0) {
+                mSliced = true;
+            }
+            mContainANYPositionInInternalDimensions = HasPositionANY(simplePredicate.dimensions());
+        }
+        // If an initial value isn't specified, default to false if sliced and unknown if not
+        // sliced.
+        mInitialValue = simplePredicate.has_initial_value()
+                                ? convertInitialValue(simplePredicate.initial_value())
+                        : mSliced ? ConditionState::kFalse
+                                  : ConditionState::kUnknown;
+    }
+    initializedTrackers.insert(mConditionId);
     ConditionKey conditionKey;
     if (mSliced) {
         conditionKey[mConditionId] = DEFAULT_DIMENSION_KEY;
     }
     isConditionMet(conditionKey, allConditionTrackers, mSliced, conditionCache);
-    if (!mInitialized) {
-        return createInvalidConfigReasonWithPredicate(
-                INVALID_CONFIG_REASON_CONDITION_TRACKER_NOT_INITIALIZED, mConditionId);
-    }
+    return;
+}
+
+const optional<InvalidConfigReason> SimpleConditionTracker::isTrackerValid(
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+        unordered_set<int64_t>& stack) const {
     return nullopt;
 }
 
-optional<InvalidConfigReason> SimpleConditionTracker::onConfigUpdated(
-        const vector<Predicate>& allConditionProtos, const int index,
+void SimpleConditionTracker::onConfigUpdated(
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap, const int index,
         const vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& atomMatchingTrackerMap,
         const unordered_map<int64_t, int>& conditionTrackerMap) {
-    ConditionTracker::onConfigUpdated(allConditionProtos, index, allConditionTrackers,
+    ConditionTracker::onConfigUpdated(allConditionsMap, index, allConditionTrackers,
                                       atomMatchingTrackerMap, conditionTrackerMap);
-    setMatcherIndices(allConditionProtos[index].simple_predicate(), atomMatchingTrackerMap);
-    return nullopt;
+    setMatcherIndices(allConditionsMap.find(mConditionId)->second.predicate.simple_predicate(),
+                      atomMatchingTrackerMap);
 }
 
 void SimpleConditionTracker::setMatcherIndices(
@@ -101,7 +109,6 @@ void SimpleConditionTracker::setMatcherIndices(
     } else {
         mStartLogMatcherIndex = -1;
     }
-
     if (simplePredicate.has_stop()) {
         auto pair = atomMatchingTrackerMap.find(simplePredicate.stop());
         if (pair == atomMatchingTrackerMap.end()) {
@@ -113,7 +120,6 @@ void SimpleConditionTracker::setMatcherIndices(
     } else {
         mStopLogMatcherIndex = -1;
     }
-
     if (simplePredicate.has_stop_all()) {
         auto pair = atomMatchingTrackerMap.find(simplePredicate.stop_all());
         if (pair == atomMatchingTrackerMap.end()) {

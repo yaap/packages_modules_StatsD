@@ -18,6 +18,26 @@
 
 #include <stdint.h>
 
+#include <atomic>
+
 int64_t get_elapsed_realtime_ns();
 
 int toSocketLossError(int errno_code);
+
+class CooldownTimer {
+public:
+    CooldownTimer(int64_t timeoutNanos) : mTimeoutNanos(timeoutNanos) {
+    }
+
+    void start(int64_t elapsedNanos) {
+        mCooldownTimerFinishAtNanos = elapsedNanos + mTimeoutNanos;
+    }
+
+    bool isExpired(int64_t elapsedNanos) const {
+        return elapsedNanos >= mCooldownTimerFinishAtNanos;
+    }
+
+private:
+    const int64_t mTimeoutNanos;
+    std::atomic_int64_t mCooldownTimerFinishAtNanos;
+};

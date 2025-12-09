@@ -146,7 +146,7 @@ TEST(AttributionE2eTest, TestAttributionMatchAndSliceByFirstUid) {
         processor->OnLogEvent(event.get());
     }
     ConfigMetricsReportList reports;
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + 4 * bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
     EXPECT_TRUE(buffer.size() > 0);
@@ -256,7 +256,7 @@ TEST(AttributionE2eTest, TestAttributionMatchAndSliceByChain) {
         processor->OnLogEvent(event.get());
     }
     ConfigMetricsReportList reports;
-    vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer;
     processor->onDumpReport(cfgKey, bucketStartTimeNs + 4 * bucketSizeNs + 1, false, true, ADB_DUMP,
                             FAST, &buffer);
     EXPECT_TRUE(buffer.size() > 0);

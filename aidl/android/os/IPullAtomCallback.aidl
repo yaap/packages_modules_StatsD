@@ -20,7 +20,7 @@ import android.os.IPullAtomResultReceiver;
 
 /**
   * Binder interface to pull atoms for the stats service.
-  * {@hide}
+  * @hide
   */
 interface IPullAtomCallback {
     /**

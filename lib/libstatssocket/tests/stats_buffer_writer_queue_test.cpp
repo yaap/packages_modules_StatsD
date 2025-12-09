@@ -23,11 +23,7 @@
 #include "stats_event.h"
 #include "utils.h"
 
-using testing::_;
-using testing::AnyNumber;
-using testing::DoAll;
-using testing::Return;
-using testing::StrictMock;
+using namespace testing;
 
 namespace {
 

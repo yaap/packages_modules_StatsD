@@ -24,20 +24,24 @@ namespace android {
 namespace os {
 namespace statsd {
 
-AlarmMonitor::AlarmMonitor(
-        uint32_t minDiffToUpdateRegisteredAlarmTimeSec,
-        const std::function<void(const shared_ptr<IStatsCompanionService>&, int64_t)>& updateAlarm,
-        const std::function<void(const shared_ptr<IStatsCompanionService>&)>& cancelAlarm)
+using std::function;
+using std::lock_guard;
+using std::shared_ptr;
+using std::unordered_set;
+
+AlarmMonitor::AlarmMonitor(uint32_t minDiffToUpdateRegisteredAlarmTimeSec,
+                           const UpdateAlarmFunc& updateAlarm, const CancelAlarmFunc& cancelAlarm)
     : mRegisteredAlarmTimeSec(0),
       mMinUpdateTimeSec(minDiffToUpdateRegisteredAlarmTimeSec),
       mUpdateAlarm(updateAlarm),
-      mCancelAlarm(cancelAlarm) {}
+      mCancelAlarm(cancelAlarm) {
+}
 
 AlarmMonitor::~AlarmMonitor() {}
 
 void AlarmMonitor::setStatsCompanionService(
         const shared_ptr<IStatsCompanionService>& statsCompanionService) {
-    std::lock_guard<std::mutex> lock(mLock);
+    std::lock_guard lock(mLock);
     shared_ptr<IStatsCompanionService> tmpForLock = mStatsCompanionService;
     mStatsCompanionService = statsCompanionService;
     if (statsCompanionService == nullptr) {
@@ -52,7 +56,7 @@ void AlarmMonitor::setStatsCompanionService(
 }
 
 void AlarmMonitor::add(const sp<const InternalAlarm>& alarm) {
-    std::lock_guard<std::mutex> lock(mLock);
+    std::lock_guard lock(mLock);
     if (alarm == nullptr) {
         ALOGW("Asked to add a null alarm.");
         return;
@@ -72,7 +76,7 @@ void AlarmMonitor::add(const sp<const InternalAlarm>& alarm) {
 }
 
 void AlarmMonitor::remove(const sp<const InternalAlarm>& alarm) {
-    std::lock_guard<std::mutex> lock(mLock);
+    std::lock_guard lock(mLock);
     if (alarm == nullptr) {
         ALOGW("Asked to remove a null alarm.");
         return;
@@ -98,7 +102,7 @@ unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> AlarmMonitor::popS
         uint32_t timestampSec) {
     VLOG("Removing alarms with time <= %u", timestampSec);
     unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> oldAlarms;
-    std::lock_guard<std::mutex> lock(mLock);
+    std::lock_guard lock(mLock);
 
     for (sp<const InternalAlarm> t = mPq.top(); t != nullptr && t->timestampSec <= timestampSec;
         t = mPq.top()) {

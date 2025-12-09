@@ -29,11 +29,6 @@
 #include "src/statsd_config.pb.h"  // subscription
 
 using aidl::android::os::IPendingIntentRef;
-using std::mutex;
-using std::shared_ptr;
-using std::string;
-using std::unordered_map;
-using std::vector;
 
 namespace android {
 namespace os {
@@ -49,16 +44,14 @@ public:
         return subscriberReporter;
     }
 
-    ~SubscriberReporter(){};
-    SubscriberReporter(SubscriberReporter const&) = delete;
+    ~SubscriberReporter() {};
     void operator=(SubscriberReporter const&) = delete;
 
     /**
      * Stores the given intentSender, associating it with the given (configKey, subscriberId) pair.
      */
-    void setBroadcastSubscriber(const ConfigKey& configKey,
-                                int64_t subscriberId,
-                                const shared_ptr<IPendingIntentRef>& pir);
+    void setBroadcastSubscriber(const ConfigKey& configKey, int64_t subscriberId,
+                                const std::shared_ptr<IPendingIntentRef>& pir);
 
     /**
      * Erases any intentSender information from the given (configKey, subscriberId) pair.
@@ -77,19 +70,19 @@ public:
 private:
     SubscriberReporter();
 
-    mutable mutex mLock;
+    mutable std::mutex mLock;
 
     /** Maps <ConfigKey, SubscriberId> -> IPendingIntentRef (which represents a PendingIntent). */
-    unordered_map<ConfigKey, unordered_map<int64_t, shared_ptr<IPendingIntentRef>>> mIntentMap;
+    std::unordered_map<ConfigKey, std::unordered_map<int64_t, std::shared_ptr<IPendingIntentRef>>>
+            mIntentMap;
 
     /**
      * Sends a broadcast via the given intentSender (using mStatsCompanionService), along
      * with the information in the other parameters.
      */
-    void sendBroadcastLocked(const shared_ptr<IPendingIntentRef>& pir,
-                             const ConfigKey& configKey,
-                             const Subscription& subscription,
-                             const vector<string>& cookies,
+    void sendBroadcastLocked(const std::shared_ptr<IPendingIntentRef>& pir,
+                             const ConfigKey& configKey, const Subscription& subscription,
+                             const std::vector<std::string>& cookies,
                              const MetricDimensionKey& dimKey) const;
 
     ::ndk::ScopedAIBinder_DeathRecipient mBroadcastSubscriberDeathRecipient;

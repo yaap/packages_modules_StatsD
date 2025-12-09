@@ -27,7 +27,7 @@
 #include "logd/LogEvent.h"
 #include "metrics/MetricsManager.h"
 #include "packages/UidMap.h"
-#include "socket/LogEventFilter.h"
+#include "socket/AtomsInUseChangeListener.h"
 #include "src/statsd_config.pb.h"
 #include "src/statsd_metadata.pb.h"
 
@@ -42,10 +42,11 @@ public:
             const sp<AlarmMonitor>& anomalyAlarmMonitor,
             const sp<AlarmMonitor>& subscriberTriggerAlarmMonitor, int64_t timeBaseNs,
             const std::function<bool(const ConfigKey&)>& sendBroadcast,
-            const std::function<bool(const int&, const vector<int64_t>&)>& sendActivationBroadcast,
-            const std::function<void(const ConfigKey&, const string&, const vector<int64_t>&)>&
-                    sendRestrictedMetricsBroadcast,
-            const std::shared_ptr<LogEventFilter>& logEventFilter);
+            const std::function<bool(const int&, const std::vector<int64_t>&)>&
+                    sendActivationBroadcast,
+            const std::function<void(const ConfigKey&, const std::string&,
+                                     const std::vector<int64_t>&)>& sendRestrictedMetricsBroadcast,
+            const std::shared_ptr<AtomsInUseChangeListener>& atomsInUseChangeListener);
 
     virtual ~StatsLogProcessor();
 
@@ -60,12 +61,12 @@ public:
 
     size_t GetMetricsSize(const ConfigKey& key) const;
 
-    void GetActiveConfigs(const int uid, vector<int64_t>& outActiveConfigs);
+    void GetActiveConfigs(const int uid, std::vector<int64_t>& outActiveConfigs);
 
     void onDumpReport(const ConfigKey& key, int64_t dumpTimeNs, int64_t wallClockNs,
                       const bool include_current_partial_bucket, const bool erase_data,
                       const DumpReportReason dumpReportReason, const DumpLatency dumpLatency,
-                      vector<uint8_t>* outData);
+                      std::vector<uint8_t>* outData);
     void onDumpReport(const ConfigKey& key, int64_t dumpTimeNs, int64_t wallClockNs,
                       const bool include_current_partial_bucket, const bool erase_data,
                       const DumpReportReason dumpReportReason, const DumpLatency dumpLatency,
@@ -74,12 +75,12 @@ public:
     void onDumpReport(const ConfigKey& key, int64_t dumpTimeNs,
                       const bool include_current_partial_bucket, const bool erase_data,
                       const DumpReportReason dumpReportReason, const DumpLatency dumpLatency,
-                      vector<uint8_t>* outData);
+                      std::vector<uint8_t>* outData);
 
     /* Tells MetricsManager that the alarms in alarmSet have fired. Modifies periodic alarmSet. */
     void onPeriodicAlarmFired(
             int64_t timestampNs,
-            unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
+            std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
 
     /* Flushes data to disk. Data on memory will be gone after written to disk. */
     void WriteDataToDisk(const DumpReportReason dumpReportReason, const DumpLatency dumpLatency,
@@ -119,11 +120,11 @@ public:
     void SetConfigsActiveState(const ActiveConfigList& activeConfigList, int64_t currentTimeNs);
 
     /* Notify all MetricsManagers of app upgrades */
-    void notifyAppUpgrade(int64_t eventTimeNs, const string& apk, int uid,
+    void notifyAppUpgrade(int64_t eventTimeNs, const std::string& apk, int uid,
                           int64_t version) override;
 
     /* Notify all MetricsManagers of app removals */
-    void notifyAppRemoved(int64_t eventTimeNs, const string& apk, int uid) override;
+    void notifyAppRemoved(int64_t eventTimeNs, const std::string& apk, int uid) override;
 
     /* Notify all MetricsManagers of uid map snapshots received */
     void onUidMapReceived(int64_t eventTimeNs) override;
@@ -147,11 +148,8 @@ public:
     int64_t getLastReportTimeNs(const ConfigKey& key);
 
     inline void setPrintLogs(bool enabled) {
-        std::lock_guard<std::mutex> lock(mMetricsMutex);
+        std::lock_guard lock(mMetricsMutex);
         mPrintAllLogs = enabled;
-        // Turning on print logs turns off pushed event filtering to enforce
-        // complete log event buffer parsing
-        mLogEventFilter->setFilteringEnabled(!enabled);
     }
 
     // Add a specific config key to the possible configs to dump ASAP.
@@ -161,16 +159,17 @@ public:
 
     void cancelAnomalyAlarm();
 
-    void querySql(const string& sqlQuery, const int32_t minSqlClientVersion,
-                  const optional<vector<uint8_t>>& policyConfig,
-                  const shared_ptr<aidl::android::os::IStatsQueryCallback>& callback,
-                  const int64_t configId, const string& configPackage, const int32_t callingUid);
+    void querySql(const std::string& sqlQuery, const int32_t minSqlClientVersion,
+                  const std::optional<std::vector<uint8_t>>& policyConfig,
+                  const std::shared_ptr<aidl::android::os::IStatsQueryCallback>& callback,
+                  const int64_t configId, const std::string& configPackage,
+                  const int32_t callingUid);
 
-    void fillRestrictedMetrics(const int64_t configId, const string& configPackage,
-                               const int32_t delegateUid, vector<int64_t>* output);
+    void fillRestrictedMetrics(const int64_t configId, const std::string& configPackage,
+                               const int32_t delegateUid, std::vector<int64_t>* output);
 
     /* Returns pre-defined list of atoms to parse by LogEventFilter */
-    static LogEventFilter::AtomIdSet getDefaultAtomIdSet();
+    static AtomsInUseChangeListener::AtomIdSet getDefaultAtomIdSet();
 
 private:
     // For testing only.
@@ -182,12 +181,12 @@ private:
         return mPeriodicAlarmMonitor;
     }
 
-    mutable mutex mMetricsMutex;
+    mutable std::mutex mMetricsMutex;
 
     // Guards mNextAnomalyAlarmTime. A separate mutex is needed because alarms are set/cancelled
     // in the onLogEvent code path, which is locked by mMetricsMutex.
     // DO NOT acquire mMetricsMutex while holding mAnomalyAlarmMutex. This can lead to a deadlock.
-    mutable mutex mAnomalyAlarmMutex;
+    mutable std::mutex mAnomalyAlarmMutex;
 
     std::unordered_map<ConfigKey, sp<MetricsManager>> mMetricsManagers;
 
@@ -222,7 +221,7 @@ private:
 
     sp<AlarmMonitor> mPeriodicAlarmMonitor;
 
-    std::shared_ptr<LogEventFilter> mLogEventFilter;
+    const std::shared_ptr<AtomsInUseChangeListener> mAtomsInUseChangeListener;
 
     void OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs);
 
@@ -231,7 +230,7 @@ private:
     void OnConfigUpdatedLocked(const int64_t currentTimestampNs, const ConfigKey& key,
                                const StatsdConfig& config, bool modularUpdate);
 
-    void GetActiveConfigsLocked(const int uid, vector<int64_t>& outActiveConfigs);
+    void GetActiveConfigsLocked(const int uid, std::vector<int64_t>& outActiveConfigs);
 
     void WriteActiveConfigsToProtoOutputStreamLocked(
             int64_t currentTimeNs, const DumpReportReason reason, ProtoOutputStream* proto);
@@ -261,7 +260,7 @@ private:
             const DumpReportReason dumpReportReason, const DumpLatency dumpLatency,
             /*if dataSavedToDisk is true, it indicates the caller will write the data to disk
              (e.g., before reboot). So no need to further persist local history.*/
-            const bool dataSavedToDisk, vector<uint8_t>* proto);
+            const bool dataSavedToDisk, std::vector<uint8_t>* proto);
 
     /* Check if it is time enforce data ttls for restricted metrics, and if it is, enforce ttls
      * on all restricted metrics. */
@@ -279,10 +278,9 @@ private:
      * actually delete the data. */
     void flushIfNecessaryLocked(const ConfigKey& key, MetricsManager& metricsManager);
 
-    set<ConfigKey> getRestrictedConfigKeysToQueryLocked(int32_t callingUid, const int64_t configId,
-                                                        const set<int32_t>& configPackageUids,
-                                                        string& err,
-                                                        InvalidQueryReason& invalidQueryReason);
+    std::set<ConfigKey> getRestrictedConfigKeysToQueryLocked(
+            int32_t callingUid, const int64_t configId, const std::set<int32_t>& configPackageUids,
+            std::string& err, InvalidQueryReason& invalidQueryReason);
 
     // Maps the isolated uid in the log event to host uid if the log event contains uid fields.
     void mapIsolatedUidToHostUidIfNecessaryLocked(LogEvent* event) const;
@@ -304,7 +302,7 @@ private:
     // depending on rollback type. Then writes them back to disk and returns
     // them.
     std::vector<int64_t> processWatchdogRollbackOccurred(int32_t rollbackTypeIn,
-                                                         const string& packageName);
+                                                         const std::string& packageName);
 
     // Reset all configs.
     void resetConfigsLocked(const int64_t timestampNs);
@@ -318,14 +316,14 @@ private:
     /* Tells MetricsManager that the alarms in alarmSet have fired. Modifies anomaly alarmSet. */
     void processFiredAnomalyAlarmsLocked(
             int64_t timestampNs,
-            unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
+            std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
 
     void flushRestrictedDataLocked(const int64_t elapsedRealtimeNs);
 
     void flushRestrictedDataIfNecessaryLocked(const int64_t elapsedRealtimeNs);
 
     /* Tells LogEventFilter about atom ids to parse */
-    void updateLogEventFilterLocked() const;
+    void updateAtomIdsInUseLocked() const;
 
     bool validateAppBreadcrumbEvent(const LogEvent& event) const;
 
@@ -344,12 +342,13 @@ private:
 
     // Function used to send a broadcast so that receiver can be notified of which configs
     // are currently active.
-    std::function<bool(const int& uid, const vector<int64_t>& configIds)> mSendActivationBroadcast;
+    std::function<bool(const int& uid, const std::vector<int64_t>& configIds)>
+            mSendActivationBroadcast;
 
     // Function used to send a broadcast if necessary so the receiver can be notified of the
     // restricted metrics for the given config.
-    std::function<void(const ConfigKey& key, const string& delegatePackage,
-                       const vector<int64_t>& restrictedMetricIds)>
+    std::function<void(const ConfigKey& key, const std::string& delegatePackage,
+                       const std::vector<int64_t>& restrictedMetricIds)>
             mSendRestrictedMetricsBroadcast;
 
     const int64_t mTimeBaseNs;
@@ -392,7 +391,6 @@ private:
     FRIEND_TEST(StatsLogProcessorTest,
             TestActivationOnBootMultipleActivationsDifferentActivationTypes);
     FRIEND_TEST(StatsLogProcessorTest, TestActivationsPersistAcrossSystemServerRestart);
-    FRIEND_TEST(StatsLogProcessorTest, LogEventFilterOnSetPrintLogs);
     FRIEND_TEST(StatsLogProcessorTest, TestUidMapHasSnapshot);
     FRIEND_TEST(StatsLogProcessorTest, TestEmptyConfigHasNoUidMap);
     FRIEND_TEST(StatsLogProcessorTest, TestReportIncludesSubConfig);

@@ -45,7 +45,7 @@ public:
     virtual const std::set<HashableDimensionKey>* getChangedToTrueDimensions(const int index) const;
     virtual const std::set<HashableDimensionKey>* getChangedToFalseDimensions(
             const int index) const;
-    bool equalOutputDimensions(const int index, const vector<Matcher>& dimensions) const;
+    bool equalOutputDimensions(const int index, const std::vector<Matcher>& dimensions) const;
 
     bool IsChangedDimensionTrackable(const int index) const;
     bool IsSimpleCondition(const int index) const;

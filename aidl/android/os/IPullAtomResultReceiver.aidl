@@ -20,7 +20,7 @@ import android.util.StatsEventParcel;
 
 /**
   * Binder interface to pull atoms for the stats service.
-  * {@hide}
+  * @hide
   */
 interface IPullAtomResultReceiver {
 

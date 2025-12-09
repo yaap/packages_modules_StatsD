@@ -30,8 +30,6 @@
 #include "src/statsd_config.pb.h"
 #include "stats_util.h"
 
-using namespace std;
-
 namespace android {
 namespace os {
 namespace statsd {
@@ -40,15 +38,16 @@ class DurationMetricProducer : public MetricProducer {
 public:
     DurationMetricProducer(
             const ConfigKey& key, const DurationMetric& durationMetric, int conditionIndex,
-            const vector<ConditionState>& initialConditionCache, int whatIndex,
+            const std::vector<ConditionState>& initialConditionCache, int whatIndex,
             const int startIndex, int stopIndex, int stopAllIndex, const bool nesting,
             const sp<ConditionWizard>& wizard, const uint64_t protoHash,
             const FieldMatcher& internalDimensions, int64_t timeBaseNs, const int64_t startTimeNs,
             const wp<ConfigMetadataProvider> configMetadataProvider,
-            const unordered_map<int, shared_ptr<Activation>>& eventActivationMap = {},
-            const unordered_map<int, vector<shared_ptr<Activation>>>& eventDeactivationMap = {},
-            const vector<int>& slicedStateAtoms = {},
-            const unordered_map<int, unordered_map<int, int64_t>>& stateGroupMap = {});
+            const std::unordered_map<int, std::shared_ptr<Activation>>& eventActivationMap = {},
+            const std::unordered_map<int, std::vector<std::shared_ptr<Activation>>>&
+                    eventDeactivationMap = {},
+            const std::vector<int>& slicedStateAtoms = {},
+            const std::unordered_map<int, std::unordered_map<int, int64_t>>& stateGroupMap = {});
 
     virtual ~DurationMetricProducer();
 
@@ -84,11 +83,11 @@ private:
                                            const int64_t eventTimeNs);
     void handleStartEvent(const MetricDimensionKey& eventKey, const ConditionKey& conditionKeys,
                           bool condition, int64_t eventTimeNs,
-                          const vector<FieldValue>& eventValues);
+                          const std::vector<FieldValue>& eventValues);
 
     void onDumpReportLocked(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
                             const bool erase_data, const DumpLatency dumpLatency,
-                            std::set<string>* str_set, std::set<int32_t>& usedUids,
+                            std::set<std::string>* str_set, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
 
     void clearPastBucketsLocked(const int64_t dumpTimeNs) override;
@@ -118,7 +117,7 @@ private:
 
     void flushCurrentBucketLocked(int64_t eventTimeNs, int64_t nextBucketStartTimeNs) override;
 
-    optional<InvalidConfigReason> onConfigUpdatedLocked(
+    std::optional<InvalidConfigReason> onConfigUpdatedLocked(
             const StatsdConfig& config, int configIndex, int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -158,7 +157,7 @@ private:
     const bool mNested;
 
     // The dimension from the atom predicate. e.g., uid, wakelock name.
-    vector<Matcher> mInternalDimensions;
+    std::vector<Matcher> mInternalDimensions;
 
     bool mContainANYPositionInInternalDimensions;
 

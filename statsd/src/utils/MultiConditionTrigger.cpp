@@ -39,7 +39,7 @@ MultiConditionTrigger::MultiConditionTrigger(const set<string>& conditionNames,
 void MultiConditionTrigger::markComplete(const string& conditionName) {
     bool doTrigger = false;
     {
-        std::lock_guard<std::mutex> lg(mMutex);
+        std::lock_guard lg(mMutex);
         if (mCompleted) {
             return;
         }

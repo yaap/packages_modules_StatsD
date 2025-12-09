@@ -33,6 +33,8 @@
 #include "tests/metrics/metrics_test_helper.h"
 #include "tests/statsd_test_util.h"
 
+using namespace testing;
+
 using ::aidl::android::os::StatsSubscriptionCallbackReason;
 using android::sp;
 using android::os::statsd::TestAtomReported;
@@ -43,21 +45,10 @@ using android::os::statsd::util::PHONE_SIGNAL_STRENGTH_CHANGED;
 using android::os::statsd::util::PLUGGED_STATE_CHANGED;
 using android::os::statsd::util::SCREEN_STATE_CHANGED;
 using android::os::statsd::util::TEST_ATOM_REPORTED;
+// using std::set;
+using std::shared_ptr;
+using std::unique_ptr;
 using std::vector;
-using testing::_;
-using testing::A;
-using testing::AtMost;
-using testing::ByMove;
-using testing::DoAll;
-using testing::InSequence;
-using testing::Invoke;
-using testing::MockFunction;
-using testing::NaggyMock;
-using testing::NiceMock;
-using testing::Return;
-using testing::SaveArg;
-using testing::SetArgPointee;
-using testing::StrictMock;
 
 namespace android {
 namespace os {
@@ -83,22 +74,20 @@ const int kSingleClient = 1;
 const int kNumClients = 11;
 
 // Utility to make an expected pulled atom shell data
-ShellData getExpectedPulledData(bool withLoggingUid = false) {
+ShellData getExpectedPulledData(int pullCount = 1, bool withLoggingUid = false) {
     ShellData shellData;
-    auto* atom1 = shellData.add_atom()->mutable_cpu_active_time();
-    atom1->set_uid(kUid1);
-    atom1->set_time_millis(kCpuTime1);
-    shellData.add_elapsed_timestamp_nanos(kCpuActiveTimeEventTimestampNs);
-    if (withLoggingUid) {
-        shellData.add_logging_uid(0);
-    }
-
-    auto* atom2 = shellData.add_atom()->mutable_cpu_active_time();
-    atom2->set_uid(kUid2);
-    atom2->set_time_millis(kCpuTime2);
-    shellData.add_elapsed_timestamp_nanos(kCpuActiveTimeEventTimestampNs);
-    if (withLoggingUid) {
-        shellData.add_logging_uid(0);
+    const vector<int> uids{kUid1, kUid2};
+    const vector<int> cpuTimes{kCpuTime1, kCpuTime2};
+    for (int pull = 1; pull <= pullCount; pull++) {
+        for (int i = 0; i < uids.size(); i++) {
+            auto* atom = shellData.add_atom()->mutable_cpu_active_time();
+            atom->set_uid(uids[i]);
+            atom->set_time_millis(cpuTimes[i]);
+            shellData.add_elapsed_timestamp_nanos(kCpuActiveTimeEventTimestampNs);
+            if (withLoggingUid) {
+                shellData.add_logging_uid(0);
+            }
+        }
     }
 
     return shellData;
@@ -247,7 +236,7 @@ protected:
           mockLogEventFilter(std::make_shared<MockLogEventFilter>()),
           shellSubscriber(uidMap, pullerManager, mockLogEventFilter),
           callback(SharedRefBase::make<StrictMock<MockStatsSubscriptionCallback>>()),
-          reason(nullopt) {
+          reason(std::nullopt) {
     }
 
     void SetUp() override {
@@ -317,6 +306,20 @@ protected:
         // Used to call pullAndSendHeartbeatsIfNeeded directly without depending on sleep.
         shellSubscriberClient = ShellSubscriberClient::create(
                 configBytes, callback, /* startTimeSec= */ 0, uidMap, pullerManager);
+
+        // Ensure the initial pull happens. Data is cached.
+        EXPECT_CALL(*pullerManager, Pull(_, A<const vector<int32_t>&>(), _, _)).Times(Exactly(1));
+
+        // Expect callback to not be invoked following the initial pull as cache size threshold has
+        // not been met.
+        EXPECT_CALL(*callback, onSubscriptionData(_, _)).Times(Exactly(0));
+
+        // The initial pull. Data is cached. This is done explicitly as the initial pull does not
+        // happen automatically when a new subscription is added. Instead, the thread running
+        // ShellSubscriber::pullAndSendHeartbeats() is notified and woken up to do any pending
+        // pulls.
+        shellSubscriberClient->pullAndSendHeartbeatsIfNeeded(/* nowSecs= */ 0, /* nowMillis= */ 0,
+                                                             /* nowNanos= */ 0);
     }
 
     unique_ptr<ShellSubscriberClient> shellSubscriberClient;
@@ -641,8 +644,9 @@ TEST_F(ShellSubscriberCallbackPulledTest, testPullIfNeededBeforeInterval) {
     // Expect callback to not be invoked.
     EXPECT_CALL(*callback, onSubscriptionData(_, _)).Times(Exactly(0));
 
-    shellSubscriberClient->pullAndSendHeartbeatsIfNeeded(/* nowSecs= */ 0, /* nowMillis= */ 0,
-                                                         /* nowNanos= */ 0);
+    // This request happens before interval. No pull occurs.
+    shellSubscriberClient->pullAndSendHeartbeatsIfNeeded(/* nowSecs= */ 59, /* nowMillis= */ 59'000,
+                                                         /* nowNanos= */ 59'000'000'000);
 }
 
 TEST_F(ShellSubscriberCallbackPulledTest, testPullAtInterval) {
@@ -677,7 +681,7 @@ TEST_F(ShellSubscriberCallbackPulledTest, testCachedPullIsFlushed) {
     ShellData actualShellData;
     ASSERT_TRUE(actualShellData.ParseFromArray(payload.data(), payload.size()));
 
-    EXPECT_THAT(actualShellData, EqShellData(getExpectedPulledData()));
+    EXPECT_THAT(actualShellData, EqShellData(getExpectedPulledData(/* pullCount= */ 2)));
 }
 
 TEST_F(ShellSubscriberCallbackPulledTest, testPullAtCacheTimeout) {
@@ -697,7 +701,7 @@ TEST_F(ShellSubscriberCallbackPulledTest, testPullAtCacheTimeout) {
     ShellData actualShellData;
     ASSERT_TRUE(actualShellData.ParseFromArray(payload.data(), payload.size()));
 
-    EXPECT_THAT(actualShellData, EqShellData(getExpectedPulledData()));
+    EXPECT_THAT(actualShellData, EqShellData(getExpectedPulledData(/* pullCount= */ 2)));
 }
 
 TEST_F(ShellSubscriberCallbackPulledTest, testPullFrequencyTooShort) {
@@ -720,6 +724,57 @@ TEST_F(ShellSubscriberCallbackPulledTest, testMinSleep) {
     // Even though there is only 1000 ms left until the next pull, the sleep time returned is
     // kMinCallbackSleepIntervalMs.
     EXPECT_THAT(sleepTimeMs, Eq(ShellSubscriberClient::kMinCallbackSleepIntervalMs));
+}
+
+TEST_F(ShellSubscriberCallbackPulledTest, testNewSubscriptionWakesUpThread) {
+    EXPECT_CALL(*callback, onSubscriptionData(_, _)).Times(AtMost(1));
+
+    LogEventFilter::AtomIdSet tagIds;
+    EXPECT_CALL(*mockLogEventFilter, setAtomIds(tagIds, &shellSubscriber)).Times(AtMost(5));
+
+    configBytes = protoToBytes(getPulledConfig());
+
+    // Expect the puller to be called for CPU_ACTIVE_TIME in the first subscription.
+    // The mocked pull method calls pullNotification.Notify() to continue test execution.
+    {
+        WaitableEvent pullNotification;
+        EXPECT_CALL(*pullerManager, Pull(CPU_ACTIVE_TIME, A<const vector<int32_t>&>(), _, _))
+                .WillOnce([&pullNotification] {
+                    pullNotification.Notify();
+                    return true;
+                });
+
+        ASSERT_TRUE(shellSubscriber.startNewSubscription(configBytes, callback));
+
+        // Wait 5ms for CPU_ACTIVE_TIME puller to be invoked.
+        ASSERT_TRUE(pullNotification.WaitForNotificationWithTimeoutMillis(5));
+    }
+
+    // Set up another callback for the second subscription.
+    std::shared_ptr<MockStatsSubscriptionCallback> callback2 =
+            SharedRefBase::make<NiceMock<MockStatsSubscriptionCallback>>();
+    ON_CALL(*callback2, onSubscriptionData(_, _)).WillByDefault([] { return Status::ok(); });
+
+    // Repeat same verification as earlier for the second subscription. The puller thread is already
+    // running so this second subscription should wake up that existing thread to process the
+    // initial pull for the second subscription.
+    {
+        WaitableEvent pullNotification;
+        EXPECT_CALL(*pullerManager, Pull(CPU_ACTIVE_TIME, A<const vector<int32_t>&>(), _, _))
+                .WillOnce([&pullNotification] {
+                    pullNotification.Notify();
+                    return true;
+                });
+
+        ASSERT_TRUE(shellSubscriber.startNewSubscription(configBytes, callback));
+
+        // Wait 5ms for CPU_ACTIVE_TIME puller to be invoked.
+        ASSERT_TRUE(pullNotification.WaitForNotificationWithTimeoutMillis(5));
+    }
+
+    // Unsubscribe from second subscription. TearDown will take care of unsubscribing from the first
+    // subscription.
+    shellSubscriber.unsubscribe(callback2);
 }
 
 class ShellSubscriberTest : public testing::TestWithParam<bool> {
@@ -786,13 +841,15 @@ TEST_P(ShellSubscriberTest, testPulledSubscription) {
                 return true;
             }));
 
+    const vector<ShellData> expectedData(2, getExpectedPulledData());
+
     // Test with single client
     TRACE_CALL(runShellTest, getPulledConfig(), uidMap, pullerManager, /*pushedEvents=*/{},
-               {getExpectedPulledData()}, kSingleClient);
+               expectedData, kSingleClient);
 
     // Test with multiple clients.
-    TRACE_CALL(runShellTest, getPulledConfig(), uidMap, pullerManager, {},
-               {getExpectedPulledData()}, kNumClients);
+    TRACE_CALL(runShellTest, getPulledConfig(), uidMap, pullerManager, {}, expectedData,
+               kNumClients);
 }
 
 TEST_P(ShellSubscriberTest, testBothSubscriptions) {
@@ -815,7 +872,6 @@ TEST_P(ShellSubscriberTest, testBothSubscriptions) {
     config.add_pushed()->set_atom_id(SCREEN_STATE_CHANGED);
     config.set_collect_uids(doCollectUids());
 
-    vector<ShellData> expectedData;
     ShellData shellData1;
     shellData1.add_atom()->mutable_screen_state_changed()->set_state(
             ::android::view::DisplayStateEnum::DISPLAY_STATE_ON);
@@ -830,7 +886,7 @@ TEST_P(ShellSubscriberTest, testBothSubscriptions) {
         shellData2.add_logging_uid(pushedList[1]->GetUid());
     }
 
-    expectedData.push_back(getExpectedPulledData(doCollectUids()));
+    vector<ShellData> expectedData(2, getExpectedPulledData(/* pullCount= */ 1, doCollectUids()));
     expectedData.push_back(shellData1);
     expectedData.push_back(shellData2);
 

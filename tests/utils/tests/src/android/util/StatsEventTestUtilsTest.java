@@ -20,11 +20,16 @@ import static com.android.dx.mockito.inline.extended.ExtendedMockito.verify;
 import static com.android.os.AtomsProto.Atom.TOMB_STONE_OCCURRED_FIELD_NUMBER;
 import static com.google.common.truth.Truth.assertThat;
 
-import android.util.StatsLog;
 import com.android.modules.utils.testing.ExtendedMockitoRule;
 import com.android.os.AtomsProto.Atom;
 import com.android.os.AtomsProto.TestAtomReported;
 import com.android.os.AtomsProto.TrainExperimentIds;
+import com.android.os.statsd.StatsdExtensionAtoms;
+import com.android.os.statsd.StatsdExtensionAtoms.TestExtensionAtomNestedMessage;
+import com.android.os.statsd.StatsdExtensionAtoms.TestExtensionAtomReported;
+
+import com.google.protobuf.ExtensionRegistryLite;
+
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -106,5 +111,67 @@ public final class StatsEventTestUtilsTest {
         assertThat(tar.getRepeatedStringFieldList()).containsExactly("xyz");
         assertThat(tar.getRepeatedBooleanFieldList()).containsExactly(false, false);
         assertThat(tar.getRepeatedEnumFieldList()).containsExactly(TestAtomReported.State.OFF);
+    }
+
+    @Test
+    public void testAtomExtension() throws Exception {
+
+        TestExtensionAtomNestedMessage nestedMessage =
+                TestExtensionAtomNestedMessage.newBuilder().addLongField(42L).build();
+        StatsdTestStatsLog.write(
+                StatsdTestStatsLog.TEST_EXTENSION_ATOM_REPORTED,
+                /* uid= */ new int[] {1000},
+                /* tag= */ new String[] {"tag"},
+                /* int_field= */ 1,
+                /* long_field= */ 2L,
+                /* float_field= */ 3.5f,
+                /* string_field= */ "abc",
+                /* boolean_field= */ true,
+                /* state */ StatsdTestStatsLog.TEST_ATOM_REPORTED__STATE__ON,
+                /* bytes_field= */ nestedMessage.toByteArray(),
+                /* repeated_int_field= */ new int[] {4, 5, 6},
+                /* repeated_long_field= */ new long[] {7L, 8L},
+                /* repeated_float_field= */ new float[] {9.5f, 10.5f},
+                /* repeated_string_field= */ new String[] {"str1", "str2"},
+                /* repeated_boolean_field= */ new boolean[] {true, false},
+                /* repeated_enum_field= */ new int[] {
+                    StatsdTestStatsLog.TEST_ATOM_REPORTED__STATE__OFF,
+                    StatsdTestStatsLog.TEST_ATOM_REPORTED__STATE__ON
+                },
+                /* linear_histogram= */ new int[0],
+                /* exponential_histogram= */ new int[0],
+                /* explicit_histogram= */ new int[0]);
+
+        verify(() -> StatsLog.write(mStatsEventCaptor.capture()));
+
+        ExtensionRegistryLite registry = ExtensionRegistryLite.newInstance();
+        registry.add(StatsdExtensionAtoms.testExtensionAtomReported);
+        Atom atom =
+                StatsEventTestUtils.convertToAtom(
+                        mStatsEventCaptor.getValue(), registry);
+
+        assertThat(atom).isNotNull();
+        assertThat(atom.hasExtension(StatsdExtensionAtoms.testExtensionAtomReported)).isTrue();
+
+        TestExtensionAtomReported tar =
+                atom.getExtension(StatsdExtensionAtoms.testExtensionAtomReported);
+        assertThat(tar.getAttributionNodeCount()).isEqualTo(1);
+        assertThat(tar.getAttributionNode(0).getUid()).isEqualTo(1000);
+        assertThat(tar.getAttributionNode(0).getTag()).isEqualTo("tag");
+        assertThat(tar.getIntField()).isEqualTo(1);
+        assertThat(tar.getLongField()).isEqualTo(2L);
+        assertThat(tar.getFloatField()).isEqualTo(3.5f);
+        assertThat(tar.getStringField()).isEqualTo("abc");
+        assertThat(tar.getBooleanField()).isEqualTo(true);
+        assertThat(tar.getState()).isEqualTo(TestExtensionAtomReported.State.ON);
+        assertThat(tar.getBytesField()).isEqualTo(nestedMessage);
+        assertThat(tar.getRepeatedIntFieldList()).containsExactly(4, 5, 6);
+        assertThat(tar.getRepeatedLongFieldList()).containsExactly(7L, 8L);
+        assertThat(tar.getRepeatedFloatFieldList()).containsExactly(9.5f, 10.5f);
+        assertThat(tar.getRepeatedStringFieldList()).containsExactly("str1", "str2");
+        assertThat(tar.getRepeatedBooleanFieldList()).containsExactly(true, false);
+        assertThat(tar.getRepeatedEnumFieldList())
+                .containsExactly(
+                        TestExtensionAtomReported.State.OFF, TestExtensionAtomReported.State.ON);
     }
 }

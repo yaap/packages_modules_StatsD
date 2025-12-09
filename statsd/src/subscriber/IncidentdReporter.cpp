@@ -31,6 +31,7 @@ namespace os {
 namespace statsd {
 
 using android::util::ProtoOutputStream;
+using std::string;
 using std::vector;
 
 using util::FIELD_TYPE_INT32;
@@ -77,7 +78,7 @@ void getProtoData(const int64_t& rule_id, int64_t metricId, const MetricDimensio
     // optional DimensionsValue dimension_in_what = 2;
     uint64_t dimToken =
             headerProto.start(FIELD_TYPE_MESSAGE | FIELD_ID_METRIC_VALUE_DIMENSION_IN_WHAT);
-    set<int32_t> usedUids;
+    std::set<int32_t> usedUids;
     writeDimensionToProto(dimensionKey.getDimensionKeyInWhat(), {}, nullptr, usedUids,
                           &headerProto);
     headerProto.end(dimToken);

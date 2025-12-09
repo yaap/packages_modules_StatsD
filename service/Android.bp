@@ -26,7 +26,7 @@ filegroup {
 java_library {
     name: "service-statsd",
     defaults: ["standalone-system-server-module-optimize-defaults"],
-    srcs: [ ":service-statsd-sources" ],
+    srcs: [":service-statsd-sources"],
     sdk_version: "system_server_current",
     libs: [
         "framework-annotations-lib",
@@ -39,7 +39,7 @@ java_library {
         "modules-utils-build",
     ],
     lint: {
-        strict_updatability_linting: true
+        strict_updatability_linting: true,
     },
     apex_available: ["com.android.os.statsd"],
     min_sdk_version: "30",

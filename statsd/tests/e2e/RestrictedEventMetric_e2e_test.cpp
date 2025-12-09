@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <android-base/stringprintf.h>
 #include <gtest/gtest.h>
 
 #include <vector>
 
-#include "android-base/stringprintf.h"
 #include "flags/FlagProvider.h"
 #include "src/StatsLogProcessor.h"
 #include "src/state/StateTracker.h"
@@ -31,6 +31,10 @@ namespace os {
 namespace statsd {
 
 using base::StringPrintf;
+using std::nullopt;
+using std::shared_ptr;
+using std::to_string;
+using std::vector;
 
 #ifdef __ANDROID__
 

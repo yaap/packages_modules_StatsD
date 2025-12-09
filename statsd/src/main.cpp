@@ -138,9 +138,6 @@ int main(int /*argc*/, char** /*argv*/) {
 
     gStatsService->Startup();
 
-    // Enable the filter now since configs are initialized.
-    logEventFilter->setFilteringEnabled(true);
-
     // Use self-pipe to notify this thread to gracefully quit
     // when receiving SIGTERM
     registerSignalHandlers();

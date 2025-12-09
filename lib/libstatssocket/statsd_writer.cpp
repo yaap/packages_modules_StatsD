@@ -22,7 +22,6 @@
 #include <poll.h>
 #include <private/android_logger.h>
 #include <stdarg.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +31,8 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "stats_event.h"
 #include "stats_socket_loss_reporter.h"
@@ -53,9 +54,9 @@
 #endif  // __BIONIC__
 
 static pthread_mutex_t log_init_lock = PTHREAD_MUTEX_INITIALIZER;
-static atomic_int dropped = 0;
-static atomic_int log_error = 0;
-static atomic_int atom_tag = 0;
+static std::atomic_int dropped = 0;
+static std::atomic_int log_error = 0;
+static std::atomic_int atom_tag = 0;
 
 void statsd_writer_init_lock() {
     /*
@@ -95,7 +96,7 @@ struct android_log_transport_write statsdLoggerWrite = {
 static int statsdOpen() {
     int i, ret = 0;
 
-    i = atomic_load(&statsdLoggerWrite.sock);
+    i = statsdLoggerWrite.sock.load();
     if (i < 0) {
         int flags = SOCK_DGRAM;
 #ifdef SOCK_CLOEXEC
@@ -125,14 +126,14 @@ static int statsdOpen() {
                     case -ENOTCONN:
                     case -ECONNREFUSED:
                     case -ENOENT:
-                        i = atomic_exchange(&statsdLoggerWrite.sock, ret);
+                        i = statsdLoggerWrite.sock.exchange(ret);
                         break;
                     default:
                         break;
                 }
                 close(sock);
             } else {
-                ret = atomic_exchange(&statsdLoggerWrite.sock, sock);
+                ret = statsdLoggerWrite.sock.exchange(sock);
                 if ((ret >= 0) && (ret != sock)) {
                     close(ret);
                 }
@@ -145,7 +146,7 @@ static int statsdOpen() {
 }
 
 static void __statsdClose(int negative_errno) {
-    int sock = atomic_exchange(&statsdLoggerWrite.sock, negative_errno);
+    int sock = statsdLoggerWrite.sock.exchange(negative_errno);
     if (sock >= 0) {
         close(sock);
     }
@@ -156,7 +157,7 @@ static void statsdClose() {
 }
 
 static int statsdAvailable() {
-    if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+    if (statsdLoggerWrite.sock.load() < 0) {
         if (access("/dev/socket/statsdw", W_OK) == 0) {
             return 0;
         }
@@ -166,15 +167,15 @@ static int statsdAvailable() {
 }
 
 static void statsdNoteDrop(int error, int tag) {
-    atomic_fetch_add_explicit(&dropped, 1, memory_order_relaxed);
-    atomic_exchange_explicit(&log_error, error, memory_order_relaxed);
-    atomic_exchange_explicit(&atom_tag, tag, memory_order_relaxed);
+    dropped.fetch_add(1, std::memory_order_relaxed);
+    log_error.exchange(error, std::memory_order_relaxed);
+    atom_tag.exchange(tag, std::memory_order_relaxed);
 
     StatsSocketLossReporter::getInstance().noteDrop(error, tag);
 }
 
 static int statsdIsClosed() {
-    if (atomic_load(&statsdLoggerWrite.sock) < 0) {
+    if (statsdLoggerWrite.sock.load() < 0) {
         return 1;
     }
     return 0;
@@ -188,7 +189,7 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
     android_log_header_t header;
     size_t i, payloadSize;
 
-    sock = atomic_load(&statsdLoggerWrite.sock);
+    sock = statsdLoggerWrite.sock.load();
     if (sock < 0) switch (sock) {
             case -ENOTCONN:
             case -ECONNREFUSED:
@@ -224,16 +225,16 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
 
     // If we dropped events before, try to tell statsd.
     if (sock >= 0) {
-        int32_t snapshot = atomic_exchange_explicit(&dropped, 0, memory_order_relaxed);
+        int32_t snapshot = dropped.exchange(0, std::memory_order_relaxed);
         if (snapshot) {
             android_log_event_long_t buffer;
             header.id = LOG_ID_STATS;
             // store the last log error in the tag field. This tag field is not used by statsd.
-            buffer.header.tag = atomic_load(&log_error);
+            buffer.header.tag = log_error.load();
             buffer.payload.type = EVENT_TYPE_LONG;
             // format:
             // |atom_tag|dropped_count|
-            int64_t composed_long = atomic_load(&atom_tag);
+            int64_t composed_long = atom_tag.load();
             // Send 2 int32's via an int64.
             composed_long = ((composed_long << 32) | ((int64_t)snapshot));
             buffer.payload.data = composed_long;
@@ -243,13 +244,11 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
 
             ret = TEMP_FAILURE_RETRY(writev(sock, newVec, 2));
             if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
-                atomic_fetch_add_explicit(&dropped, snapshot, memory_order_relaxed);
+                dropped.fetch_add(snapshot, std::memory_order_relaxed);
             } else {
                 // try to send socket loss info only when socket connection established
                 // and it is proved by previous write that socket is available
-                if (__builtin_available(android __ANDROID_API_T__, *)) {
-                    StatsSocketLossReporter::getInstance().dumpAtomsLossStats();
-                }
+                StatsSocketLossReporter::getInstance().dumpAtomsLossStats();
             }
         }
     }
@@ -301,7 +300,7 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
                 return ret;
             }
 
-            ret = TEMP_FAILURE_RETRY(writev(atomic_load(&statsdLoggerWrite.sock), newVec, i));
+            ret = TEMP_FAILURE_RETRY(writev(statsdLoggerWrite.sock.load(), newVec, i));
             if (ret < 0) {
                 ret = -errno;
             }

@@ -30,7 +30,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     std::shared_ptr<LogEventQueue> eventQueue =
             std::make_shared<LogEventQueue>(8000 /*buffer limit. Same as StatsD binary*/);
     sp<UidMap> uidMap = UidMap::getInstance();
-    shared_ptr<StatsService> binder =
+    std::shared_ptr<StatsService> binder =
             SharedRefBase::make<StatsService>(uidMap, eventQueue, logEventFilter);
     fuzzService(binder->asBinder().get(), FuzzedDataProvider(data, size));
     return 0;

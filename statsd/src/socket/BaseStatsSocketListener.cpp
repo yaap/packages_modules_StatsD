@@ -18,6 +18,7 @@
 
 #include "BaseStatsSocketListener.h"
 
+#include <android-base/scopeguard.h>
 #include <ctype.h>
 #include <cutils/sockets.h>
 #include <limits.h>
@@ -27,11 +28,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <thread>
 #include <unistd.h>
 
+#include <thread>
+
 #include "guardrail/StatsdStats.h"
-#include "android-base/scopeguard.h"
 #include "logd/logevent_util.h"
 #include "stats_log_util.h"
 #include "statslog_statsd.h"

@@ -20,7 +20,6 @@
 #include "StatsPuller.h"
 
 using aidl::android::os::IPullAtomCallback;
-using std::shared_ptr;
 
 namespace android {
 namespace os {
@@ -28,13 +27,13 @@ namespace statsd {
 
 class StatsCallbackPuller : public StatsPuller {
 public:
-    explicit StatsCallbackPuller(int tagId, const shared_ptr<IPullAtomCallback>& callback,
+    explicit StatsCallbackPuller(int tagId, const std::shared_ptr<IPullAtomCallback>& callback,
                                  const int64_t coolDownNs, int64_t timeoutNs,
                                  const std::vector<int>& additiveFields);
 
 private:
-    PullErrorCode PullInternal(vector<std::shared_ptr<LogEvent>>* data) override;
-    const shared_ptr<IPullAtomCallback> mCallback;
+    PullErrorCode PullInternal(std::vector<std::shared_ptr<LogEvent>>* data) override;
+    const std::shared_ptr<IPullAtomCallback> mCallback;
 
     FRIEND_TEST(StatsCallbackPullerTest, PullFail);
     FRIEND_TEST(StatsCallbackPullerTest, PullSuccess);

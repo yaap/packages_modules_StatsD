@@ -14,12 +14,12 @@
 
 #include "src/storage/StorageManager.h"
 
+#include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <stdio.h>
 
-#include "android-base/stringprintf.h"
 #include "stats_log_util.h"
 #include "tests/statsd_test_util.h"
 #include "utils/DbUtils.h"
@@ -34,8 +34,8 @@ using namespace testing;
 
 using std::make_shared;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::vector;
-using testing::Contains;
 
 TEST(StorageManagerTest, TrainInfoReadWriteTest) {
     InstallTrainInfo trainInfo;

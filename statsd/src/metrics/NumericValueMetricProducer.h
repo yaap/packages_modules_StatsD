@@ -46,7 +46,7 @@ public:
 
     // Determine if metric needs to pull
     bool isPullNeeded() const override {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         return mIsActive && (mCondition == ConditionState::kTrue);
     }
 
@@ -58,10 +58,10 @@ protected:
 private:
     void prepareFirstBucketLocked() override;
 
-    inline optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
-                                                     const int configIndex) const override {
+    inline std::optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
+                                                          const int configIndex) const override {
         const ValueMetric& metric = config.value_metric(configIndex);
-        return metric.has_condition() ? make_optional(metric.condition()) : nullopt;
+        return metric.has_condition() ? std::make_optional(metric.condition()) : std::nullopt;
     }
 
     inline int64_t getWhatAtomMatcherIdForMetric(const StatsdConfig& config,
@@ -121,7 +121,7 @@ private:
 
     inline bool canSkipLogEventLocked(
             const MetricDimensionKey& eventKey, const bool condition, int64_t eventTimeNs,
-            const map<int, HashableDimensionKey>& statePrimaryKeys) const override {
+            const std::map<int, HashableDimensionKey>& statePrimaryKeys) const override {
         // For pushed metrics, can only skip if condition is false.
         // For pulled metrics, can only skip if metric is not diffed and condition is false or
         // unknown.
@@ -144,7 +144,8 @@ private:
     // Internal function to calculate the current used bytes.
     size_t byteSizeLocked() const override;
 
-    void combineValueFields(pair<LogEvent, std::vector<int>>& eventValues, const LogEvent& newEvent,
+    void combineValueFields(std::pair<LogEvent, std::vector<int>>& eventValues,
+                            const LogEvent& newEvent,
                             const std::vector<int>& newValueIndices) const;
 
     ValueMetric::AggregationType getAggregationTypeLocked(int index) const {
@@ -156,7 +157,8 @@ private:
 
     size_t getAggregatedValueSize(const NumericValue& value) const override;
 
-    bool hasAvgAggregationType(const vector<ValueMetric::AggregationType> aggregationTypes) const {
+    bool hasAvgAggregationType(
+            const std::vector<ValueMetric::AggregationType>& aggregationTypes) const {
         for (const int aggType : aggregationTypes) {
             if (aggType == ValueMetric_AggregationType_AVG) {
                 return true;
@@ -201,7 +203,7 @@ private:
     const std::vector<Matcher> mDedupedFieldMatchers;
 
     // For anomaly detection.
-    std::unordered_map<MetricDimensionKey, int64_t> mCurrentFullBucket;
+    std::unordered_map<MetricDimensionKey, double> mCurrentFullBucket;
 
     const std::vector<std::optional<const BinStarts>> mBinStartsList;
 

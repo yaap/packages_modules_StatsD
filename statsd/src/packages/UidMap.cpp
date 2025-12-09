@@ -25,6 +25,10 @@
 #include "hash.h"
 #include "stats_log_util.h"
 
+namespace android {
+namespace os {
+namespace statsd {
+
 using namespace android;
 
 using android::util::FIELD_COUNT_REPEATED;
@@ -39,9 +43,10 @@ using android::util::FIELD_TYPE_UINT32;
 using android::util::FIELD_TYPE_UINT64;
 using android::util::ProtoOutputStream;
 
-namespace android {
-namespace os {
-namespace statsd {
+using std::map;
+using std::set;
+using std::string;
+using std::vector;
 
 namespace {
 
@@ -101,7 +106,7 @@ sp<UidMap> UidMap::getInstance() {
 }
 
 bool UidMap::hasApp(int uid, const string& packageName) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     auto it = mMap.find(std::make_pair(uid, packageName));
     return it != mMap.end() && !it->second.deleted;
@@ -114,7 +119,7 @@ string UidMap::normalizeAppName(const string& appName) const {
 }
 
 std::set<string> UidMap::getAppNamesFromUid(const int32_t uid, bool returnNormalized) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     return getAppNamesFromUidLocked(uid,returnNormalized);
 }
 
@@ -129,7 +134,7 @@ std::set<string> UidMap::getAppNamesFromUidLocked(const int32_t uid, bool return
 }
 
 int64_t UidMap::getAppVersion(int uid, const string& packageName) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     auto it = mMap.find(std::make_pair(uid, packageName));
     if (it == mMap.end() || it->second.deleted) {
@@ -141,7 +146,7 @@ int64_t UidMap::getAppVersion(int uid, const string& packageName) const {
 void UidMap::updateMap(const int64_t timestamp, const UidData& uidData) {
     wp<PackageInfoListener> broadcast = NULL;
     {
-        lock_guard<mutex> lock(mMutex);  // Exclusively lock for updates.
+        std::lock_guard lock(mMutex);  // Exclusively lock for updates.
 
         std::unordered_map<std::pair<int, string>, AppData, PairHash> deletedApps;
 
@@ -188,7 +193,7 @@ void UidMap::updateApp(const int64_t timestamp, const string& appName, const int
 
     const string certificateHashString = string(certificateHash.begin(), certificateHash.end());
     {
-        lock_guard<mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         int32_t prevVersion = 0;
         string prevVersionString = "";
         auto key = std::make_pair(uid, appName);
@@ -246,7 +251,7 @@ void UidMap::ensureBytesUsedBelowLimit() {
 void UidMap::removeApp(const int64_t timestamp, const string& app, const int32_t uid) {
     wp<PackageInfoListener> broadcast = NULL;
     {
-        lock_guard<mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         int64_t prevVersion = 0;
         string prevVersionString = "";
@@ -280,18 +285,18 @@ void UidMap::removeApp(const int64_t timestamp, const string& app, const int32_t
 }
 
 void UidMap::setListener(const wp<PackageInfoListener>& listener) {
-    lock_guard<mutex> lock(mMutex);  // Lock for updates
+    std::lock_guard lock(mMutex);  // Lock for updates
     mSubscriber = listener;
 }
 
 void UidMap::assignIsolatedUid(int isolatedUid, int parentUid) {
-    lock_guard<mutex> lock(mIsolatedMutex);
+    std::lock_guard lock(mIsolatedMutex);
 
     mIsolatedUidMap[isolatedUid] = parentUid;
 }
 
 void UidMap::removeIsolatedUid(int isolatedUid) {
-    lock_guard<mutex> lock(mIsolatedMutex);
+    std::lock_guard lock(mIsolatedMutex);
 
     auto it = mIsolatedUidMap.find(isolatedUid);
     if (it != mIsolatedUidMap.end()) {
@@ -300,7 +305,7 @@ void UidMap::removeIsolatedUid(int isolatedUid) {
 }
 
 int UidMap::getHostUidOrSelf(int uid) const {
-    lock_guard<mutex> lock(mIsolatedMutex);
+    std::lock_guard lock(mIsolatedMutex);
 
     auto it = mIsolatedUidMap.find(uid);
     if (it != mIsolatedUidMap.end()) {
@@ -337,7 +342,7 @@ void UidMap::writeUidMapSnapshot(int64_t timestamp, const UidMapOptions& options
                                  const std::set<int32_t>& interestingUids,
                                  map<string, int>* installerIndices, std::set<string>* str_set,
                                  ProtoOutputStream* proto) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     writeUidMapSnapshotLocked(timestamp, options, interestingUids, installerIndices, str_set,
                               proto);
@@ -429,7 +434,7 @@ void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOpti
 void UidMap::appendUidMap(const int64_t timestamp, const ConfigKey& key,
                           const UidMapOptions& options, std::set<string>* str_set,
                           ProtoOutputStream* proto) {
-    lock_guard<mutex> lock(mMutex);  // Lock for updates
+    std::lock_guard lock(mMutex);  // Lock for updates
 
     for (const ChangeRecord& record : mChanges) {
         if (omitUid(record.uid, record.package, options) ||
@@ -520,7 +525,7 @@ void UidMap::appendUidMap(const int64_t timestamp, const ConfigKey& key,
 }
 
 void UidMap::printUidMap(int out, bool includeCertificateHash) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     for (const auto& [keyPair, appData] : mMap) {
         const auto& [uid, packageName] = keyPair;
@@ -548,7 +553,7 @@ void UidMap::OnConfigRemoved(const ConfigKey& key) {
 }
 
 set<int32_t> UidMap::getAppUid(const string& package) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     set<int32_t> results;
     for (const auto& kv : mMap) {

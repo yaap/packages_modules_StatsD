@@ -20,16 +20,11 @@ namespace android {
 namespace os {
 namespace statsd {
 
-ConfigKey::ConfigKey() {
-}
-
+using std::string;
 ConfigKey::ConfigKey(const ConfigKey& that) : mId(that.mId), mUid(that.mUid) {
 }
 
 ConfigKey::ConfigKey(int uid, const int64_t id) : mId(id), mUid(uid) {
-}
-
-ConfigKey::~ConfigKey() {
 }
 
 string ConfigKey::ToString() const {

@@ -225,12 +225,14 @@ TYPE_PRINTER(WakelockStateChanged,
 EQ_MATCHER(Atom,
         PROPERTY_MATCHER(Atom, screen_state_changed, EqScreenStateChanged),
         PROPERTY_MATCHER(Atom, test_atom_reported, EqTestAtomReported),
-        PROPERTY_MATCHER(Atom, wakelock_state_changed, EqWakelockStateChanged)
+        PROPERTY_MATCHER(Atom, wakelock_state_changed, EqWakelockStateChanged),
+        PROPERTY_MATCHER(Atom, cpu_active_time, EqCpuActiveTime)
 );
 TYPE_PRINTER(Atom,
         PROPERTY_PRINT(screen_state_changed)
         PROPERTY_PRINT(test_atom_reported)
         PROPERTY_PRINT(wakelock_state_changed)
+        PROPERTY_PRINT(cpu_active_time)
 );
 
 EQ_MATCHER(ShellData,

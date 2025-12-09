@@ -25,6 +25,7 @@
 #include "external/StatsPullerManager.h"
 #include "packages/UidMap.h"
 #include "shell/ShellSubscriberClient.h"
+#include "socket/AtomsInUseChangeListener.h"
 #include "src/shell/shell_config.pb.h"
 #include "src/statsd_config.pb.h"
 
@@ -57,8 +58,10 @@ namespace statsd {
 class ShellSubscriber : public virtual RefBase {
 public:
     ShellSubscriber(const sp<UidMap>& uidMap, const sp<StatsPullerManager>& pullerMgr,
-                    const std::shared_ptr<LogEventFilter>& logEventFilter)
-        : mUidMap(uidMap), mPullerMgr(pullerMgr), mLogEventFilter(logEventFilter){};
+                    const std::shared_ptr<AtomsInUseChangeListener>& atomsInUseChangeListener)
+        : mUidMap(uidMap),
+          mPullerMgr(pullerMgr),
+          mAtomsInUseChangeListener(atomsInUseChangeListener) {};
 
     ~ShellSubscriber();
 
@@ -67,15 +70,16 @@ public:
 
     // Create new ShellSubscriberClient with Binder callback to manage a new subscription.
     bool startNewSubscription(
-            const vector<uint8_t>& subscriptionConfig,
-            const shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
+            const std::vector<uint8_t>& subscriptionConfig,
+            const std::shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
 
     void onLogEvent(const LogEvent& event);
 
     void flushSubscription(
-            const shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
+            const std::shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
 
-    void unsubscribe(const shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
+    void unsubscribe(
+            const std::shared_ptr<aidl::android::os::IStatsSubscriptionCallback>& callback);
 
     static size_t getMaxSizeKb() {
         return ShellSubscriberClient::getMaxSizeKb();
@@ -86,25 +90,28 @@ public:
     }
 
 private:
-    bool startNewSubscriptionLocked(unique_ptr<ShellSubscriberClient> client);
+    bool startNewSubscriptionLocked(std::unique_ptr<ShellSubscriberClient> client);
 
     void pullAndSendHeartbeats();
 
     /* Tells LogEventFilter about atom ids to parse */
-    void updateLogEventFilterLocked() const;
+    void updateAtomIdsInUseLocked() const;
 
     sp<UidMap> mUidMap;
 
     sp<StatsPullerManager> mPullerMgr;
 
-    std::shared_ptr<LogEventFilter> mLogEventFilter;
+    const std::shared_ptr<AtomsInUseChangeListener> mAtomsInUseChangeListener;
 
-    // Protects mClientSet, mThreadAlive, and ShellSubscriberClient
+    // Protects mClientSet, mThreadAlive, mShouldWakeupThread, and ShellSubscriberClient
     mutable std::mutex mMutex;
 
-    std::set<unique_ptr<ShellSubscriberClient>> mClientSet;
+    std::set<std::unique_ptr<ShellSubscriberClient>> mClientSet;
 
     bool mThreadAlive = false;
+
+    // Used to force wakeup of pullAndSendHeartbeats() thread.
+    bool mShouldWakeupThread = false;
 
     std::condition_variable mThreadSleepCV;
 

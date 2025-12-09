@@ -117,13 +117,13 @@ public:
     // Flush stale buckets if needed, and return true if the tracker has no on-going duration
     // events, so that the owner can safely remove the tracker.
     virtual bool flushIfNeeded(
-            int64_t timestampNs, const optional<UploadThreshold>& uploadThreshold,
+            int64_t timestampNs, const std::optional<UploadThreshold>& uploadThreshold,
             std::unordered_map<MetricDimensionKey, std::vector<DurationBucket>>* output) = 0;
 
     // Should only be called during an app upgrade or from this tracker's flushIfNeeded. If from
     // an app upgrade, we assume that we're trying to form a partial bucket.
     virtual bool flushCurrentBucket(
-            int64_t eventTimeNs, const optional<UploadThreshold>& uploadThreshold,
+            int64_t eventTimeNs, const std::optional<UploadThreshold>& uploadThreshold,
             const int64_t globalConditionTrueNs,
             std::unordered_map<MetricDimensionKey, std::vector<DurationBucket>>* output) = 0;
 
@@ -209,13 +209,13 @@ protected:
         }
     }
 
-    bool durationPassesThreshold(const optional<UploadThreshold>& uploadThreshold,
+    bool durationPassesThreshold(const std::optional<UploadThreshold>& uploadThreshold,
                                  int64_t duration) {
         if (duration <= 0) {
             return false;
         }
 
-        if (uploadThreshold == nullopt) {
+        if (uploadThreshold == std::nullopt) {
             return true;
         }
 

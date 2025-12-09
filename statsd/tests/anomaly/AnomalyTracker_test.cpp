@@ -27,6 +27,7 @@ using namespace testing;
 using android::sp;
 using ::ndk::SharedRefBase;
 using std::set;
+using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 

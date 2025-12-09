@@ -44,7 +44,7 @@ public:
 
     void informAlarmsFired(
             int64_t timestampNs,
-            unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& firedAlarms);
+            std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& firedAlarms);
 
 protected:
     // For test only. Returns the alarm timestamp in seconds. Otherwise returns 0.

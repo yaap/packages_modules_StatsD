@@ -20,12 +20,14 @@
 #include "StatsLogProcessor.h"
 
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 #include <cutils/multiuser.h>
 #include <src/active_config_list.pb.h>
 #include <src/experiment_ids.pb.h>
 
+#include <random>
+
 #include "StatsService.h"
-#include "android-base/stringprintf.h"
 #include "external/StatsPullerManager.h"
 #include "flags/FlagProvider.h"
 #include "guardrail/StatsdStats.h"
@@ -48,6 +50,10 @@ using android::util::FIELD_TYPE_INT64;
 using android::util::FIELD_TYPE_MESSAGE;
 using android::util::FIELD_TYPE_STRING;
 using android::util::ProtoOutputStream;
+using std::optional;
+using std::set;
+using std::shared_ptr;
+using std::unordered_set;
 using std::vector;
 
 namespace android {
@@ -101,6 +107,12 @@ const char* getOnLogEventCallName(int32_t tagId) {
     return name.c_str();
 }
 
+int generate_rand_int() {
+    thread_local std::mt19937 engine(std::random_device{}());
+    thread_local std::uniform_int_distribution<int> dist;
+    return dist(engine);
+}
+
 }  // namespace
 
 StatsLogProcessor::StatsLogProcessor(
@@ -110,7 +122,7 @@ StatsLogProcessor::StatsLogProcessor(
         const std::function<bool(const int&, const vector<int64_t>&)>& activateBroadcast,
         const std::function<void(const ConfigKey&, const string&, const vector<int64_t>&)>&
                 sendRestrictedMetricsBroadcast,
-        const std::shared_ptr<LogEventFilter>& logEventFilter)
+        const std::shared_ptr<AtomsInUseChangeListener>& atomsInUseChangeListener)
     : mLastTtlTime(0),
       mLastFlushRestrictedTime(0),
       mLastDbGuardrailEnforcementTime(0),
@@ -118,7 +130,7 @@ StatsLogProcessor::StatsLogProcessor(
       mPullerManager(pullerManager),
       mAnomalyAlarmMonitor(anomalyAlarmMonitor),
       mPeriodicAlarmMonitor(periodicAlarmMonitor),
-      mLogEventFilter(logEventFilter),
+      mAtomsInUseChangeListener(atomsInUseChangeListener),
       mSendBroadcast(sendBroadcast),
       mSendActivationBroadcast(activateBroadcast),
       mSendRestrictedMetricsBroadcast(sendRestrictedMetricsBroadcast),
@@ -128,7 +140,7 @@ StatsLogProcessor::StatsLogProcessor(
     mPullerManager->ForceClearPullerCache();
     StateManager::getInstance().updateLogSources(uidMap);
     // It is safe called locked version at constructor - no concurrent access possible
-    updateLogEventFilterLocked();
+    updateAtomIdsInUseLocked();
 }
 
 StatsLogProcessor::~StatsLogProcessor() {
@@ -157,7 +169,7 @@ void StatsLogProcessor::processFiredAnomalyAlarmsLocked(
 void StatsLogProcessor::onPeriodicAlarmFired(
         const int64_t timestampNs,
         unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     for (const auto& itr : mMetricsManagers) {
         itr.second->onPeriodicAlarmFired(timestampNs, alarmSet);
     }
@@ -213,8 +225,7 @@ void StatsLogProcessor::onBinaryPushStateChangedEventLocked(LogEvent* event) {
     trainInfo.requiresLowLatencyMonitor =
             event->GetBool(5 /*requires low latency monitor field id*/, &err);
     trainInfo.status = int32_t(event->GetLong(6 /*state field id*/, &err));
-    std::vector<uint8_t> trainExperimentIdBytes =
-            event->GetStorage(7 /*experiment ids field id*/, &err);
+    vector<uint8_t> trainExperimentIdBytes = event->GetStorage(7 /*experiment ids field id*/, &err);
     bool is_rollback = event->GetBool(10 /*is rollback field id*/, &err);
 
     if (err != NO_ERROR) {
@@ -239,7 +250,7 @@ void StatsLogProcessor::onBinaryPushStateChangedEventLocked(LogEvent* event) {
     VLOG("trainInfo.experimentIds after update %s",
          InstallTrainInfo::experimentIdsToString(trainInfo.experimentIds).c_str());
 
-    std::vector<uint8_t> trainExperimentIdProto;
+    vector<uint8_t> trainExperimentIdProto;
     writeExperimentIdsToProto(trainInfo.experimentIds, &trainExperimentIdProto);
     int32_t userId = multiuser_get_user_id(uid);
 
@@ -395,12 +406,12 @@ vector<int64_t> StatsLogProcessor::processWatchdogRollbackOccurred(const int32_t
 }
 
 void StatsLogProcessor::resetConfigs() {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     resetConfigsLocked(getElapsedRealtimeNs());
 }
 
 void StatsLogProcessor::resetConfigsLocked(const int64_t timestampNs) {
-    std::vector<ConfigKey> configKeys;
+    vector<ConfigKey> configKeys;
     for (auto it = mMetricsManagers.begin(); it != mMetricsManagers.end(); it++) {
         configKeys.push_back(it->first);
     }
@@ -408,8 +419,11 @@ void StatsLogProcessor::resetConfigsLocked(const int64_t timestampNs) {
 }
 
 void StatsLogProcessor::OnLogEvent(LogEvent* event) {
-    ATRACE_NAME(getOnLogEventCallName(event->GetTagId()));
+    const char* name = getOnLogEventCallName(event->GetTagId());
+    const int cookie = generate_rand_int();
+    ATRACE_ASYNC_BEGIN(name, cookie);
     OnLogEvent(event, getElapsedRealtimeNs());
+    ATRACE_ASYNC_END(name, cookie);
 }
 
 void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
@@ -421,7 +435,7 @@ void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
 
     // Hard-coded logic to update train info on disk and fill in any information
     // this log event may be missing.
@@ -457,7 +471,7 @@ void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
 
     bool fireAlarm = false;
     {
-        std::lock_guard<std::mutex> anomalyLock(mAnomalyAlarmMutex);
+        std::lock_guard anomalyLock(mAnomalyAlarmMutex);
         if (mNextAnomalyAlarmTime != 0 &&
             MillisToNano(mNextAnomalyAlarmTime) <= elapsedRealtimeNs) {
             mNextAnomalyAlarmTime = 0;
@@ -484,7 +498,7 @@ void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
     }
 
     std::unordered_set<int> uidsWithActiveConfigsChanged;
-    std::unordered_map<int, std::vector<int64_t>> activeConfigsPerUid;
+    std::unordered_map<int, vector<int64_t>> activeConfigsPerUid;
 
     // pass the event to metrics managers.
     for (auto& pair : mMetricsManagers) {
@@ -535,7 +549,7 @@ void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
                 mLastActivationBroadcastTimes[uid] = elapsedRealtimeNs;
             }
         } else {
-            std::vector<int64_t> emptyActiveConfigs;
+            vector<int64_t> emptyActiveConfigs;
             if (mSendActivationBroadcast(uid, emptyActiveConfigs)) {
                 ALOGI("StatsD sent EMPTY activation notice for uid %d", uid);
                 mLastActivationBroadcastTimes[uid] = elapsedRealtimeNs;
@@ -545,7 +559,7 @@ void StatsLogProcessor::OnLogEvent(LogEvent* event, int64_t elapsedRealtimeNs) {
 }
 
 void StatsLogProcessor::GetActiveConfigs(const int uid, vector<int64_t>& outActiveConfigs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     GetActiveConfigsLocked(uid, outActiveConfigs);
 }
 
@@ -561,7 +575,7 @@ void StatsLogProcessor::GetActiveConfigsLocked(const int uid, vector<int64_t>& o
 void StatsLogProcessor::OnConfigUpdated(const int64_t timestampNs, const int64_t wallClockNs,
                                         const ConfigKey& key, const StatsdConfig& config,
                                         bool modularUpdate) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     WriteDataToDiskLocked(key, timestampNs, wallClockNs, CONFIG_UPDATED, NO_TIME_CONSTRAINTS);
     OnConfigUpdatedLocked(timestampNs, key, config, modularUpdate);
 }
@@ -649,11 +663,11 @@ void StatsLogProcessor::OnConfigUpdatedLocked(const int64_t timestampNs, const C
         mUidMap->OnConfigRemoved(key);
     }
 
-    updateLogEventFilterLocked();
+    updateAtomIdsInUseLocked();
 }
 
 size_t StatsLogProcessor::GetMetricsSize(const ConfigKey& key) const {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     auto it = mMetricsManagers.find(key);
     if (it == mMetricsManagers.end()) {
         ALOGW("Config source %s does not exist", key.ToString().c_str());
@@ -663,7 +677,7 @@ size_t StatsLogProcessor::GetMetricsSize(const ConfigKey& key) const {
 }
 
 void StatsLogProcessor::dumpStates(int out, bool verbose) const {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     dprintf(out, "MetricsManager count: %lu\n", (unsigned long)mMetricsManagers.size());
     for (const auto& metricsManager : mMetricsManagers) {
         metricsManager.second->dumpStates(out, verbose);
@@ -678,7 +692,7 @@ void StatsLogProcessor::onDumpReport(const ConfigKey& key, const int64_t dumpTim
                                      const bool include_current_partial_bucket,
                                      const bool erase_data, const DumpReportReason dumpReportReason,
                                      const DumpLatency dumpLatency, ProtoOutputStream* proto) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
 
     auto it = mMetricsManagers.find(key);
     if (it != mMetricsManagers.end() && it->second->hasRestrictedMetricsDelegate()) {
@@ -851,7 +865,7 @@ void StatsLogProcessor::onConfigMetricsReportLocked(
 }
 
 void StatsLogProcessor::resetConfigsLocked(const int64_t timestampNs,
-                                           const std::vector<ConfigKey>& configs) {
+                                           const vector<ConfigKey>& configs) {
     for (const auto& key : configs) {
         StatsdConfig config;
         if (StorageManager::readConfigFromDisk(key, &config)) {
@@ -869,7 +883,7 @@ void StatsLogProcessor::resetConfigsLocked(const int64_t timestampNs,
 }
 
 void StatsLogProcessor::resetIfConfigTtlExpiredLocked(const int64_t eventTimeNs) {
-    std::vector<ConfigKey> configKeysTtlExpired;
+    vector<ConfigKey> configKeysTtlExpired;
     for (auto it = mMetricsManagers.begin(); it != mMetricsManagers.end(); it++) {
         if (it->second != nullptr && !it->second->isInTtl(eventTimeNs)) {
             configKeysTtlExpired.push_back(it->first);
@@ -883,7 +897,7 @@ void StatsLogProcessor::resetIfConfigTtlExpiredLocked(const int64_t eventTimeNs)
 }
 
 void StatsLogProcessor::OnConfigRemoved(const ConfigKey& key) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     auto it = mMetricsManagers.find(key);
     if (it != mMetricsManagers.end()) {
         WriteDataToDiskLocked(key, getElapsedRealtimeNs(), getWallClockNs(), CONFIG_REMOVED,
@@ -918,7 +932,7 @@ void StatsLogProcessor::OnConfigRemoved(const ConfigKey& key) {
         mPullerManager->ForceClearPullerCache();
     }
 
-    updateLogEventFilterLocked();
+    updateAtomIdsInUseLocked();
 }
 
 // TODO(b/267501143): Add unit tests when metric producer is ready
@@ -948,7 +962,7 @@ void StatsLogProcessor::querySql(const string& sqlQuery, const int32_t minSqlCli
                                  const shared_ptr<IStatsQueryCallback>& callback,
                                  const int64_t configId, const string& configPackage,
                                  const int32_t callingUid) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     string err = "";
 
     if (!isAtLeastU()) {
@@ -1005,9 +1019,9 @@ void StatsLogProcessor::querySql(const string& sqlQuery, const int32_t minSqlCli
     flushRestrictedDataLocked(elapsedRealtimeNs);
     enforceDataTtlsLocked(getWallClockNs(), elapsedRealtimeNs);
 
-    std::vector<std::vector<std::string>> rows;
-    std::vector<int32_t> columnTypes;
-    std::vector<string> columnNames;
+    vector<vector<std::string>> rows;
+    vector<int32_t> columnTypes;
+    vector<string> columnNames;
     if (!dbutils::query(*(keysToQuery.begin()), sqlQuery, rows, columnTypes, columnNames, err)) {
         callback->sendFailure(StringPrintf("failed to query db %s:", err.c_str()));
         StatsdStats::getInstance().noteQueryRestrictedMetricFailed(
@@ -1080,7 +1094,7 @@ void StatsLogProcessor::EnforceDataTtls(const int64_t wallClockNs,
     if (!isAtLeastU()) {
         return;
     }
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     enforceDataTtlsLocked(wallClockNs, elapsedRealtimeNs);
 }
 
@@ -1105,7 +1119,7 @@ void StatsLogProcessor::enforceDbGuardrailsIfNecessaryLocked(const int64_t wallC
 
 void StatsLogProcessor::fillRestrictedMetrics(const int64_t configId, const string& configPackage,
                                               const int32_t delegateUid, vector<int64_t>* output) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
 
     set<int32_t> configPackageUids;
     const auto& uidMapItr = UidMap::sAidToUidMapping.find(configPackage);
@@ -1217,7 +1231,7 @@ void StatsLogProcessor::WriteDataToDiskLocked(const ConfigKey& key, const int64_
 }
 
 void StatsLogProcessor::SaveActiveConfigsToDisk(int64_t currentTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     const int64_t timeNs = getElapsedRealtimeNs();
     // Do not write to disk if we already have in the last few seconds.
     if (static_cast<unsigned long long> (timeNs) <
@@ -1244,7 +1258,7 @@ void StatsLogProcessor::SaveActiveConfigsToDisk(int64_t currentTimeNs) {
 
 void StatsLogProcessor::SaveMetadataToDisk(int64_t currentWallClockTimeNs,
                                            int64_t systemElapsedTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     // Do not write to disk if we already have in the last few seconds.
     if (static_cast<unsigned long long> (systemElapsedTimeNs) <
             mLastMetadataWriteNs + WRITE_DATA_COOL_DOWN_SEC * NS_PER_SEC) {
@@ -1274,7 +1288,7 @@ void StatsLogProcessor::SaveMetadataToDisk(int64_t currentWallClockTimeNs,
 void StatsLogProcessor::WriteMetadataToProto(int64_t currentWallClockTimeNs,
                                              int64_t systemElapsedTimeNs,
                                              metadata::StatsMetadataList* metadataList) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     WriteMetadataToProtoLocked(currentWallClockTimeNs, systemElapsedTimeNs, metadataList);
 }
 
@@ -1294,7 +1308,7 @@ void StatsLogProcessor::WriteMetadataToProtoLocked(int64_t currentWallClockTimeN
 
 void StatsLogProcessor::LoadMetadataFromDisk(int64_t currentWallClockTimeNs,
                                              int64_t systemElapsedTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     string file_name = StringPrintf("%s/metadata", STATS_METADATA_DIR);
     int fd = open(file_name.c_str(), O_RDONLY | O_CLOEXEC);
     if (-1 == fd) {
@@ -1325,7 +1339,7 @@ void StatsLogProcessor::LoadMetadataFromDisk(int64_t currentWallClockTimeNs,
 void StatsLogProcessor::SetMetadataState(const metadata::StatsMetadataList& statsMetadataList,
                                          int64_t currentWallClockTimeNs,
                                          int64_t systemElapsedTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     SetMetadataStateLocked(statsMetadataList, currentWallClockTimeNs, systemElapsedTimeNs);
 }
 
@@ -1348,7 +1362,7 @@ void StatsLogProcessor::SetMetadataStateLocked(
 
 void StatsLogProcessor::WriteActiveConfigsToProtoOutputStream(
         int64_t currentTimeNs, const DumpReportReason reason, ProtoOutputStream* proto) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     WriteActiveConfigsToProtoOutputStreamLocked(currentTimeNs, reason, proto);
 }
 
@@ -1363,7 +1377,7 @@ void StatsLogProcessor::WriteActiveConfigsToProtoOutputStreamLocked(
     }
 }
 void StatsLogProcessor::LoadActiveConfigsFromDisk() {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     string file_name = StringPrintf("%s/active_metrics", STATS_ACTIVE_METRIC_DIR);
     int fd = open(file_name.c_str(), O_RDONLY | O_CLOEXEC);
     if (-1 == fd) {
@@ -1394,7 +1408,7 @@ void StatsLogProcessor::LoadActiveConfigsFromDisk() {
 
 void StatsLogProcessor::SetConfigsActiveState(const ActiveConfigList& activeConfigList,
                                                     int64_t currentTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     SetConfigsActiveStateLocked(activeConfigList, currentTimeNs);
 }
 
@@ -1438,12 +1452,12 @@ void StatsLogProcessor::WriteDataToDisk(const DumpReportReason dumpReportReason,
                                         const DumpLatency dumpLatency,
                                         const int64_t elapsedRealtimeNs,
                                         const int64_t wallClockNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     WriteDataToDiskLocked(dumpReportReason, dumpLatency, elapsedRealtimeNs, wallClockNs);
 }
 
 void StatsLogProcessor::informPullAlarmFired(const int64_t timestampNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     mPullerManager->OnAlarmFired(timestampNs);
 }
 
@@ -1458,7 +1472,7 @@ int64_t StatsLogProcessor::getLastReportTimeNs(const ConfigKey& key) {
 
 void StatsLogProcessor::notifyAppUpgrade(const int64_t eventTimeNs, const string& apk,
                                          const int uid, const int64_t version) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     VLOG("Received app upgrade");
     StateManager::getInstance().notifyAppChanged(apk, mUidMap);
     for (const auto& it : mMetricsManagers) {
@@ -1468,7 +1482,7 @@ void StatsLogProcessor::notifyAppUpgrade(const int64_t eventTimeNs, const string
 
 void StatsLogProcessor::notifyAppRemoved(const int64_t eventTimeNs, const string& apk,
                                          const int uid) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     VLOG("Received app removed");
     StateManager::getInstance().notifyAppChanged(apk, mUidMap);
     for (const auto& it : mMetricsManagers) {
@@ -1477,7 +1491,7 @@ void StatsLogProcessor::notifyAppRemoved(const int64_t eventTimeNs, const string
 }
 
 void StatsLogProcessor::onUidMapReceived(const int64_t eventTimeNs) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     VLOG("Received uid map");
     StateManager::getInstance().updateLogSources(mUidMap);
     for (const auto& it : mMetricsManagers) {
@@ -1487,7 +1501,7 @@ void StatsLogProcessor::onUidMapReceived(const int64_t eventTimeNs) {
 
 void StatsLogProcessor::onStatsdInitCompleted(const int64_t elapsedTimeNs) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     VLOG("Received boot completed signal");
     for (const auto& it : mMetricsManagers) {
         it.second->onStatsdInitCompleted(elapsedTimeNs);
@@ -1495,17 +1509,17 @@ void StatsLogProcessor::onStatsdInitCompleted(const int64_t elapsedTimeNs) {
 }
 
 void StatsLogProcessor::noteOnDiskData(const ConfigKey& key) {
-    std::lock_guard<std::mutex> lock(mMetricsMutex);
+    std::lock_guard lock(mMetricsMutex);
     mOnDiskDataConfigs.insert(key);
 }
 
 void StatsLogProcessor::setAnomalyAlarm(const int64_t elapsedTimeMillis) {
-    std::lock_guard<std::mutex> lock(mAnomalyAlarmMutex);
+    std::lock_guard lock(mAnomalyAlarmMutex);
     mNextAnomalyAlarmTime = elapsedTimeMillis;
 }
 
 void StatsLogProcessor::cancelAnomalyAlarm() {
-    std::lock_guard<std::mutex> lock(mAnomalyAlarmMutex);
+    std::lock_guard lock(mAnomalyAlarmMutex);
     mNextAnomalyAlarmTime = 0;
 }
 
@@ -1521,31 +1535,30 @@ void StatsLogProcessor::informAnomalyAlarmFiredLocked(const int64_t elapsedTimeM
     }
 }
 
-LogEventFilter::AtomIdSet StatsLogProcessor::getDefaultAtomIdSet() {
+AtomsInUseChangeListener::AtomIdSet StatsLogProcessor::getDefaultAtomIdSet() {
     // populate hard-coded list of useful atoms
     // we add also atoms which could be pushed by statsd itself to simplify the logic
     // to handle metric configs update: APP_BREADCRUMB_REPORTED & ANOMALY_DETECTED
-    LogEventFilter::AtomIdSet allAtomIds{
+    AtomsInUseChangeListener::AtomIdSet allAtomIds{
             util::BINARY_PUSH_STATE_CHANGED, util::ISOLATED_UID_CHANGED,
             util::APP_BREADCRUMB_REPORTED,   util::WATCHDOG_ROLLBACK_OCCURRED,
             util::ANOMALY_DETECTED,          util::STATS_SOCKET_LOSS_REPORTED};
     return allAtomIds;
 }
 
-void StatsLogProcessor::updateLogEventFilterLocked() const {
-    VLOG("StatsLogProcessor: Updating allAtomIds at %lld", (long long)getElapsedRealtimeNs());
-    LogEventFilter::AtomIdSet allAtomIds = getDefaultAtomIdSet();
+void StatsLogProcessor::updateAtomIdsInUseLocked() const {
+    TIME_CALL_DEBUG();
+    AtomsInUseChangeListener::AtomIdSet allAtomIds = getDefaultAtomIdSet();
     for (const auto& metricsManager : mMetricsManagers) {
         metricsManager.second->addAllAtomIds(allAtomIds);
     }
     StateManager::getInstance().addAllAtomIds(allAtomIds);
-    VLOG("StatsLogProcessor: Updating allAtomIds done. Total atoms %d", (int)allAtomIds.size());
 #ifdef STATSD_DEBUG
     for (auto atomId : allAtomIds) {
         VLOG("Atom in use %d", atomId);
     }
 #endif  // STATSD_DEBUG
-    mLogEventFilter->setAtomIds(std::move(allAtomIds), this);
+    mAtomsInUseChangeListener->setAtomIds(std::move(allAtomIds), this);
 }
 
 bool StatsLogProcessor::validateAppBreadcrumbEvent(const LogEvent& event) const {

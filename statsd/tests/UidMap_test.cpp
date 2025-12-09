@@ -42,6 +42,13 @@ using android::util::ProtoReader;
 using ::ndk::SharedRefBase;
 using Change = UidMapping_Change;
 
+using std::nullopt;
+using std::set;
+using std::shared_ptr;
+using std::string;
+using std::to_string;
+using std::vector;
+
 #ifdef __ANDROID__
 
 namespace {
@@ -108,8 +115,8 @@ vector<uint32_t> computeIndices(const Iterator begin, const Iterator end,
                                 const vector<ValueType>& values) {
     vector<uint32_t> indices;
     for (const ValueType& value : values) {
-        Iterator it = find(begin, end, value);
-        indices.emplace_back(distance(begin, it));
+        Iterator it = std::find(begin, end, value);
+        indices.emplace_back(std::distance(begin, it));
     }
     return indices;
 }

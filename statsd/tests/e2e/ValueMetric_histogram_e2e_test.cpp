@@ -70,7 +70,7 @@ protected:
     }
 
     void logEvents(const vector<shared_ptr<LogEvent>>& events) {
-        for (const shared_ptr<LogEvent> event : events) {
+        for (const shared_ptr<LogEvent>& event : events) {
             processor->OnLogEvent(event.get());
         }
     }

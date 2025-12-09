@@ -39,7 +39,6 @@ java_library_host {
     ],
 }
 
-
 java_binary_host {
     name: "statsd_testdrive",
     manifest: "testdrive_manifest.txt",

@@ -24,12 +24,13 @@
 #include "src/stats_log_util.h"
 #include "tests/statsd_test_util.h"
 
-using ::ndk::SharedRefBase;
-using std::shared_ptr;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using ::ndk::SharedRefBase;
+using std::nullopt;
+using std::shared_ptr;
 
 #ifdef __ANDROID__
 namespace {

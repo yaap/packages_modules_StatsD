@@ -25,7 +25,7 @@ import android.os.IStatsQueryCallback;
 
 /**
   * Binder interface to communicate with the statistics management service.
-  * {@hide}
+  * @hide
   */
 interface IStatsd {
     /**
@@ -318,4 +318,17 @@ interface IStatsd {
      * Requires Manifest.permission.DUMP.
      */
     oneway void getDataFd(long key, int callingUid, in ParcelFileDescriptor fd);
+
+    /**
+     * Same as addConfiguration(in long configId, in byte[] config, in int callingUid), but the
+     * serialized config is passed through ParcelFileDescriptor instead of byte[];
+     *
+     * Sets a configuration with the specified config id and subscribes to updates for this
+     * configuration key. Broadcasts will be sent if this configuration needs to be collected.
+     * The configuration must be a wire-encoded StatsdConfig. The receiver for this data is
+     * registered in a separate function.
+     *
+     * Requires Manifest.permission.DUMP.
+     */
+    oneway void addConfigurationFd(in long configId, in ParcelFileDescriptor configFd, in int callingUid);
 }

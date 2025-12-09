@@ -58,7 +58,7 @@ public:
 
         std::shared_ptr<Subscription> thisSubscription;
         if (reason == StatsSubscriptionCallbackReason::SUBSCRIPTION_ENDED) {
-            std::lock_guard<std::mutex> lock(subscriptionsMutex);
+            std::lock_guard lock(subscriptionsMutex);
 
             auto subscriptionsIt = subscriptions.find(mSubscriptionId);
             if (subscriptionsIt != subscriptions.end()) {
@@ -100,7 +100,7 @@ static void onStatsBinderRestart() {
     // copy of the data with the lock held before iterating through the map.
     std::map<int32_t, std::shared_ptr<Subscription>> subscriptionsCopy;
     {
-        std::lock_guard<std::mutex> lock(subscriptionsMutex);
+        std::lock_guard lock(subscriptionsMutex);
         subscriptionsCopy = subscriptions;
     }
     for (const auto& [_, subscription] : subscriptionsCopy) {
@@ -115,7 +115,7 @@ static int32_t getNextSubscriptionId() {
 
 static std::shared_ptr<Subscription> getBinderCallbackForSubscription(
         const int32_t subscription_id) {
-    std::lock_guard<std::mutex> lock(subscriptionsMutex);
+    std::lock_guard lock(subscriptionsMutex);
     auto subscriptionsIt = subscriptions.find(subscription_id);
     if (subscriptionsIt == subscriptions.end()) {
         return nullptr;
@@ -133,7 +133,7 @@ int32_t AStatsManager_addSubscription(const uint8_t* subscription_config, const 
             SharedRefBase::make<Subscription>(subscriptionId, subscriptionConfig, callback, cookie);
 
     {
-        std::lock_guard<std::mutex> lock(subscriptionsMutex);
+        std::lock_guard lock(subscriptionsMutex);
 
         subscriptions[subscriptionId] = subscription;
     }

@@ -26,6 +26,9 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+using std::vector;
+
 #ifdef __ANDROID__
 
 // Setup for test fixture.

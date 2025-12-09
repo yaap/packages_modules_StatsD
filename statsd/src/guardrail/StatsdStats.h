@@ -673,20 +673,20 @@ public:
     void noteIllegalState(CounterType error);
 
     /** Report query of restricted metric succeed **/
-    void noteQueryRestrictedMetricSucceed(const int64_t configId, const string& configPackage,
+    void noteQueryRestrictedMetricSucceed(const int64_t configId, const std::string& configPackage,
                                           const std::optional<int32_t> configUid,
                                           const int32_t callingUid, int64_t queryLatencyNs);
 
     /** Report query of restricted metric failed **/
-    void noteQueryRestrictedMetricFailed(const int64_t configId, const string& configPackage,
+    void noteQueryRestrictedMetricFailed(const int64_t configId, const std::string& configPackage,
                                          const std::optional<int32_t> configUid,
                                          const int32_t callingUid, const InvalidQueryReason reason);
 
     /** Report query of restricted metric failed along with an error string **/
-    void noteQueryRestrictedMetricFailed(const int64_t configId, const string& configPackage,
+    void noteQueryRestrictedMetricFailed(const int64_t configId, const std::string& configPackage,
                                          const std::optional<int32_t> configUid,
                                          const int32_t callingUid, const InvalidQueryReason reason,
-                                         const string& error);
+                                         const std::string& error);
 
     // Reports that a restricted metric fails to be inserted to database.
     void noteRestrictedMetricInsertError(const ConfigKey& configKey, int64_t metricId);
@@ -1026,10 +1026,10 @@ private:
 
     struct RestrictedMetricQueryStats {
         RestrictedMetricQueryStats(int32_t callingUid, int64_t configId,
-                                   const string& configPackage, std::optional<int32_t> configUid,
-                                   int64_t queryTimeNs,
+                                   const std::string& configPackage,
+                                   std::optional<int32_t> configUid, int64_t queryTimeNs,
                                    std::optional<InvalidQueryReason> invalidQueryReason,
-                                   const string& error, std::optional<int64_t> queryLatencyNs)
+                                   const std::string& error, std::optional<int64_t> queryLatencyNs)
             : mCallingUid(callingUid),
               mConfigId(configId),
               mConfigPackage(configPackage),
@@ -1042,21 +1042,22 @@ private:
         }
         int32_t mCallingUid;
         int64_t mConfigId;
-        string mConfigPackage;
+        std::string mConfigPackage;
         std::optional<int32_t> mConfigUid;
         int64_t mQueryWallTimeNs;
         std::optional<InvalidQueryReason> mInvalidQueryReason;
         bool mHasError;
-        string mError;
+        std::string mError;
         std::optional<int64_t> mQueryLatencyNs;
     };
     std::list<RestrictedMetricQueryStats> mRestrictedMetricQueryStats;
 
-    void noteQueryRestrictedMetricFailedLocked(const int64_t configId, const string& configPackage,
+    void noteQueryRestrictedMetricFailedLocked(const int64_t configId,
+                                               const std::string& configPackage,
                                                const std::optional<int32_t> configUid,
                                                const int32_t callingUid,
                                                const InvalidQueryReason reason,
-                                               const string& error);
+                                               const std::string& error);
 
     int32_t mSubscriptionPullThreadWakeupCount = 0;
 

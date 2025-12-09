@@ -19,7 +19,7 @@ package {
 java_test_helper_library {
     name: "StatsdTestUtils",
     sdk_version: "module_current",
-    srcs: [ "src/**/*.java" ],
+    srcs: ["src/**/*.java"],
     static_libs: [
         "statsdprotolite",
     ],

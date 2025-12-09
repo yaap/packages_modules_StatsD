@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 
@@ -41,7 +42,7 @@ public:
     bool canLogAtom(uint32_t atomId) {
         const int64_t nowNs = Clock::getTimeNs();
 
-        std::unique_lock<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         // update current logging frequency
         auto atomFrequencyIt = mLogFrequencies.find(atomId);

@@ -20,15 +20,16 @@
 
 #include "tests/statsd_test_util.h"
 
-using namespace testing;
-using ::ndk::SharedRefBase;
-using std::unordered_map;
-
 #ifdef __ANDROID__
 
 namespace android {
 namespace os {
 namespace statsd {
+
+using namespace testing;
+using ::ndk::SharedRefBase;
+using std::shared_ptr;
+using std::unordered_map;
 
 namespace {
 

@@ -27,12 +27,15 @@
 
 #ifdef __ANDROID__
 
-using android::util::ProtoReader;
-using std::string;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using android::util::ProtoReader;
+using std::set;
+using std::string;
+using std::unique_ptr;
+using std::vector;
 
 namespace {
 
@@ -754,7 +757,7 @@ TEST(AtomMatcherTest, TestWriteDimensionToProto) {
     dim.addValue(FieldValue(field4, value4));
 
     android::util::ProtoOutputStream protoOut;
-    set<int32_t> usedUids;
+    std::set<int32_t> usedUids;
     writeDimensionToProto(dim, /*uidfields*/ {}, nullptr /* include strings */, usedUids,
                           &protoOut);
 
@@ -818,7 +821,7 @@ TEST(AtomMatcherTest, TestWriteDimensionLeafNodesToProto) {
     dim.addValue(FieldValue(field4, value4));
 
     android::util::ProtoOutputStream protoOut;
-    set<int32_t> usedUids;
+    std::set<int32_t> usedUids;
     writeDimensionLeafNodesToProto(dim, 1, /*uidfields*/ {}, nullptr /* include strings */,
                                    usedUids, &protoOut);
 

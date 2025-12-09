@@ -34,12 +34,12 @@
 #include "logd/LogEventQueue.h"
 #include "packages/UidMap.h"
 #include "shell/ShellSubscriber.h"
+#include "socket/SocketLogEventControl.h"
 #include "statscompanion_util.h"
 #include "utils/MultiConditionTrigger.h"
 
 using namespace android;
 using namespace android::os;
-using namespace std;
 
 using ::ndk::SpAIBinder;
 using Status = ::ndk::ScopedAStatus;
@@ -58,8 +58,8 @@ namespace statsd {
 
 class StatsService : public BnStatsd {
 public:
-    StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> queue,
-                 const std::shared_ptr<LogEventFilter>& logEventFilter);
+    StatsService(const sp<UidMap>& uidMap, std::shared_ptr<LogEventQueue> queue,
+                 std::shared_ptr<LogEventFilter> logEventFilter);
     virtual ~StatsService();
 
     /** The anomaly alarm registered with AlarmManager won't be updated by less than this. */
@@ -77,10 +77,10 @@ public:
     virtual Status informAlarmForSubscriberTriggeringFired();
 
     virtual Status informAllUidData(const ScopedFileDescriptor& fd);
-    virtual Status informOnePackage(const string& app, int32_t uid, int64_t version,
-                                    const string& versionString, const string& installer,
-                                    const vector<uint8_t>& certificateHash);
-    virtual Status informOnePackageRemoved(const string& app, int32_t uid);
+    virtual Status informOnePackage(const std::string& app, int32_t uid, int64_t version,
+                                    const std::string& versionString, const std::string& installer,
+                                    const std::vector<uint8_t>& certificateHash);
+    virtual Status informOnePackageRemoved(const std::string& app, int32_t uid);
     virtual Status informDeviceShutdown();
 
     /**
@@ -101,9 +101,8 @@ public:
     /**
      * Binder call for clients to request data for this configuration key.
      */
-    virtual Status getData(int64_t key,
-                           const int32_t callingUid,
-                           vector<uint8_t>* output) override;
+    virtual Status getData(int64_t key, const int32_t callingUid,
+                           std::vector<uint8_t>* output) override;
 
     virtual Status getDataFd(int64_t key, const int32_t callingUid,
                              const ScopedFileDescriptor& fd) override;
@@ -111,36 +110,39 @@ public:
     /**
      * Binder call for clients to get metadata across all configs in statsd.
      */
-    virtual Status getMetadata(vector<uint8_t>* output) override;
-
+    virtual Status getMetadata(std::vector<uint8_t>* output) override;
 
     /**
-     * Binder call to let clients send a configuration and indicate they're interested when they
-     * should requestData for this configuration.
+     * Binder call to let clients send a configuration as a byte array and indicate they're
+     * interested when they should requestData for this configuration.
      */
-    virtual Status addConfiguration(int64_t key,
-                                    const vector<uint8_t>& config,
+    virtual Status addConfiguration(int64_t key, const std::vector<uint8_t>& config,
                                     const int32_t callingUid) override;
+
+    /**
+     * Binder call to let clients send a configuration through a file descriptor and indicate
+     * they're interested when they should requestData for this configuration.
+     */
+    virtual Status addConfigurationFd(int64_t key, const ScopedFileDescriptor& configFd,
+                                      const int32_t callingUid) override;
 
     /**
      * Binder call to let clients register the data fetch operation for a configuration.
      */
-    virtual Status setDataFetchOperation(int64_t key,
-                                         const shared_ptr<IPendingIntentRef>& pir,
+    virtual Status setDataFetchOperation(int64_t key, const std::shared_ptr<IPendingIntentRef>& pir,
                                          const int32_t callingUid) override;
 
     /**
      * Binder call to remove the data fetch operation for the specified config key.
      */
-    virtual Status removeDataFetchOperation(int64_t key,
-                                            const int32_t callingUid) override;
+    virtual Status removeDataFetchOperation(int64_t key, const int32_t callingUid) override;
 
     /**
      * Binder call to let clients register the active configs changed operation.
      */
-    virtual Status setActiveConfigsChangedOperation(const shared_ptr<IPendingIntentRef>& pir,
+    virtual Status setActiveConfigsChangedOperation(const std::shared_ptr<IPendingIntentRef>& pir,
                                                     const int32_t callingUid,
-                                                    vector<int64_t>* output) override;
+                                                    std::vector<int64_t>* output) override;
 
     /**
      * Binder call to remove the active configs changed operation for the specified package..
@@ -149,22 +151,19 @@ public:
     /**
      * Binder call to allow clients to remove the specified configuration.
      */
-    virtual Status removeConfiguration(int64_t key,
-                                       const int32_t callingUid) override;
+    virtual Status removeConfiguration(int64_t key, const int32_t callingUid) override;
 
     /**
      * Binder call to associate the given config's subscriberId with the given pendingIntentRef.
      */
-    virtual Status setBroadcastSubscriber(int64_t configId,
-                                          int64_t subscriberId,
-                                          const shared_ptr<IPendingIntentRef>& pir,
+    virtual Status setBroadcastSubscriber(int64_t configId, int64_t subscriberId,
+                                          const std::shared_ptr<IPendingIntentRef>& pir,
                                           const int32_t callingUid) override;
 
     /**
      * Binder call to unassociate the given config's subscriberId with any pendingIntentRef.
      */
-    virtual Status unsetBroadcastSubscriber(int64_t configId,
-                                            int64_t subscriberId,
+    virtual Status unsetBroadcastSubscriber(int64_t configId, int64_t subscriberId,
                                             const int32_t callingUid) override;
 
     /** Inform statsCompanion that statsd is ready. */
@@ -180,16 +179,16 @@ public:
      */
     virtual Status registerPullAtomCallback(
             int32_t uid, int32_t atomTag, int64_t coolDownMillis, int64_t timeoutMillis,
-            const vector<int32_t>& additiveFields,
-            const shared_ptr<IPullAtomCallback>& pullerCallback) override;
+            const std::vector<int32_t>& additiveFields,
+            const std::shared_ptr<IPullAtomCallback>& pullerCallback) override;
 
     /**
      * Binder call to register a callback function for a pulled atom.
      */
     virtual Status registerNativePullAtomCallback(
             int32_t atomTag, int64_t coolDownMillis, int64_t timeoutMillis,
-            const vector<int32_t>& additiveFields,
-            const shared_ptr<IPullAtomCallback>& pullerCallback) override;
+            const std::vector<int32_t>& additiveFields,
+            const std::shared_ptr<IPullAtomCallback>& pullerCallback) override;
 
     /**
      * Binder call to unregister any existing callback for the given uid and atom.
@@ -204,57 +203,57 @@ public:
     /**
      * Binder call to get registered experiment IDs.
      */
-    virtual Status getRegisteredExperimentIds(vector<int64_t>* expIdsOut);
+    virtual Status getRegisteredExperimentIds(std::vector<int64_t>* expIdsOut);
 
     /**
      * Binder call to update properties in statsd_java namespace.
      */
-    virtual Status updateProperties(const vector<PropertyParcel>& properties);
+    virtual Status updateProperties(const std::vector<PropertyParcel>& properties);
 
     /**
      * Binder call to let clients register the restricted metrics changed operation for the given
      * config and calling uid.
      */
-    virtual Status setRestrictedMetricsChangedOperation(const int64_t configKey,
-                                                        const string& configPackage,
-                                                        const shared_ptr<IPendingIntentRef>& pir,
-                                                        const int32_t callingUid,
-                                                        vector<int64_t>* output);
+    virtual Status setRestrictedMetricsChangedOperation(
+            const int64_t configKey, const std::string& configPackage,
+            const std::shared_ptr<IPendingIntentRef>& pir, const int32_t callingUid,
+            std::vector<int64_t>* output);
 
     /**
      * Binder call to remove the restricted metrics changed operation for the specified config
      * and calling uid.
      */
     virtual Status removeRestrictedMetricsChangedOperation(const int64_t configKey,
-                                                           const string& configPackage,
+                                                           const std::string& configPackage,
                                                            const int32_t callingUid);
 
     /**
      * Binder call to query data in statsd sql store.
      */
-    virtual Status querySql(const string& sqlQuery, const int32_t minSqlClientVersion,
-                            const optional<vector<uint8_t>>& policyConfig,
-                            const shared_ptr<IStatsQueryCallback>& callback,
-                            const int64_t configKey, const string& configPackage,
+    virtual Status querySql(const std::string& sqlQuery, const int32_t minSqlClientVersion,
+                            const std::optional<std::vector<uint8_t>>& policyConfig,
+                            const std::shared_ptr<IStatsQueryCallback>& callback,
+                            const int64_t configKey, const std::string& configPackage,
                             const int32_t callingUid);
 
     /**
      * Binder call to add a subscription.
      */
-    virtual Status addSubscription(const vector<uint8_t>& subscriptionConfig,
-                                   const shared_ptr<IStatsSubscriptionCallback>& callback) override;
+    virtual Status addSubscription(
+            const std::vector<uint8_t>& subscriptionConfig,
+            const std::shared_ptr<IStatsSubscriptionCallback>& callback) override;
 
     /**
      * Binder call to remove a subscription.
      */
     virtual Status removeSubscription(
-            const shared_ptr<IStatsSubscriptionCallback>& callback) override;
+            const std::shared_ptr<IStatsSubscriptionCallback>& callback) override;
 
     /**
      * Binder call to flush atom events for a subscription.
      */
     virtual Status flushSubscription(
-            const shared_ptr<IStatsSubscriptionCallback>& callback) override;
+            const std::shared_ptr<IStatsSubscriptionCallback>& callback) override;
 
     const static int kStatsdInitDelaySecs = 90;
 
@@ -292,7 +291,6 @@ private:
      * Trigger a broadcast.
      */
     status_t cmd_trigger_broadcast(int outFd, Vector<String8>& args);
-
 
     /**
      * Trigger an active configs changed broadcast.
@@ -363,7 +361,7 @@ private:
     /**
      * Implementation for request data for the configuration key.
      */
-    void getDataChecked(int64_t key, const int32_t callingUid, vector<uint8_t>* output);
+    void getDataChecked(int64_t key, const int32_t callingUid, std::vector<uint8_t>* output);
 
     /**
      * Writes the value of args[uidArgIndex] into uid.
@@ -381,17 +379,17 @@ private:
      * 2. the device is mEngBuild, or
      * 3. the caller is AID_ROOT and the uid is AID_SHELL (i.e. ROOT can impersonate SHELL).
      */
-     bool getUidFromString(const char* uidString, int32_t& uid);
+    bool getUidFromString(const char* uidString, int32_t& uid);
 
     /**
-     * Adds a configuration after checking permissions and obtaining UID from binder call.
+     * Adds a configuration to statsd.
      */
-    bool addConfigurationChecked(int uid, int64_t key, const vector<uint8_t>& config);
+    void addConfigurationChecked(int64_t key, int32_t callingUid, const StatsdConfig& cfg);
 
     /**
      * Update a configuration.
      */
-    void set_config(int uid, const string& name, const StatsdConfig& config);
+    void set_config(int uid, const std::string& name, const StatsdConfig& config);
 
     /**
      * Death recipient callback that is called when StatsCompanionService dies.
@@ -466,9 +464,8 @@ private:
     /**
      * Mutex for setting the shell subscriber
      */
-    mutable mutex mShellSubscriberMutex;
-    shared_ptr<LogEventQueue> mEventQueue;
-    std::shared_ptr<LogEventFilter> mLogEventFilter;
+    mutable std::mutex mShellSubscriberMutex;
+    std::shared_ptr<LogEventQueue> mEventQueue;
 
     std::unique_ptr<std::thread> mLogsReaderThread;
 
@@ -481,19 +478,23 @@ private:
     bool mStatsdInitCompletedHandlerTerminationRequested = false;
 
     MultiConditionTrigger mBootCompleteTrigger;
-    static const inline string kBootCompleteTag = "BOOT_COMPLETE";
-    static const inline string kUidMapReceivedTag = "UID_MAP";
-    static const inline string kAllPullersRegisteredTag = "PULLERS_REGISTERED";
+    static const inline std::string kBootCompleteTag = "BOOT_COMPLETE";
+    static const inline std::string kUidMapReceivedTag = "UID_MAP";
+    static const inline std::string kAllPullersRegisteredTag = "PULLERS_REGISTERED";
 
     ScopedAIBinder_DeathRecipient mStatsCompanionServiceDeathRecipient;
+
+    std::shared_ptr<AtomsInUseChangeDispatcher> mAtomsInUseChangeDispatcher;
+    std::shared_ptr<LogEventFilter> mLogEventFilter;
+    std::shared_ptr<SocketLogEventControl> mSocketLogEventControl;
 
     friend class StatsServiceConfigTest;
     friend class RestrictedConfigE2ETest;
 
     FRIEND_TEST(StatsLogProcessorTest, TestActivationsPersistAcrossSystemServerRestart);
-    FRIEND_TEST(StatsServiceTest, TestAddConfig_simple);
-    FRIEND_TEST(StatsServiceTest, TestAddConfig_empty);
-    FRIEND_TEST(StatsServiceTest, TestAddConfig_invalid);
+    FRIEND_TEST(StatsServiceTestAddConfig, TestAddConfig_simple);
+    FRIEND_TEST(StatsServiceTestAddConfig, TestAddConfig_empty);
+    FRIEND_TEST(StatsServiceTestAddConfig, TestAddConfig_invalid);
     FRIEND_TEST(StatsServiceTest, TestGetUidFromArgs);
     FRIEND_TEST(PartialBucketE2eTest, TestCountMetricNoSplitOnNewApp);
     FRIEND_TEST(PartialBucketE2eTest, TestCountMetricSplitOnBoot);
@@ -520,6 +521,7 @@ private:
     FRIEND_TEST(AnomalyDurationDetectionE2eTest, TestDurationMetric_SUM_long_refractory_period);
 
     FRIEND_TEST(StatsServiceConfigTest, StatsServiceStatsdInitTest);
+    FRIEND_TEST(StatsServiceConfigTest, LogEventFilterOnSetPrintLogs);
 };
 
 }  // namespace statsd

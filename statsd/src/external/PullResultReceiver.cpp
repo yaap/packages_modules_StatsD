@@ -20,18 +20,14 @@ namespace android {
 namespace os {
 namespace statsd {
 
-PullResultReceiver::PullResultReceiver(
-        std::function<void(int32_t, bool, const vector<StatsEventParcel>&)> pullFinishCb)
+PullResultReceiver::PullResultReceiver(PullCallback pullFinishCb)
     : pullFinishCallback(std::move(pullFinishCb)) {
 }
 
 Status PullResultReceiver::pullFinished(int32_t atomTag, bool success,
-                                        const vector<StatsEventParcel>& output) {
+                                        const std::vector<StatsEventParcel>& output) {
     pullFinishCallback(atomTag, success, output);
     return Status::ok();
-}
-
-PullResultReceiver::~PullResultReceiver() {
 }
 
 }  // namespace statsd

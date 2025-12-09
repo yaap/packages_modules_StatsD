@@ -22,6 +22,7 @@
 #include <android-base/stringprintf.h>
 #include <android/binder_ibinder.h>
 #include <private/android_filesystem_config.h>
+#include <utils/Trace.h>
 
 #include "flags/FlagProvider.h"
 #include "stats_annotations.h"
@@ -38,6 +39,7 @@ const int FIELD_ID_EXPERIMENT_ID = 1;
 using namespace android::util;
 using android::base::StringPrintf;
 using android::util::ProtoOutputStream;
+using std::set;
 using std::string;
 using std::vector;
 
@@ -50,6 +52,64 @@ uint8_t getTypeId(uint8_t typeInfo) {
 uint8_t getNumAnnotations(uint8_t typeInfo) {
     return (typeInfo >> 4) & 0x0F;  // num annotations in upper 4 bytes
 }
+
+#if STATSD_DEBUG == true
+class ScopedLogEventValidation {
+public:
+    ScopedLogEventValidation(LogEvent* event, std::string tag) : mEvent(event), mTag(tag) {
+    }
+    ~ScopedLogEventValidation() {
+        if (mEvent && !mEvent->isValid()) {
+            ALOGW("Parsing for atom %d failed at %s", mEvent->GetTagId(), mTag.c_str());
+        }
+    }
+
+private:
+    const LogEvent* mEvent;
+    std::string mTag;
+};
+
+#define LOG_EVENT_VALIDATION_NAME(ptr, name) \
+    ScopedLogEventValidation PASTE(___timer, __LINE__)(ptr, name)
+
+#define LOG_EVENT_VALIDATION() LOG_EVENT_VALIDATION_NAME(this, __FUNCTION__)
+
+#define LOG_EVENT_VALIDATION_DEBUG(...) \
+    if (STATSD_DEBUG) LOG_EVENT_VALIDATION(__VA_ARGS__);
+
+void printErrorCode(int32_t errorBitMask) {
+    static const char* errors[] = {
+            "ERROR_NO_TIMESTAMP",                      // 0x1
+            "ERROR_NO_ATOM_ID",                        // 0x2
+            "ERROR_OVERFLOW",                          // 0x4
+            "ERROR_ATTRIBUTION_CHAIN_TOO_LONG",        // 0x8
+            "ERROR_TOO_MANY_KEY_VALUE_PAIRS",          // 0x10
+            "ERROR_ANNOTATION_DOES_NOT_FOLLOW_FIELD",  // 0x20
+            "ERROR_INVALID_ANNOTATION_ID",             // 0x40
+            "ERROR_ANNOTATION_ID_TOO_LARGE",           // 0x80
+            "ERROR_TOO_MANY_ANNOTATIONS",              // 0x100
+            "ERROR_TOO_MANY_FIELDS",                   // 0x200
+            "ERROR_INVALID_VALUE_TYPE",                // 0x400
+            "ERROR_STRING_NOT_NULL_TERMINATED",        // 0x800
+            "ERROR_ATOM_ID_INVALID_POSITION",          // 0x2000
+            "ERROR_LIST_TOO_LONG",                     // 0x4000
+    };
+    static const int bitToCheck = sizeof(errors) / sizeof(errors[0]);
+    for (int i = 0; i < bitToCheck; i++) {
+        if (errorBitmask & (1 << i)) {
+            VLOG("Atom %d encoding error: %s", GetTagId(), errors[i]);
+        }
+    }
+}
+
+#else
+
+#define LOG_EVENT_VALIDATION_DEBUG(...)
+
+void printErrorCode(int32_t /*errorBitMask*/) {
+}
+
+#endif  // STATSD_DEBUG == true
 
 }  // namespace
 
@@ -116,6 +176,7 @@ void LogEvent::parseInt64(int32_t* pos, int32_t depth, bool* last, uint8_t numAn
 }
 
 void LogEvent::parseString(int32_t* pos, int32_t depth, bool* last, uint8_t numAnnotations) {
+    LOG_EVENT_VALIDATION_DEBUG();
     int32_t numBytes = readNextValue<int32_t>();
     if ((uint32_t)numBytes > mRemainingLen) {
         mValid = false;
@@ -143,6 +204,7 @@ void LogEvent::parseBool(int32_t* pos, int32_t depth, bool* last, uint8_t numAnn
 }
 
 void LogEvent::parseByteArray(int32_t* pos, int32_t depth, bool* last, uint8_t numAnnotations) {
+    LOG_EVENT_VALIDATION_DEBUG();
     int32_t numBytes = readNextValue<int32_t>();
     if ((uint32_t)numBytes > mRemainingLen) {
         mValid = false;
@@ -157,6 +219,7 @@ void LogEvent::parseByteArray(int32_t* pos, int32_t depth, bool* last, uint8_t n
 }
 
 void LogEvent::parseKeyValuePairs(int32_t* pos, int32_t depth, bool* last, uint8_t numAnnotations) {
+    LOG_EVENT_VALIDATION_DEBUG();
     int32_t numPairs = readNextValue<uint8_t>();
 
     for (pos[1] = 1; pos[1] <= numPairs; pos[1]++) {
@@ -200,10 +263,14 @@ void LogEvent::parseKeyValuePairs(int32_t* pos, int32_t depth, bool* last, uint8
 
 void LogEvent::parseAttributionChain(int32_t* pos, int32_t depth, bool* last,
                                      uint8_t numAnnotations) {
+    LOG_EVENT_VALIDATION_DEBUG();
     std::optional<size_t> firstUidInChainIndex = mValues.size();
     const uint8_t numNodes = readNextValue<uint8_t>();
 
-    if (numNodes > INT8_MAX) mValid = false;
+    if (numNodes > INT8_MAX) {
+        VLOG("%s failed for %d : numNodes > INT8_MAX", __FUNCTION__, GetTagId());
+        mValid = false;
+    }
 
     for (pos[1] = 1; pos[1] <= numNodes; pos[1]++) {
         last[1] = (pos[1] == numNodes);
@@ -224,6 +291,7 @@ void LogEvent::parseAttributionChain(int32_t* pos, int32_t depth, bool* last,
         mAttributionChainEndIndex = mValues.size() - 1;
     } else {
         firstUidInChainIndex = std::nullopt;
+        VLOG("%s failed for %d : numNodes == 0", __FUNCTION__, GetTagId());
         mValid = false;
     }
 
@@ -236,11 +304,14 @@ void LogEvent::parseAttributionChain(int32_t* pos, int32_t depth, bool* last,
 }
 
 void LogEvent::parseArray(int32_t* pos, int32_t depth, bool* last, uint8_t numAnnotations) {
+    LOG_EVENT_VALIDATION_DEBUG();
     const uint8_t numElements = readNextValue<uint8_t>();
     const uint8_t typeInfo = readNextValue<uint8_t>();
     const uint8_t typeId = getTypeId(typeInfo);
 
-    if (numElements > INT8_MAX) mValid = false;
+    if (numElements > INT8_MAX) {
+        mValid = false;
+    }
 
     for (pos[1] = 1; pos[1] <= numElements; pos[1]++) {
         last[1] = (pos[1] == numElements);
@@ -265,6 +336,7 @@ void LogEvent::parseArray(int32_t* pos, int32_t depth, bool* last, uint8_t numAn
                 parseString(pos, /*depth=*/1, last, /*numAnnotations=*/0);
                 break;
             default:
+                VLOG("%s failed for %d", __FUNCTION__, GetTagId());
                 mValid = false;
                 break;
         }
@@ -282,6 +354,7 @@ bool LogEvent::checkPreviousValueType(Type expected) const {
 }
 
 void LogEvent::parseIsUidAnnotation(uint8_t annotationType, std::optional<uint8_t> numElements) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Need to set numElements if not an array.
     if (!numElements) {
         numElements = 1;
@@ -296,7 +369,6 @@ void LogEvent::parseIsUidAnnotation(uint8_t annotationType, std::optional<uint8_
     // Allowed types: INT, repeated INT
     if (mValues.empty() || numElements > mValues.size() || !checkPreviousValueType(INT) ||
         annotationType != BOOL_TYPE) {
-        VLOG("Atom ID %d error while parseIsUidAnnotation()", mTagId);
         mValid = false;
         return;
     }
@@ -312,6 +384,7 @@ void LogEvent::parseIsUidAnnotation(uint8_t annotationType, std::optional<uint8_
 }
 
 void LogEvent::parseTruncateTimestampAnnotation(uint8_t annotationType) {
+    LOG_EVENT_VALIDATION_DEBUG();
     if (!mValues.empty() || annotationType != BOOL_TYPE) {
         VLOG("Atom ID %d error while parseTruncateTimestampAnnotation()", mTagId);
         mValid = false;
@@ -324,6 +397,7 @@ void LogEvent::parseTruncateTimestampAnnotation(uint8_t annotationType) {
 void LogEvent::parsePrimaryFieldAnnotation(uint8_t annotationType,
                                            std::optional<uint8_t> numElements,
                                            std::optional<size_t> firstUidInChainIndex) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: all types except for attribution chains and repeated fields.
     if (mValues.empty() || annotationType != BOOL_TYPE || firstUidInChainIndex || numElements) {
         VLOG("Atom ID %d error while parsePrimaryFieldAnnotation()", mTagId);
@@ -337,6 +411,7 @@ void LogEvent::parsePrimaryFieldAnnotation(uint8_t annotationType,
 
 void LogEvent::parsePrimaryFieldFirstUidAnnotation(uint8_t annotationType,
                                                    std::optional<size_t> firstUidInChainIndex) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: attribution chains
     if (mValues.empty() || annotationType != BOOL_TYPE || !firstUidInChainIndex) {
         VLOG("Atom ID %d error while parsePrimaryFieldFirstUidAnnotation()", mTagId);
@@ -357,6 +432,7 @@ void LogEvent::parsePrimaryFieldFirstUidAnnotation(uint8_t annotationType,
 
 void LogEvent::parseExclusiveStateAnnotation(uint8_t annotationType,
                                              std::optional<uint8_t> numElements) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: BOOL
     if (mValues.empty() || annotationType != BOOL_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
@@ -372,6 +448,7 @@ void LogEvent::parseExclusiveStateAnnotation(uint8_t annotationType,
 
 void LogEvent::parseTriggerStateResetAnnotation(uint8_t annotationType,
                                                 std::optional<uint8_t> numElements) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: INT
     if (mValues.empty() || annotationType != INT32_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
@@ -385,6 +462,7 @@ void LogEvent::parseTriggerStateResetAnnotation(uint8_t annotationType,
 
 void LogEvent::parseStateNestedAnnotation(uint8_t annotationType,
                                           std::optional<uint8_t> numElements) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: BOOL
     if (mValues.empty() || annotationType != BOOL_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
@@ -398,8 +476,10 @@ void LogEvent::parseStateNestedAnnotation(uint8_t annotationType,
 }
 
 void LogEvent::parseRestrictionCategoryAnnotation(uint8_t annotationType) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: INT, field value should be empty since this is atom-level annotation.
     if (!mValues.empty() || annotationType != INT32_TYPE) {
+        VLOG("%s failed for %d", __FUNCTION__, GetTagId());
         mValid = false;
         return;
     }
@@ -420,6 +500,7 @@ void LogEvent::parseRestrictionCategoryAnnotation(uint8_t annotationType) {
 }
 
 void LogEvent::parseFieldRestrictionAnnotation(uint8_t annotationType) {
+    LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: BOOL
     if (mValues.empty() || annotationType != BOOL_TYPE) {
         mValid = false;
@@ -436,6 +517,7 @@ void LogEvent::parseFieldRestrictionAnnotation(uint8_t annotationType) {
 // numElements is a default param that is only needed when parsing annotations for repeated fields
 void LogEvent::parseAnnotations(uint8_t numAnnotations, std::optional<uint8_t> numElements,
                                 std::optional<size_t> firstUidInChainIndex) {
+    LOG_EVENT_VALIDATION_DEBUG();
     for (uint8_t i = 0; i < numAnnotations; i++) {
         uint8_t annotationId = readNextValue<uint8_t>();
         uint8_t annotationType = readNextValue<uint8_t>();
@@ -505,6 +587,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
     // Beginning of buffer is OBJECT_TYPE | NUM_FIELDS | TIMESTAMP | ATOM_ID
     uint8_t typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != OBJECT_TYPE) {
+        VLOG("Atom header parsing error - not an OBJECT_TYPE");
         mValid = false;
         mBuf = nullptr;
         return bodyInfo;
@@ -512,6 +595,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
 
     uint8_t numElements = readNextValue<uint8_t>();
     if (numElements < 2 || numElements > INT8_MAX) {
+        VLOG("Atom header parsing error - invalid numElements (%d)", numElements);
         mValid = false;
         mBuf = nullptr;
         return bodyInfo;
@@ -519,6 +603,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
 
     typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != INT64_TYPE) {
+        VLOG("Atom header parsing error - invalid typeInfo - expected int64 timestamp");
         mValid = false;
         mBuf = nullptr;
         return bodyInfo;
@@ -528,6 +613,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
 
     typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != INT32_TYPE) {
+        VLOG("Atom header parsing error - invalid typeInfo - expected int32 tagid");
         mValid = false;
         mBuf = nullptr;
         return bodyInfo;
@@ -546,6 +632,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
 }
 
 bool LogEvent::parseBody(const BodyBufferInfo& bodyInfo) {
+    LOG_EVENT_VALIDATION_DEBUG();
     mParsedHeaderOnly = false;
 
     mBuf = bodyInfo.buffer;
@@ -593,11 +680,14 @@ bool LogEvent::parseBody(const BodyBufferInfo& bodyInfo) {
             case LIST_TYPE:
                 parseArray(pos, /*depth=*/0, last, getNumAnnotations(typeInfo));
                 break;
-            case ERROR_TYPE:
-                /* mErrorBitmask =*/readNextValue<int32_t>();
+            case ERROR_TYPE: {
+                const int32_t errorBitmask = readNextValue<int32_t>();
                 mValid = false;
+                printErrorCode(errorBitmask);
                 break;
+            }
             default:
+                VLOG("%s failed for %d : unknown typeId", __FUNCTION__, GetTagId());
                 mValid = false;
                 break;
         }

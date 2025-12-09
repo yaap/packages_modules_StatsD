@@ -111,6 +111,7 @@ cc_test {
         "tests/stats_writer_test.cpp",
         "tests/stats_buffer_writer_queue_test.cpp",
         "tests/stats_socketlog_test.cpp",
+        "tests/utils_test.cpp",
     ],
     cflags: [
         "-Wall",

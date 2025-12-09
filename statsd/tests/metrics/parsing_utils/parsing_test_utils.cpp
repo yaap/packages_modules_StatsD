@@ -33,6 +33,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::vector;
+
 InitConfigTest::InitConfigTest() : uidMap(new UidMap()), pullerManager(new StatsPullerManager()) {
 }
 
@@ -69,6 +71,21 @@ std::optional<InvalidConfigReason> InitConfigTest::initConfig(const StatsdConfig
             metricsWithActivation, stateProtoHashes, noReportMetricIds);
 }
 
+vector<int> filterMatcherIndexesById(const vector<sp<AtomMatchingTracker>>& atomMatchingTrackers,
+                                     const vector<int64_t>& ids) {
+    vector<int> result;
+
+    for (auto& id : ids) {
+        for (int i = 0; i < atomMatchingTrackers.size(); i++) {
+            if (atomMatchingTrackers[i]->getId() == id) {
+                result.push_back(i);
+            }
+        }
+    }
+
+    return result;
+}
+
 void InitConfigTest::SetUp() {
     clearData();
     StateManager::getInstance().clear();
@@ -79,7 +96,7 @@ StatsdConfig createHistogramStatsdConfig() {
     *config.add_atom_matcher() = CreateSimpleAtomMatcher("matcher", /* atomId */ 1);
     *config.add_value_metric() =
             createValueMetric("ValueMetric", config.atom_matcher(0), /* valueField */ 1,
-                              /* condition */ nullopt, /* states */ {});
+                              /* condition */ std::nullopt, /* states */ {});
     config.mutable_value_metric(0)->set_aggregation_type(ValueMetric::HISTOGRAM);
 
     return config;

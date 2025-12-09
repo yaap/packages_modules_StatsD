@@ -34,6 +34,10 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::optional;
+using std::shared_ptr;
+using std::string;
+
 AnomalyTracker::AnomalyTracker(const Alert& alert, const ConfigKey& configKey)
         : mAlert(alert), mConfigKey(configKey), mNumOfPastBuckets(mAlert.num_buckets() - 1) {
     VLOG("AnomalyTracker() called");
@@ -89,9 +93,10 @@ void AnomalyTracker::advanceMostRecentBucketTo(const int64_t bucketNum) {
     mMostRecentBucketNum = bucketNum;
 }
 
-void AnomalyTracker::addPastBucket(const MetricDimensionKey& key, const int64_t bucketValue,
+void AnomalyTracker::addPastBucket(const MetricDimensionKey& key, const double bucketValue,
                                    const int64_t bucketNum) {
-    VLOG("addPastBucket(bucketValue) called.");
+    VLOG("addPastBucket(bucketValue) called. bucket %lld, value: %f", (long long)bucketNum,
+         bucketValue);
     if (mNumOfPastBuckets == 0 ||
         bucketNum < 0 || bucketNum <= mMostRecentBucketNum - mNumOfPastBuckets) {
         return;
@@ -146,8 +151,7 @@ void AnomalyTracker::subtractBucketFromSum(const shared_ptr<DimToValMap>& bucket
     }
 }
 
-void AnomalyTracker::subtractValueFromSum(const MetricDimensionKey& key,
-                                          const int64_t bucketValue) {
+void AnomalyTracker::subtractValueFromSum(const MetricDimensionKey& key, const double bucketValue) {
     auto itr = mSumOverPastBuckets.find(key);
     if (itr == mSumOverPastBuckets.end()) {
         return;
@@ -168,8 +172,8 @@ void AnomalyTracker::addBucketToSum(const shared_ptr<DimToValMap>& bucket) {
     }
 }
 
-int64_t AnomalyTracker::getPastBucketValue(const MetricDimensionKey& key,
-                                           const int64_t bucketNum) const {
+double AnomalyTracker::getPastBucketValue(const MetricDimensionKey& key,
+                                          const int64_t bucketNum) const {
     if (bucketNum < 0 || mMostRecentBucketNum < 0
             || bucketNum <= mMostRecentBucketNum - mNumOfPastBuckets
             || bucketNum > mMostRecentBucketNum) {
@@ -184,7 +188,7 @@ int64_t AnomalyTracker::getPastBucketValue(const MetricDimensionKey& key,
     return itr == bucket->end() ? 0 : itr->second;
 }
 
-int64_t AnomalyTracker::getSumOverPastBuckets(const MetricDimensionKey& key) const {
+double AnomalyTracker::getSumOverPastBuckets(const MetricDimensionKey& key) const {
     const auto& itr = mSumOverPastBuckets.find(key);
     if (itr != mSumOverPastBuckets.end()) {
         return itr->second;
@@ -193,7 +197,7 @@ int64_t AnomalyTracker::getSumOverPastBuckets(const MetricDimensionKey& key) con
 }
 
 bool AnomalyTracker::detectAnomaly(const int64_t currentBucketNum, const MetricDimensionKey& key,
-                                   const int64_t currentBucketValue) {
+                                   const double currentBucketValue) {
     // currentBucketNum should be the next bucket after pastBuckets. If not, advance so that it is.
     if (currentBucketNum > mMostRecentBucketNum + 1) {
         advanceMostRecentBucketTo(currentBucketNum - 1);
@@ -203,7 +207,7 @@ bool AnomalyTracker::detectAnomaly(const int64_t currentBucketNum, const MetricD
 }
 
 void AnomalyTracker::declareAnomaly(const int64_t timestampNs, int64_t metricId,
-                                    const MetricDimensionKey& key, int64_t metricValue) {
+                                    const MetricDimensionKey& key, double metricValue) {
     // TODO(b/110563466): Why receive timestamp? RefractoryPeriod should always be based on
     // real time right now.
     if (isInRefractoryPeriod(timestampNs, key)) {
@@ -244,7 +248,7 @@ void AnomalyTracker::declareAnomaly(const int64_t timestampNs, int64_t metricId,
 
 void AnomalyTracker::detectAndDeclareAnomaly(const int64_t timestampNs, const int64_t currBucketNum,
                                              int64_t metricId, const MetricDimensionKey& key,
-                                             const int64_t currentBucketValue) {
+                                             const double currentBucketValue) {
     if (detectAnomaly(currBucketNum, key, currentBucketValue)) {
         declareAnomaly(timestampNs, metricId, key, currentBucketValue);
     }
@@ -267,11 +271,11 @@ std::pair<optional<InvalidConfigReason>, uint64_t> AnomalyTracker::getProtoHash(
                                                    mAlert.metric_id(), mAlert.id()),
                 0};
     }
-    return {nullopt, Hash64(serializedAlert)};
+    return {std::nullopt, Hash64(serializedAlert)};
 }
 
 void AnomalyTracker::informSubscribers(const MetricDimensionKey& key, int64_t metric_id,
-                                       int64_t metricValue) {
+                                       double metricValue) {
     triggerSubscribers(mAlert.id(), metric_id, key, metricValue, mConfigKey, mSubscriptions);
 }
 

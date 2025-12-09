@@ -23,7 +23,7 @@ import android.os.IStatsQueryCallback;
 /**
   * Binder interface to communicate with the Java-based statistics service helper.
   * Contains parcelable objects available only in Java.
-  * {@hide}
+  * @hide
   */
 interface IStatsManagerService {
 
@@ -168,4 +168,14 @@ interface IStatsManagerService {
      * Requires Manifest.permission.DUMP and Manifest.permission.PACKAGE_USAGE_STATS.
      */
     oneway void getDataFd(long key, in String packageName, in ParcelFileDescriptor fd);
+
+    /**
+     * Sets a configuration with the specified config id and subscribes to updates for this
+     * configuration id. Broadcasts will be sent if this configuration needs to be collected.
+     * The configuration must be a wire-encoded StatsdConfig. The receiver for this data is
+     * registered in a separate function.
+     *
+     * Requires Manifest.permission.DUMP and Manifest.permission.PACKAGE_USAGE_STATS.
+     */
+    oneway void addConfigurationFd(in long configId, in ParcelFileDescriptor readFd, in String packageName);
 }

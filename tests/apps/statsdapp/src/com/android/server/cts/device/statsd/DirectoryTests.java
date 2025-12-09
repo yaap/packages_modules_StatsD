@@ -59,4 +59,11 @@ public class DirectoryTests {
         assertTrue(f.exists());
         assertFalse(f.isFile());
     }
+
+    @Test
+    public void testStatsAtomsInUseDirectoryExists() {
+        final File f = new File("/data/misc/stats-atoms/");
+        assertTrue(f.exists());
+        assertFalse(f.isFile());
+    }
 }

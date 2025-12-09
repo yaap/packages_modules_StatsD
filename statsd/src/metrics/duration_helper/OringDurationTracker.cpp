@@ -22,7 +22,9 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::optional;
 using std::pair;
+using std::vector;
 
 OringDurationTracker::OringDurationTracker(const ConfigKey& key, const int64_t id,
                                            const MetricDimensionKey& eventKey,
@@ -241,7 +243,7 @@ bool OringDurationTracker::flushCurrentBucket(
 
 bool OringDurationTracker::flushIfNeeded(
         int64_t eventTimeNs, const optional<UploadThreshold>& uploadThreshold,
-        unordered_map<MetricDimensionKey, vector<DurationBucket>>* output) {
+        std::unordered_map<MetricDimensionKey, vector<DurationBucket>>* output) {
     if (eventTimeNs < getCurrentBucketEndTimeNs()) {
         return false;
     }

@@ -18,6 +18,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::string;
 HashableDimensionKey getMockedDimensionKey(int tagId, int key, string value) {
     HashableDimensionKey dimension;
     int pos[] = {key, 0, 0};

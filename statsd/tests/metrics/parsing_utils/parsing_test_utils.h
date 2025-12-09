@@ -63,7 +63,7 @@ protected:
     sp<AlarmMonitor> anomalyAlarmMonitor;
     sp<AlarmMonitor> periodicAlarmMonitor;
     sp<ConfigMetadataProvider> configMetadataProvider;
-    std::unordered_map<int, vector<int>> allTagIdsToMatchersMap;
+    std::unordered_map<int, std::vector<int>> allTagIdsToMatchersMap;
     std::vector<sp<AtomMatchingTracker>> allAtomMatchingTrackers;
     std::unordered_map<int64_t, int> atomMatchingTrackerMap;
     std::vector<sp<ConditionTracker>> allConditionTrackers;
@@ -82,6 +82,10 @@ protected:
     std::map<int64_t, uint64_t> stateProtoHashes;
     std::set<int64_t> noReportMetricIds;
 };
+
+std::vector<int> filterMatcherIndexesById(
+        const std::vector<sp<AtomMatchingTracker>>& atomMatchingTrackers,
+        const std::vector<int64_t>& ids);
 
 StatsdConfig createHistogramStatsdConfig();
 

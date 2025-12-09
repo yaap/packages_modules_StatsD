@@ -30,7 +30,7 @@ StatsProvider::~StatsProvider() {
 }
 
 std::shared_ptr<IStatsd> StatsProvider::getStatsService() {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     if (!mStatsd) {
         // Fetch statsd
         ::ndk::SpAIBinder binder(getStatsdBinder());
@@ -43,7 +43,7 @@ std::shared_ptr<IStatsd> StatsProvider::getStatsService() {
 }
 
 void StatsProvider::resetStatsService() {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mStatsd = nullptr;
 }
 

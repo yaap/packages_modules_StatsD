@@ -77,6 +77,15 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
     protected void setUp() throws Exception {
         super.setUp();
         assertThat(mCtsBuild).isNotNull();
+
+        if (DeviceUtils.hasFeature(getDevice(), FEATURE_PC)) {
+            // On desktop devices, turning screen off puts the device to sleep
+            // and unreachable via ADB. Hold a wakelock to prevent that.
+            // Do this before clearing reports to ensure we don't interfere with
+            // tests.
+            getDevice().executeShellCommand("cmd power set-wakelock acquire PARTIAL_WAKE_LOCK");
+        }
+
         ConfigUtils.removeConfig(getDevice());
         ReportUtils.clearReports(getDevice());
         DeviceUtils.installTestApp(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_APK,
@@ -94,6 +103,12 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
         DeviceUtils.resetBatteryStatus(getDevice());
         DeviceUtils.turnScreenOn(getDevice());
         DeviceUtils.turnBatteryStatsAutoResetOn(getDevice());
+
+        if (DeviceUtils.hasFeature(getDevice(), FEATURE_PC)) {
+            // Clean up the wakelock after turning screen back on.
+            getDevice().executeShellCommand("cmd power set-wakelock release PARTIAL_WAKE_LOCK");
+        }
+
         super.tearDown();
     }
 
@@ -104,6 +119,7 @@ public class ValidationTests extends DeviceTestCase implements IBuildReceiver {
 
     private static final String TAG = "Statsd.ValidationTests";
     private static final String FEATURE_AUTOMOTIVE = "android.hardware.type.automotive";
+    private static final String FEATURE_PC = "android.hardware.type.pc";
     private static final boolean ENABLE_LOAD_TEST = false;
 
     public void testPartialWakelock() throws Exception {

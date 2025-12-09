@@ -61,15 +61,15 @@ public:
 
     void onAnomalyAlarmFired(
             int64_t timestampNs,
-            unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
+            std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
 
     void onPeriodicAlarmFired(
             int64_t timestampNs,
-            unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
+            std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>>& alarmSet);
 
-    void notifyAppUpgrade(int64_t eventTimeNs, const string& apk, int uid, int64_t version);
+    void notifyAppUpgrade(int64_t eventTimeNs, const std::string& apk, int uid, int64_t version);
 
-    void notifyAppRemoved(int64_t eventTimeNs, const string& apk, int uid);
+    void notifyAppRemoved(int64_t eventTimeNs, const std::string& apk, int uid);
 
     void onUidMapReceived(int64_t eventTimeNs);
 
@@ -77,7 +77,7 @@ public:
 
     void init();
 
-    vector<int32_t> getPullAtomUids(int32_t atomId) override;
+    std::vector<int32_t> getPullAtomUids(int32_t atomId) override;
 
     bool useV2SoftMemoryCalculation() override;
 
@@ -133,7 +133,7 @@ public:
 
     virtual void onDumpReport(const int64_t dumpTimeNs, int64_t wallClockNs,
                               const bool include_current_partial_bucket, const bool erase_data,
-                              const DumpLatency dumpLatency, std::set<string>* str_set,
+                              const DumpLatency dumpLatency, std::set<std::string>* str_set,
                               std::set<int32_t>& usedUids,
                               android::util::ProtoOutputStream* protoOutput);
 
@@ -163,7 +163,7 @@ public:
         return mRestrictedMetricsDelegatePackageName.has_value();
     }
 
-    inline string getRestrictedMetricsDelegate() const {
+    inline std::string getRestrictedMetricsDelegate() const {
         return hasRestrictedMetricsDelegate() ? mRestrictedMetricsDelegatePackageName.value() : "";
     }
 
@@ -178,10 +178,10 @@ public:
     virtual void flushRestrictedData();
 
     // Slow, should not be called in a hotpath.
-    vector<int64_t> getAllMetricIds() const;
+    std::vector<int64_t> getAllMetricIds() const;
 
     // Adds all atom ids referenced by matchers in the MetricsManager's config
-    void addAllAtomIds(LogEventFilter::AtomIdSet& allIds) const;
+    void addAllAtomIds(AtomsInUseChangeListener::AtomIdSet& allIds) const;
 
     // Gets the memory limit for the MetricsManager's config
     inline size_t getMaxMetricsBytes() const {
@@ -213,7 +213,7 @@ private:
     int64_t mLastReportTimeNs;
     int64_t mLastReportWallClockNs;
 
-    optional<InvalidConfigReason> mInvalidConfigReason;
+    std::optional<InvalidConfigReason> mInvalidConfigReason;
 
     sp<StatsPullerManager> mPullerManager;
 
@@ -253,7 +253,7 @@ private:
 
     bool mOmitSystemUidsInUidMap;
     bool mOmitUnusedUidsInUidMap;
-    set<string> mAllowlistedUidMapPackages;
+    std::set<std::string> mAllowlistedUidMapPackages;
 
     // All event tags that are interesting to config metrics matchers.
     std::unordered_map<int, std::vector<int>> mTagIdsToMatchersMap;
@@ -363,7 +363,7 @@ private:
 
     // Optional package name of the delegate that processes restricted metrics
     // If set, restricted metrics are only uploaded to the delegate.
-    optional<string> mRestrictedMetricsDelegatePackageName = nullopt;
+    std::optional<std::string> mRestrictedMetricsDelegatePackageName = std::nullopt;
 
     // Only called on config creation/update. Sets the memory limit in bytes for storing metrics.
     void setMaxMetricsBytesFromConfig(const StatsdConfig& config);

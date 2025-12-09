@@ -19,6 +19,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::set;
 using std::vector;
 
 ConditionState ConditionWizard::query(const int index, const ConditionKey& parameters,

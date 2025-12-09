@@ -36,13 +36,13 @@ void writeFieldValueTreeToStream(int tagId, const std::vector<FieldValue>& value
                                  ProtoOutputStream* protoOutput);
 
 void writeDimensionToProto(const HashableDimensionKey& dimension,
-                           const std::vector<Matcher>& uidFields, std::set<string>* str_set,
+                           const std::vector<Matcher>& uidFields, std::set<std::string>* str_set,
                            std::set<int32_t>& usedUids, ProtoOutputStream* protoOutput);
 
 void writeDimensionLeafNodesToProto(const HashableDimensionKey& dimension,
                                     const int dimensionLeafFieldId,
                                     const std::vector<Matcher>& uidFields,
-                                    std::set<string>* str_set, std::set<int32_t>& usedUids,
+                                    std::set<std::string>* str_set, std::set<int32_t>& usedUids,
                                     ProtoOutputStream* protoOutput);
 
 void writeDimensionPathToProto(const std::vector<Matcher>& fieldMatchers,
@@ -132,7 +132,7 @@ inline bool isPulledAtom(int atomId) {
 
 void mapIsolatedUidsToHostUidInLogEvent(const sp<UidMap>& uidMap, LogEvent& event);
 
-std::string toHexString(const string& bytes);
+std::string toHexString(const std::string& bytes);
 
 std::vector<Matcher> translateFieldsFilter(const FieldFilter& fieldFilter);
 

@@ -27,7 +27,7 @@ namespace statsd {
 
 void mapAndMergeIsolatedUidsToHostUid(std::vector<std::shared_ptr<LogEvent>>& data,
                                       const sp<UidMap>& uidMap, int tagId,
-                                      const vector<int>& additiveFieldsVec);
+                                      const std::vector<int>& additiveFieldsVec);
 
 }  // namespace statsd
 }  // namespace os

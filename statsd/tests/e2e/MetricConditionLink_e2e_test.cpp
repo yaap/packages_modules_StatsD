@@ -24,6 +24,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::vector;
+
 #ifdef __ANDROID__
 namespace {
 

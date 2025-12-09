@@ -27,6 +27,7 @@
 
 using namespace testing;
 using android::sp;
+using std::optional;
 using std::set;
 using std::unordered_map;
 using std::vector;

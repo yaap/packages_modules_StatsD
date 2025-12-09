@@ -19,12 +19,12 @@
 
 #include "SubscriberReporter.h"
 
-using std::lock_guard;
-
 namespace android {
 namespace os {
 namespace statsd {
 
+using std::shared_ptr;
+using std::string;
 using std::vector;
 
 void SubscriberReporter::broadcastSubscriberDied(void* rawPir) {
@@ -33,10 +33,10 @@ void SubscriberReporter::broadcastSubscriberDied(void* rawPir) {
     // Erase the mapping from a (config_key, subscriberId) to a pir if the
     // mapping exists. This requires iterating over the map, but this operation
     // should be rare and the map is expected to be small.
-    lock_guard<mutex> lock(thiz.mLock);
+    std::lock_guard lock(thiz.mLock);
     for (auto subscriberMapIt = thiz.mIntentMap.begin(); subscriberMapIt != thiz.mIntentMap.end();
          subscriberMapIt++) {
-        unordered_map<int64_t, shared_ptr<IPendingIntentRef>>& subscriberMap =
+        std::unordered_map<int64_t, shared_ptr<IPendingIntentRef>>& subscriberMap =
                 subscriberMapIt->second;
         for (auto pirIt = subscriberMap.begin(); pirIt != subscriberMap.end(); pirIt++) {
             if (pirIt->second.get() == rawPir) {
@@ -62,7 +62,7 @@ void SubscriberReporter::setBroadcastSubscriber(const ConfigKey& configKey,
          "%lld.",
          configKey.ToString().c_str(), (long long)subscriberId);
     {
-        lock_guard<mutex> lock(mLock);
+        std::lock_guard lock(mLock);
         mIntentMap[configKey][subscriberId] = pir;
     }
     // Pass the raw binder pointer address to be the cookie of the death recipient. While the death
@@ -78,7 +78,7 @@ void SubscriberReporter::setBroadcastSubscriber(const ConfigKey& configKey,
 void SubscriberReporter::unsetBroadcastSubscriber(const ConfigKey& configKey,
                                                   int64_t subscriberId) {
     VLOG("SubscriberReporter::unsetBroadcastSubscriber called.");
-    lock_guard<mutex> lock(mLock);
+    std::lock_guard lock(mLock);
     auto subscriberMapIt = mIntentMap.find(configKey);
     if (subscriberMapIt != mIntentMap.end()) {
         subscriberMapIt->second.erase(subscriberId);
@@ -100,7 +100,7 @@ void SubscriberReporter::alertBroadcastSubscriber(const ConfigKey& configKey,
     //  config id - the name of this config (for this particular uid)
 
     VLOG("SubscriberReporter::alertBroadcastSubscriber called.");
-    lock_guard<mutex> lock(mLock);
+    std::lock_guard lock(mLock);
 
     if (!subscription.has_broadcast_subscriber_details()
             || !subscription.broadcast_subscriber_details().has_subscriber_id()) {

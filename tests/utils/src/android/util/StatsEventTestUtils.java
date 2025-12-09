@@ -17,6 +17,8 @@
 package android.util;
 
 import com.android.os.AtomsProto.Atom;
+
+import com.google.protobuf.ExtensionRegistryLite;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 /** Provides utility methods for parsing StatsEvent and StatsLogItem objects in tests. */
@@ -28,13 +30,25 @@ public final class StatsEventTestUtils {
      * further actions should be taken on the StatsEvent object.
      */
     public static Atom convertToAtom(StatsEvent statsEvent) throws InvalidProtocolBufferException {
+        return convertToAtom(statsEvent, ExtensionRegistryLite.getEmptyRegistry());
+    }
+
+    /**
+     * Converts StatsEvent to MessageLite representation of Atom for extensions. The extension can
+     * be accessed with {@link Atom#getExtension}.
+     *
+     * <p>Calls StatsEvent#release; No further actions should be taken on the StatsEvent object.
+     */
+    public static Atom convertToAtom(StatsEvent statsEvent, ExtensionRegistryLite registry)
+            throws InvalidProtocolBufferException {
         try {
             byte[] protoBytes =
                     AtomPayloadParser.getProtoBytes(
                             statsEvent.getBytes(), statsEvent.getNumBytes());
-            return Atom.parseFrom(protoBytes);
+            return Atom.parseFrom(protoBytes, registry);
         } finally {
             statsEvent.release();
         }
     }
+
 }

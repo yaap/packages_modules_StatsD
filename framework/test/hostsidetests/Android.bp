@@ -59,6 +59,9 @@ java_test_host {
         "tradefed",
         "truth",
     ],
+    static_libs: [
+        "cts-statsd-atom-host-test-utils",
+    ],
     test_suites: [
         "device-tests",
         "mts-statsd",

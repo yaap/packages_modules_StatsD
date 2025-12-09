@@ -17,9 +17,11 @@
 #pragma once
 
 #include <aidl/android/os/StatsDimensionsValueParcel.h>
+#include <android-base/stringprintf.h>
 #include <utils/JenkinsHash.h>
+
 #include <vector>
-#include "android-base/stringprintf.h"
+
 #include "FieldValue.h"
 #include "logd/LogEvent.h"
 

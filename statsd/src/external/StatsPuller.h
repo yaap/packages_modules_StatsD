@@ -27,7 +27,6 @@
 #include "puller_util.h"
 
 using aidl::android::os::IStatsCompanionService;
-using std::shared_ptr;
 
 namespace android {
 namespace os {
@@ -68,7 +67,7 @@ public:
     static void SetUidMap(const sp<UidMap>& uidMap);
 
     virtual void SetStatsCompanionService(
-            const shared_ptr<IStatsCompanionService>& statsCompanionService){};
+            const std::shared_ptr<IStatsCompanionService>& statsCompanionService) {};
 
 protected:
     const int mTagId;

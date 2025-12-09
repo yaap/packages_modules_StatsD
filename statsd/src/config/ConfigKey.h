@@ -24,18 +24,15 @@ namespace android {
 namespace os {
 namespace statsd {
 
-using std::hash;
-using std::string;
-
 /**
  * Uniquely identifies a configuration.
  */
 class ConfigKey {
 public:
-    ConfigKey();
-    ConfigKey(const ConfigKey& that);
+    ConfigKey() = default;
     ConfigKey(int uid, int64_t id);
-    ~ConfigKey();
+    ConfigKey(const ConfigKey& that);
+    ~ConfigKey() = default;
 
     inline int GetUid() const {
         return mUid;
@@ -58,14 +55,14 @@ public:
         return mUid == that.mUid && mId == that.mId;
     };
 
-    string ToString() const;
+    std::string ToString() const;
 
 private:
     int64_t mId;
     int mUid;
 };
 
-int64_t StrToInt64(const string& str);
+int64_t StrToInt64(const std::string& str);
 
 }  // namespace statsd
 }  // namespace os
@@ -77,6 +74,6 @@ int64_t StrToInt64(const string& str);
 template <>
 struct std::hash<android::os::statsd::ConfigKey> {
     std::size_t operator()(const android::os::statsd::ConfigKey& key) const {
-        return (7 * key.GetUid()) ^ ((hash<long long>()(key.GetId())));
+        return (7 * key.GetUid()) ^ ((std::hash<long long>()(key.GetId())));
     }
 };

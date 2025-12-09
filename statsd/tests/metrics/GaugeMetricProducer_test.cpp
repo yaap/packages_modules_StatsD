@@ -23,6 +23,7 @@
 
 #include "logd/LogEvent.h"
 #include "metrics_test_helper.h"
+#include "src/FieldValue.h"
 #include "src/matchers/SimpleAtomMatchingTracker.h"
 #include "src/metrics/MetricProducer.h"
 #include "src/stats_log_util.h"
@@ -31,10 +32,13 @@
 
 using namespace testing;
 using android::sp;
+
+using std::make_shared;
+using std::nullopt;
 using std::set;
+using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
-using std::make_shared;
 
 #ifdef __ANDROID__
 
@@ -44,6 +48,7 @@ namespace statsd {
 
 namespace {
 
+const double kMaxAbsoluteError = .0000001;
 const ConfigKey kConfigKey(0, 12345);
 const int tagId = 1;
 const int64_t metricId = 123;
@@ -83,11 +88,19 @@ StatsLogReport onDumpReport(GaugeMetricProducer& producer, int64_t dumpTimeNs,
 }  // anonymous namespace
 
 // Setup for parameterized tests.
-class GaugeMetricProducerTest_PartialBucket : public TestWithParam<BucketSplitEvent> {};
+class GaugeMetricProducerTest_PartialBucket
+    : public TestWithParam<std::pair<BucketSplitEvent, Type>> {};
 
 INSTANTIATE_TEST_SUITE_P(GaugeMetricProducerTest_PartialBucket,
                          GaugeMetricProducerTest_PartialBucket,
-                         testing::Values(APP_UPGRADE, BOOT_COMPLETE));
+                         testing::Values(std::pair(APP_UPGRADE, INT),
+                                         std::pair(BOOT_COMPLETE, FLOAT)));
+
+// Setup for parameterized tests.
+class GaugeMetricProducerTest_PulledAnomaly : public TestWithParam<Type> {};
+
+INSTANTIATE_TEST_SUITE_P(GaugeMetricProducerTest_PulledAnomaly,
+                         GaugeMetricProducerTest_PulledAnomaly, testing::Values(INT, FLOAT));
 
 /*
  * Tests that the first bucket works correctly
@@ -250,12 +263,35 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPushedEvents) {
             gaugeProducer.addAnomalyTracker(alert, alarmMonitor, UPDATE_NEW, bucketStartTimeNs);
     EXPECT_TRUE(anomalyTracker != nullptr);
 
-    LogEvent event1(/*uid=*/0, /*pid=*/0);
-    CreateTwoValueLogEvent(&event1, tagId, bucketStartTimeNs + 10, 1, 10);
+    LogEvent event1(/*uid=*/0, /*pid=*/0) /*bucket 1*/, event2(0, 0) /*bucket 1*/,
+            event3(0, 0) /*bucket 2*/, event4(0, 0) /*bucket 3*/;
+    double fullBucketSum1 = 0, fullBucketSum2 = 0;
+    switch (GetParam().second) {
+        case INT:
+            CreateTwoValueLogEvent(&event1, tagId, bucketStartTimeNs + 10, 1, 10);
+            CreateTwoValueLogEvent(&event2, tagId, bucketStartTimeNs + 59 * NS_PER_SEC, 1, 10);
+            CreateTwoValueLogEvent(&event3, tagId, bucketStartTimeNs + 65 * NS_PER_SEC, 2, 10);
+            CreateTwoValueLogEvent(&event4, tagId, bucketStartTimeNs + 125 * NS_PER_SEC, 3, 10);
+            fullBucketSum1 = 1;
+            fullBucketSum2 = 3;
+            break;
+        case FLOAT:
+            CreateLogEventNumeric(&event1, tagId, bucketStartTimeNs + 10, 0.1f);
+            CreateLogEventNumeric(&event2, tagId, bucketStartTimeNs + 59 * NS_PER_SEC, 1.0f);
+            CreateLogEventNumeric(&event3, tagId, bucketStartTimeNs + 65 * NS_PER_SEC, 1.2f);
+            CreateLogEventNumeric(&event4, tagId, bucketStartTimeNs + 125 * NS_PER_SEC, 2.3f);
+            fullBucketSum1 = 1.0;
+            fullBucketSum2 = 2.2;
+            break;
+        default:
+            break;
+    }
+
+    // Create an event in the same partial bucket.
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, event1);
     EXPECT_EQ(1UL, (*gaugeProducer.mCurrentSlicedBucket).count(DEFAULT_METRIC_DIMENSION_KEY));
 
-    switch (GetParam()) {
+    switch (GetParam().first) {
         case APP_UPGRADE:
             gaugeProducer.notifyAppUpgrade(partialBucketSplitTimeNs);
             break;
@@ -274,9 +310,6 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPushedEvents) {
     // Partial buckets are not sent to anomaly tracker.
     EXPECT_EQ(0, anomalyTracker->getSumOverPastBuckets(DEFAULT_METRIC_DIMENSION_KEY));
 
-    // Create an event in the same partial bucket.
-    LogEvent event2(/*uid=*/0, /*pid=*/0);
-    CreateTwoValueLogEvent(&event2, tagId, bucketStartTimeNs + 59 * NS_PER_SEC, 1, 10);
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, event2);
     EXPECT_EQ(0L, gaugeProducer.mCurrentBucketNum);
     ASSERT_EQ(1UL, gaugeProducer.mPastBuckets[DEFAULT_METRIC_DIMENSION_KEY].size());
@@ -290,21 +323,22 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPushedEvents) {
 
     // Next event should trigger creation of new bucket and send previous full bucket to anomaly
     // tracker.
-    LogEvent event3(/*uid=*/0, /*pid=*/0);
-    CreateTwoValueLogEvent(&event3, tagId, bucketStartTimeNs + 65 * NS_PER_SEC, 1, 10);
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, event3);
     EXPECT_EQ(1L, gaugeProducer.mCurrentBucketNum);
     ASSERT_EQ(2UL, gaugeProducer.mPastBuckets[DEFAULT_METRIC_DIMENSION_KEY].size());
     EXPECT_EQ((int64_t)bucketStartTimeNs + bucketSizeNs, gaugeProducer.mCurrentBucketStartTimeNs);
-    EXPECT_EQ(1, anomalyTracker->getSumOverPastBuckets(DEFAULT_METRIC_DIMENSION_KEY));
+
+    EXPECT_THAT(fullBucketSum1,
+                DoubleNear(anomalyTracker->getSumOverPastBuckets(DEFAULT_METRIC_DIMENSION_KEY),
+                           kMaxAbsoluteError));
 
     // Next event should trigger creation of new bucket.
-    LogEvent event4(/*uid=*/0, /*pid=*/0);
-    CreateTwoValueLogEvent(&event4, tagId, bucketStartTimeNs + 125 * NS_PER_SEC, 1, 10);
     gaugeProducer.onMatchedLogEvent(1 /*log matcher index*/, event4);
     EXPECT_EQ(2L, gaugeProducer.mCurrentBucketNum);
     ASSERT_EQ(3UL, gaugeProducer.mPastBuckets[DEFAULT_METRIC_DIMENSION_KEY].size());
-    EXPECT_EQ(2, anomalyTracker->getSumOverPastBuckets(DEFAULT_METRIC_DIMENSION_KEY));
+    EXPECT_THAT(fullBucketSum2,
+                DoubleNear(anomalyTracker->getSumOverPastBuckets(DEFAULT_METRIC_DIMENSION_KEY),
+                           kMaxAbsoluteError));
 }
 
 TEST_P(GaugeMetricProducerTest_PartialBucket, TestPulled) {
@@ -352,7 +386,7 @@ TEST_P(GaugeMetricProducerTest_PartialBucket, TestPulled) {
                          .mFields.begin()
                          ->mValue.get<int32_t>());
 
-    switch (GetParam()) {
+    switch (GetParam().first) {
         case APP_UPGRADE:
             gaugeProducer.notifyAppUpgrade(partialBucketSplitTimeNs);
             break;
@@ -577,7 +611,7 @@ TEST(GaugeMetricProducerTest, TestPulledEventsWithSlicedCondition) {
     ASSERT_EQ(1UL, gaugeProducer.mPastBuckets.size());
 }
 
-TEST(GaugeMetricProducerTest, TestPulledEventsAnomalyDetection) {
+TEST_P(GaugeMetricProducerTest_PulledAnomaly, TestPulledEventsAnomalyDetection) {
     sp<AlarmMonitor> alarmMonitor;
     sp<MockConditionWizard> wizard = new NaggyMock<MockConditionWizard>();
 
@@ -593,7 +627,7 @@ TEST(GaugeMetricProducerTest, TestPulledEventsAnomalyDetection) {
     metric.set_max_pull_delay_sec(INT_MAX);
     auto gaugeFieldMatcher = metric.mutable_gauge_fields_filter()->mutable_fields();
     gaugeFieldMatcher->set_field(tagId);
-    gaugeFieldMatcher->add_child()->set_field(2);
+    gaugeFieldMatcher->add_child()->set_field(1);
 
     sp<EventMatcherWizard> eventMatcherWizard =
             createEventMatcherWizard(tagId, logEventMatcherIndex);
@@ -617,42 +651,88 @@ TEST(GaugeMetricProducerTest, TestPulledEventsAnomalyDetection) {
             gaugeProducer.addAnomalyTracker(alert, alarmMonitor, UPDATE_NEW, bucketStartTimeNs);
 
     int tagId = 1;
+
+    auto event1 = std::make_shared<LogEvent>(/*uid=*/0, /*pid=*/0);
+    auto event2 = std::make_shared<LogEvent>(/*uid=*/0, /*pid=*/0);
+    auto event3 = std::make_shared<LogEvent>(/*uid=*/0, /*pid=*/0);
+    switch (GetParam()) {
+        case INT:
+            CreateLogEventNumeric(event1.get(), tagId, bucketStartTimeNs + 1, 13);
+            CreateLogEventNumeric(event2.get(), tagId, bucketStartTimeNs + bucketSizeNs + 20, 15);
+            CreateLogEventNumeric(event3.get(), tagId, bucketStartTimeNs + 2 * bucketSizeNs + 10,
+                                  26);
+            break;
+        case FLOAT:
+            CreateLogEventNumeric(event1.get(), tagId, bucketStartTimeNs + 1, 13.0f);
+            CreateLogEventNumeric(event2.get(), tagId, bucketStartTimeNs + bucketSizeNs + 20,
+                                  15.1f);
+            CreateLogEventNumeric(event3.get(), tagId, bucketStartTimeNs + 2 * bucketSizeNs + 10,
+                                  26.2f);
+            break;
+        default:
+            FAIL() << "Unexpected GetParam() value";
+    }
+
     vector<shared_ptr<LogEvent>> allData;
     allData.clear();
-    allData.push_back(CreateRepeatedValueLogEvent(tagId, bucketStartTimeNs + 1, 13));
+    allData.push_back(event1);
     gaugeProducer.onDataPulled(allData, PullResult::PULL_RESULT_SUCCESS, bucketStartTimeNs);
     ASSERT_EQ(1UL, gaugeProducer.mCurrentSlicedBucket->size());
-    EXPECT_EQ(13L, gaugeProducer.mCurrentSlicedBucket->begin()
-                           ->second.front()
-                           .mFields.begin()
-                           ->mValue.get<int32_t>());
-    EXPECT_EQ(anomalyTracker->getRefractoryPeriodEndsSec(DEFAULT_METRIC_DIMENSION_KEY), 0U);
 
-    std::shared_ptr<LogEvent> event2 =
-            CreateRepeatedValueLogEvent(tagId, bucketStartTimeNs + bucketSizeNs + 20, 15);
+    auto currentValue =
+            gaugeProducer.mCurrentSlicedBucket->begin()->second.front().mFields.begin()->mValue;
+
+    switch (GetParam()) {
+        case INT:
+            EXPECT_EQ(13L, currentValue.get<int32_t>());
+            break;
+        case FLOAT:
+            EXPECT_FLOAT_EQ(13.0f, currentValue.get<float>());
+            break;
+        default:
+            FAIL() << "Unexpected GetParam() value";
+    }
+    EXPECT_EQ(anomalyTracker->getRefractoryPeriodEndsSec(DEFAULT_METRIC_DIMENSION_KEY), 0U);
 
     allData.clear();
     allData.push_back(event2);
     gaugeProducer.onDataPulled(allData, PullResult::PULL_RESULT_SUCCESS,
                                bucketStartTimeNs + bucketSizeNs);
     ASSERT_EQ(1UL, gaugeProducer.mCurrentSlicedBucket->size());
-    EXPECT_EQ(15L, gaugeProducer.mCurrentSlicedBucket->begin()
-                           ->second.front()
-                           .mFields.begin()
-                           ->mValue.get<int32_t>());
+    currentValue =
+            gaugeProducer.mCurrentSlicedBucket->begin()->second.front().mFields.begin()->mValue;
+    switch (GetParam()) {
+        case INT:
+            EXPECT_EQ(15L, currentValue.get<int32_t>());
+            break;
+        case FLOAT:
+            EXPECT_FLOAT_EQ(15.1f, currentValue.get<float>());
+            break;
+        default:
+            FAIL() << "Unexpected GetParam() value";
+    }
+
     EXPECT_EQ(anomalyTracker->getRefractoryPeriodEndsSec(DEFAULT_METRIC_DIMENSION_KEY),
               std::ceil(1.0 * event2->GetElapsedTimestampNs() / NS_PER_SEC) + refPeriodSec);
 
     allData.clear();
-    allData.push_back(
-            CreateRepeatedValueLogEvent(tagId, bucketStartTimeNs + 2 * bucketSizeNs + 10, 26));
+    allData.push_back(event3);
     gaugeProducer.onDataPulled(allData, PullResult::PULL_RESULT_SUCCESS,
                                bucket2StartTimeNs + 2 * bucketSizeNs);
     ASSERT_EQ(1UL, gaugeProducer.mCurrentSlicedBucket->size());
-    EXPECT_EQ(26L, gaugeProducer.mCurrentSlicedBucket->begin()
-                           ->second.front()
-                           .mFields.begin()
-                           ->mValue.get<int32_t>());
+    currentValue =
+            gaugeProducer.mCurrentSlicedBucket->begin()->second.front().mFields.begin()->mValue;
+    switch (GetParam()) {
+        case INT:
+            EXPECT_EQ(26L, currentValue.get<int32_t>());
+            break;
+        case FLOAT:
+            EXPECT_FLOAT_EQ(26.2f, currentValue.get<float>());
+            break;
+        default:
+            FAIL() << "Unexpected GetParam() value";
+    }
+
     EXPECT_EQ(anomalyTracker->getRefractoryPeriodEndsSec(DEFAULT_METRIC_DIMENSION_KEY),
               std::ceil(1.0 * event2->GetElapsedTimestampNs() / NS_PER_SEC + refPeriodSec));
 

@@ -32,6 +32,7 @@ using namespace testing;
 using android::sp;
 using dist_proc::aggregation::KllQuantile;
 using std::make_shared;
+using std::nullopt;
 using std::optional;
 using std::set;
 using std::shared_ptr;

@@ -45,7 +45,7 @@ TEST(MultiConditionTrigger, TestMultipleConditions) {
     // Mark done as true and notify in the done.
     MultiConditionTrigger trigger(conditionNames, [&lock, &cv, &triggerCalled] {
         {
-            lock_guard lg(lock);
+            std::lock_guard lg(lock);
             triggerCalled = true;
         }
         cv.notify_all();
@@ -85,7 +85,7 @@ TEST(MultiConditionTrigger, TestNoConditions) {
 
     MultiConditionTrigger trigger({}, [&lock, &cv, &triggerCalled] {
         {
-            lock_guard lg(lock);
+            std::lock_guard lg(lock);
             triggerCalled = true;
         }
         cv.notify_all();
@@ -107,7 +107,7 @@ TEST(MultiConditionTrigger, TestMarkCompleteCalledBySameCondition) {
 
     MultiConditionTrigger trigger(conditionNames, [&lock, &cv, &triggerCalled] {
         {
-            lock_guard lg(lock);
+            std::lock_guard lg(lock);
             triggerCalled = true;
         }
         cv.notify_all();
@@ -118,7 +118,7 @@ TEST(MultiConditionTrigger, TestMarkCompleteCalledBySameCondition) {
 
     // Ensure that the trigger still hasn't fired.
     {
-        lock_guard lg(lock);
+        std::lock_guard lg(lock);
         EXPECT_FALSE(triggerCalled);
     }
 
@@ -139,7 +139,7 @@ TEST(MultiConditionTrigger, TestTriggerOnlyCalledOnce) {
 
     MultiConditionTrigger trigger(conditionNames, [&lock, &cv, &triggerCalled, &triggerCount] {
         {
-            lock_guard lg(lock);
+            std::lock_guard lg(lock);
             triggerCount++;
             triggerCalled = true;
         }
@@ -177,7 +177,7 @@ public:
     }
 
     void someMethod() {
-        lock_guard lg(mLock);
+        std::lock_guard lg(mLock);
         mTriggerCount++;
         mTriggerCalled = true;
         mCv.notify_all();
@@ -254,7 +254,7 @@ TEST(MultiConditionTrigger, TestTriggerHasSleepEarlyTermination) {
                                 lk, std::chrono::seconds(1),
                                 [&terminationRequested] { return terminationRequested; })) {
                         // triggerTerminationFlag was notified - early termination is requested
-                        lock_guard lg(lock);
+                        std::lock_guard lg(lock);
                         triggerCalled = true;
                         cv.notify_all();
                         return;
@@ -266,7 +266,7 @@ TEST(MultiConditionTrigger, TestTriggerHasSleepEarlyTermination) {
         // notify to terminate trigger executor thread after triggerEarlyTerminationDelayMs
         std::this_thread::sleep_for(std::chrono::milliseconds(triggerEarlyTerminationDelayMs));
         {
-            std::unique_lock<std::mutex> lk(triggerTerminationFlagMutex);
+            std::lock_guard lk(triggerTerminationFlagMutex);
             terminationRequested = true;
         }
         triggerTerminationFlag.notify_all();

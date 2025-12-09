@@ -14,14 +14,14 @@ class RestrictedEventMetricProducer : public EventMetricProducer {
 public:
     RestrictedEventMetricProducer(
             const ConfigKey& key, const EventMetric& eventMetric, const int conditionIndex,
-            const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
-            const uint64_t protoHash, int64_t startTimeNs,
+            const std::vector<ConditionState>& initialConditionCache,
+            const sp<ConditionWizard>& wizard, const uint64_t protoHash, int64_t startTimeNs,
             const wp<ConfigMetadataProvider> configMetadataProvider,
             const std::unordered_map<int, std::shared_ptr<Activation>>& eventActivationMap = {},
             const std::unordered_map<int, std::vector<std::shared_ptr<Activation>>>&
                     eventDeactivationMap = {},
-            const vector<int>& slicedStateAtoms = {},
-            const unordered_map<int, unordered_map<int, int64_t>>& stateGroupMap = {});
+            const std::vector<int>& slicedStateAtoms = {},
+            const std::unordered_map<int, std::unordered_map<int, int64_t>>& stateGroupMap = {});
 
     void onMetricRemove() override;
 
@@ -34,7 +34,7 @@ public:
     void loadMetricMetadataFromProto(const metadata::MetricMetadata& metricMetadata) override;
 
     inline StatsdRestrictionCategory getRestrictionCategory() {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         return mRestrictedDataCategory;
     }
 
@@ -46,7 +46,7 @@ private:
 
     void onDumpReportLocked(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
                             const bool erase_data, const DumpLatency dumpLatency,
-                            std::set<string>* str_set, std::set<int32_t>& usedUids,
+                            std::set<std::string>* str_set, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
 
     void clearPastBucketsLocked(const int64_t dumpTimeNs) override;
@@ -59,7 +59,7 @@ private:
 
     StatsdRestrictionCategory mRestrictedDataCategory;
 
-    vector<LogEvent> mLogEvents;
+    std::vector<LogEvent> mLogEvents;
 };
 
 }  // namespace statsd

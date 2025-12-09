@@ -15,24 +15,34 @@
 #include "StatsService.h"
 
 #include <android/binder_interface_utils.h>
+#include <fcntl.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <string>
 
 #include "config/ConfigKey.h"
 #include "packages/UidMap.h"
 #include "src/statsd_config.pb.h"
 #include "tests/statsd_test_util.h"
 
-using namespace android;
-using namespace testing;
-
 namespace android {
 namespace os {
 namespace statsd {
 
-using android::util::ProtoOutputStream;
+using namespace android;
+using namespace testing;
+
+using android::base::StringPrintf;
 using ::ndk::SharedRefBase;
+using Status = ::ndk::ScopedAStatus;
+using std::nullopt;
+using std::shared_ptr;
+using std::vector;
 
 #ifdef __ANDROID__
 
@@ -52,6 +62,10 @@ StatsdConfig CreateStatsdConfig(const GaugeMetric::SamplingType samplingType) {
     return config;
 }
 
+Status exception(int32_t code, const std::string& msg) {
+    return Status::fromExceptionCodeWithMessage(code, msg.c_str());
+}
+
 class FakeSubsystemSleepCallbackWithTiming : public FakeSubsystemSleepCallback {
 public:
     Status onPullAtom(int atomTag,
@@ -62,9 +76,52 @@ public:
     int64_t mPullTimeNs = 0;
 };
 
+using AddConfigFunc =
+        std::function<Status(int64_t, int32_t, const string&, shared_ptr<StatsService>&)>;
+
 }  // namespace
 
-TEST(StatsServiceTest, TestAddConfig_simple) {
+class StatsServiceTestAddConfig : public TestWithParam<AddConfigFunc> {};
+
+INSTANTIATE_TEST_SUITE_P(
+        ParseFuncs, StatsServiceTestAddConfig,
+        Values(
+                // Add config by passing a byte array.
+                [](int64_t key, int32_t callingUid, const string& configStr,
+                   shared_ptr<StatsService>& service) -> Status {
+                    return service->addConfiguration(key, {configStr.begin(), configStr.end()},
+                                                     callingUid);
+                },
+
+                // Add config by passing a file descriptor.
+                [](int64_t key, int32_t callingUid, const string& configStr,
+                   shared_ptr<StatsService>& service) -> Status {
+                    ScopedFileDescriptor scopedFd(memfd_create("add_config_fd", MFD_CLOEXEC));
+                    const int fd = scopedFd.get();
+                    int f = fcntl(fd, F_GETFD);  // Read the file descriptor flags.
+                    if (f == -1 ||
+                        !(f & FD_CLOEXEC)) {  // Ensure there was no error while reading the flags.
+                        return exception(EX_ILLEGAL_STATE, "Error creating file descriptor.");
+                    }
+                    ssize_t bytesWritten = write(fd, configStr.data(), configStr.size());
+                    if (bytesWritten == -1) {
+                        return exception(
+                                EX_ILLEGAL_STATE,
+                                StringPrintf("Error writing to memfd: %s", strerror(errno)));
+                    } else if (bytesWritten != configStr.size()) {
+                        return exception(
+                                EX_ILLEGAL_STATE,
+                                StringPrintf("Partial write to memfd. Expected: %zu, Actual: %zu",
+                                             configStr.size(), bytesWritten));
+                    } else if (lseek(fd, 0, SEEK_SET) != 0) {
+                        return exception(EX_ILLEGAL_STATE,
+                                         "Error moving file descriptor pointer to beginning.");
+                    }
+
+                    return service->addConfigurationFd(key, scopedFd, callingUid);
+                }));
+
+TEST_P(StatsServiceTestAddConfig, TestAddConfig_simple) {
     const sp<UidMap> uidMap = new UidMap();
     shared_ptr<StatsService> service = SharedRefBase::make<StatsService>(
             uidMap, /* queue */ nullptr, std::make_shared<LogEventFilter>());
@@ -73,9 +130,8 @@ TEST(StatsServiceTest, TestAddConfig_simple) {
     StatsdConfig config;
     config.set_id(kConfigKey);
     string serialized = config.SerializeAsString();
-
-    EXPECT_TRUE(service->addConfigurationChecked(kCallingUid, kConfigKey,
-                                                 {serialized.begin(), serialized.end()}));
+    AddConfigFunc addConfigFunc = GetParam();
+    EXPECT_TRUE(addConfigFunc(kConfigKey, kCallingUid, serialized, service).isOk());
     service->removeConfiguration(kConfigKey, kCallingUid);
     ConfigKey configKey(kCallingUid, kConfigKey);
     service->mProcessor->onDumpReport(configKey, getElapsedRealtimeNs(),
@@ -83,15 +139,15 @@ TEST(StatsServiceTest, TestAddConfig_simple) {
                                       ADB_DUMP, NO_TIME_CONSTRAINTS, nullptr);
 }
 
-TEST(StatsServiceTest, TestAddConfig_empty) {
+TEST_P(StatsServiceTestAddConfig, TestAddConfig_empty) {
     const sp<UidMap> uidMap = new UidMap();
     shared_ptr<StatsService> service = SharedRefBase::make<StatsService>(
             uidMap, /* queue */ nullptr, std::make_shared<LogEventFilter>());
     string serialized = "";
     const int kConfigKey = 12345;
     const int kCallingUid = 123;
-    EXPECT_TRUE(service->addConfigurationChecked(kCallingUid, kConfigKey,
-                                                 {serialized.begin(), serialized.end()}));
+    AddConfigFunc addConfigFunc = GetParam();
+    EXPECT_TRUE(addConfigFunc(kConfigKey, kCallingUid, serialized, service).isOk());
     service->removeConfiguration(kConfigKey, kCallingUid);
     ConfigKey configKey(kCallingUid, kConfigKey);
     service->mProcessor->onDumpReport(configKey, getElapsedRealtimeNs(),
@@ -99,14 +155,14 @@ TEST(StatsServiceTest, TestAddConfig_empty) {
                                       ADB_DUMP, NO_TIME_CONSTRAINTS, nullptr);
 }
 
-TEST(StatsServiceTest, TestAddConfig_invalid) {
+TEST_P(StatsServiceTestAddConfig, TestAddConfig_invalid) {
     const sp<UidMap> uidMap = new UidMap();
     shared_ptr<StatsService> service = SharedRefBase::make<StatsService>(
             uidMap, /* queue */ nullptr, std::make_shared<LogEventFilter>());
     string serialized = "Invalid config!";
 
-    EXPECT_FALSE(
-            service->addConfigurationChecked(123, 12345, {serialized.begin(), serialized.end()}));
+    AddConfigFunc addConfigFunc = GetParam();
+    EXPECT_FALSE(addConfigFunc(12345, 123, serialized, service).isOk());
 }
 
 TEST(StatsServiceTest, TestGetUidFromArgs) {
@@ -220,6 +276,29 @@ TEST_F(StatsServiceConfigTest, StatsServiceStatsdInitTest) {
     // this check confirms that bucket end is not affected by the StatsService init delay
     EXPECT_EQ(NanoToMillis(bucketInfo1.end_bucket_elapsed_nanos()),
               NanoToMillis(service->mProcessor->mTimeBaseNs + bucketSizeNs));
+}
+
+TEST_F(StatsServiceConfigTest, LogEventFilterOnSetPrintLogs) {
+    shared_ptr<MockLogEventFilter> mockLogEventFilter = std::make_shared<MockLogEventFilter>();
+
+    EXPECT_CALL(*mockLogEventFilter, setAtomIds(StatsLogProcessor::getDefaultAtomIdSet(), _))
+            .Times(1);
+    Expectation filterSetFalse =
+            EXPECT_CALL(*mockLogEventFilter, setFilteringEnabled(false)).Times(1);
+    EXPECT_CALL(*mockLogEventFilter, setFilteringEnabled(true)).Times(1).After(filterSetFalse);
+
+    auto service = createStatsService(mockLogEventFilter);
+
+    Vector<String8> argsEnable;
+    argsEnable.push(String8("print-logs"));
+    argsEnable.push(String8("1"));
+
+    Vector<String8> argsDisable;
+    argsDisable.push(String8("print-logs"));
+    argsDisable.push(String8("0"));
+
+    service->cmd_print_logs(0, argsEnable);
+    service->cmd_print_logs(0, argsDisable);
 }
 
 #else

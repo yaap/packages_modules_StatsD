@@ -26,19 +26,25 @@ namespace statsd {
 
 class CombinationConditionTracker : public ConditionTracker {
 public:
-    CombinationConditionTracker(int64_t id, int index, const uint64_t protoHash);
+    CombinationConditionTracker(int64_t id, const uint64_t protoHash);
 
     ~CombinationConditionTracker();
 
-    optional<InvalidConfigReason> init(
-            const std::vector<Predicate>& allConditionConfig,
-            const std::vector<sp<ConditionTracker>>& allConditionTrackers,
-            const std::unordered_map<int64_t, int>& conditionIdIndexMap,
-            std::vector<uint8_t>& stack, std::vector<ConditionState>& conditionCache) override;
+    const std::optional<InvalidConfigReason> isTrackerValid(
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+            std::unordered_set<int64_t>& stack) const override;
 
-    optional<InvalidConfigReason> onConfigUpdated(
-            const std::vector<Predicate>& allConditionProtos, int index,
-            const std::vector<sp<ConditionTracker>>& allConditionTrackers,
+    void init(const int index,
+              const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+              const std::vector<sp<ConditionTracker>>& allConditionTrackers,
+              const std::unordered_map<int64_t, int>& conditionIdIndexMap,
+              const std::unordered_map<int64_t, int>& atomMatchingTrackerMap,
+              std::unordered_set<int64_t>& initializedTrackers,
+              std::vector<ConditionState>& conditionCache) override;
+
+    void onConfigUpdated(
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
+            int index, const std::vector<sp<ConditionTracker>>& allConditionTrackers,
             const std::unordered_map<int64_t, int>& atomMatchingTrackerMap,
             const std::unordered_map<int64_t, int>& conditionTrackerMap) override;
 
@@ -83,9 +89,8 @@ public:
         return mLogicalOperation == LogicalOperation::AND && mSlicedChildren.size() == 1;
     }
 
-    bool equalOutputDimensions(
-        const std::vector<sp<ConditionTracker>>& allConditions,
-        const vector<Matcher>& dimensions) const override;
+    bool equalOutputDimensions(const std::vector<sp<ConditionTracker>>& allConditions,
+                               const std::vector<Matcher>& dimensions) const override;
 
     const std::map<HashableDimensionKey, int>* getSlicedDimensionMap(
             const std::vector<sp<ConditionTracker>>& allConditions) const override {

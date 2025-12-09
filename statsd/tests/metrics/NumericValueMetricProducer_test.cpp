@@ -35,6 +35,7 @@ using std::nullopt;
 using std::optional;
 using std::set;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::unordered_map;
 using std::vector;
 
@@ -253,6 +254,10 @@ INSTANTIATE_TEST_SUITE_P(NumericValueMetricProducerTest_PartialBucket,
                          NumericValueMetricProducerTest_PartialBucket,
                          testing::Values(APP_UPGRADE, BOOT_COMPLETE));
 
+class NumericValueMetricProducerTest_Anomaly : public TestWithParam<Type> {};
+
+INSTANTIATE_TEST_SUITE_P(NumericValueMetricProducerTest_Anomaly,
+                         NumericValueMetricProducerTest_Anomaly, testing::Values(INT, FLOAT));
 /*
  * Tests that the first bucket works correctly
  */
@@ -978,7 +983,7 @@ TEST(NumericValueMetricProducerTest, TestPushedEventsWithCondition) {
     ASSERT_EQ(0UL, valueProducer->mCurrentSlicedBucket.size());
 }
 
-TEST(NumericValueMetricProducerTest, TestAnomalyDetection) {
+TEST_P(NumericValueMetricProducerTest_Anomaly, TestAnomalyDetection) {
     sp<AlarmMonitor> alarmMonitor;
     Alert alert;
     alert.set_id(101);
@@ -1003,26 +1008,41 @@ TEST(NumericValueMetricProducerTest, TestAnomalyDetection) {
             valueProducer->addAnomalyTracker(alert, alarmMonitor, UPDATE_NEW, bucketStartTimeNs);
 
     LogEvent event1(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event1, tagId, bucketStartTimeNs + 1 * NS_PER_SEC, 10);
-
     LogEvent event2(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event2, tagId, bucketStartTimeNs + 2 + NS_PER_SEC, 20);
-
     LogEvent event3(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event3, tagId,
-                                bucketStartTimeNs + 2 * bucketSizeNs + 1 * NS_PER_SEC, 130);
-
     LogEvent event4(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event4, tagId,
-                                bucketStartTimeNs + 3 * bucketSizeNs + 1 * NS_PER_SEC, 1);
-
     LogEvent event5(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event5, tagId,
-                                bucketStartTimeNs + 3 * bucketSizeNs + 2 * NS_PER_SEC, 150);
-
     LogEvent event6(/*uid=*/0, /*pid=*/0);
-    CreateRepeatedValueLogEvent(&event6, tagId,
-                                bucketStartTimeNs + 3 * bucketSizeNs + 10 * NS_PER_SEC, 160);
+
+    switch (GetParam()) {
+        case INT:
+            CreateRepeatedValueLogEvent(&event1, tagId, bucketStartTimeNs + 1 * NS_PER_SEC, 10);
+            CreateRepeatedValueLogEvent(&event2, tagId, bucketStartTimeNs + 2 + NS_PER_SEC, 20);
+            CreateRepeatedValueLogEvent(&event3, tagId,
+                                        bucketStartTimeNs + 2 * bucketSizeNs + 1 * NS_PER_SEC, 130);
+            CreateRepeatedValueLogEvent(&event4, tagId,
+                                        bucketStartTimeNs + 3 * bucketSizeNs + 1 * NS_PER_SEC, 1);
+            CreateRepeatedValueLogEvent(&event5, tagId,
+                                        bucketStartTimeNs + 3 * bucketSizeNs + 2 * NS_PER_SEC, 150);
+            CreateRepeatedValueLogEvent(
+                    &event6, tagId, bucketStartTimeNs + 3 * bucketSizeNs + 10 * NS_PER_SEC, 160);
+            break;
+        case FLOAT:
+            CreateRepeatedValueLogEvent(&event1, tagId, bucketStartTimeNs + 1 * NS_PER_SEC, 10.0f);
+            CreateRepeatedValueLogEvent(&event2, tagId, bucketStartTimeNs + 2 + NS_PER_SEC, 20.0f);
+            CreateRepeatedValueLogEvent(
+                    &event3, tagId, bucketStartTimeNs + 2 * bucketSizeNs + 1 * NS_PER_SEC, 130.0f);
+            CreateRepeatedValueLogEvent(
+                    &event4, tagId, bucketStartTimeNs + 3 * bucketSizeNs + 1 * NS_PER_SEC, 0.1f);
+            CreateRepeatedValueLogEvent(
+                    &event5, tagId, bucketStartTimeNs + 3 * bucketSizeNs + 2 * NS_PER_SEC, 150.0f);
+            CreateRepeatedValueLogEvent(
+                    &event6, tagId, bucketStartTimeNs + 3 * bucketSizeNs + 10 * NS_PER_SEC, 160.0f);
+
+            break;
+        default:
+            FAIL() << "Unexpected GetParam() value";
+    }
 
     // Two events in bucket #0.
     valueProducer->onMatchedLogEvent(1 /*log matcher index*/, event1);
@@ -1037,7 +1057,7 @@ TEST(NumericValueMetricProducerTest, TestAnomalyDetection) {
 
     // Three events in bucket #3.
     valueProducer->onMatchedLogEvent(1 /*log matcher index*/, event4);
-    // Anomaly at event 4 since Value sum == 131 > 130!
+    // Anomaly at event 4 since Value sum == 131 (or 130.1 if float) > 130!
     EXPECT_EQ(anomalyTracker->getRefractoryPeriodEndsSec(DEFAULT_METRIC_DIMENSION_KEY),
               std::ceil(1.0 * event4.GetElapsedTimestampNs() / NS_PER_SEC + refPeriodSec));
     valueProducer->onMatchedLogEvent(1 /*log matcher index*/, event5);

@@ -36,7 +36,10 @@
 #include "TrainInfoPuller.h"
 #include "statslog_statsd.h"
 
+using std::min;
+using std::pair;
 using std::shared_ptr;
+using std::thread;
 using std::vector;
 
 namespace flags = com::android::os::statsd::flags;
@@ -72,14 +75,14 @@ StatsPullerManager::StatsPullerManager()
 bool StatsPullerManager::Pull(int tagId, const ConfigKey& configKey, const int64_t eventTimeNs,
                               vector<shared_ptr<LogEvent>>* data) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     return PullLocked(tagId, configKey, eventTimeNs, data);
 }
 
 bool StatsPullerManager::Pull(int tagId, const vector<int32_t>& uids, const int64_t eventTimeNs,
                               vector<std::shared_ptr<LogEvent>>* data) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     return PullLocked(tagId, uids, eventTimeNs, data);
 }
 
@@ -148,7 +151,7 @@ void StatsPullerManager::updateAlarmLocked() {
 
 void StatsPullerManager::SetStatsCompanionService(
         const shared_ptr<IStatsCompanionService>& statsCompanionService) {
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     shared_ptr<IStatsCompanionService> tmpForLock = mStatsCompanionService;
     mStatsCompanionService = statsCompanionService;
     for (const auto& pulledAtom : mAllPullAtomInfo) {
@@ -162,7 +165,7 @@ void StatsPullerManager::SetStatsCompanionService(
 void StatsPullerManager::RegisterReceiver(int tagId, const ConfigKey& configKey,
                                           const wp<PullDataReceiver>& receiver,
                                           int64_t nextPullTimeNs, int64_t intervalNs) {
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     auto& receivers = mReceivers[{.atomTag = tagId, .configKey = configKey}];
     for (auto it = receivers.begin(); it != receivers.end(); it++) {
         if (it->receiver == receiver) {
@@ -197,7 +200,7 @@ void StatsPullerManager::RegisterReceiver(int tagId, const ConfigKey& configKey,
 
 void StatsPullerManager::UnRegisterReceiver(int tagId, const ConfigKey& configKey,
                                             const wp<PullDataReceiver>& receiver) {
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     auto receiversIt = mReceivers.find({.atomTag = tagId, .configKey = configKey});
     if (receiversIt == mReceivers.end()) {
         VLOG("Unknown pull code or no receivers: %d", tagId);
@@ -215,13 +218,13 @@ void StatsPullerManager::UnRegisterReceiver(int tagId, const ConfigKey& configKe
 
 void StatsPullerManager::RegisterPullUidProvider(const ConfigKey& configKey,
                                                  const wp<PullUidProvider>& provider) {
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     mPullUidProviders[configKey] = provider;
 }
 
 void StatsPullerManager::UnregisterPullUidProvider(const ConfigKey& configKey,
                                                    const wp<PullUidProvider>& provider) {
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     const auto& it = mPullUidProviders.find(configKey);
     if (it != mPullUidProviders.end() && it->second == provider) {
         mPullUidProviders.erase(it);
@@ -276,7 +279,7 @@ static void processPullerQueue(ThreadSafeQueue<StatsPullerManager::PullerParams>
 
 void StatsPullerManager::OnAlarmFired(int64_t elapsedTimeNs) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     int64_t wallClockNs = getWallClockNs();
 
     int64_t minNextPullTimeNs = NO_ALARM_UPDATE;
@@ -505,7 +508,7 @@ void StatsPullerManager::initPullerQueue(ThreadSafeQueue<PullerParams>& pullerQu
 
 int StatsPullerManager::ForceClearPullerCache() {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     int totalCleared = 0;
     for (const auto& pulledAtom : mAllPullAtomInfo) {
         totalCleared += pulledAtom.second->ForceClearCache();
@@ -515,7 +518,7 @@ int StatsPullerManager::ForceClearPullerCache() {
 
 int StatsPullerManager::ClearPullerCacheIfNecessary(int64_t timestampNs) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     int totalCleared = 0;
     for (const auto& pulledAtom : mAllPullAtomInfo) {
         totalCleared += pulledAtom.second->ClearCacheIfNecessary(timestampNs);
@@ -528,7 +531,7 @@ void StatsPullerManager::RegisterPullAtomCallback(const int uid, const int32_t a
                                                   const vector<int32_t>& additiveFields,
                                                   const shared_ptr<IPullAtomCallback>& callback) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     VLOG("RegisterPullerCallback: adding puller for tag %d", atomTag);
 
     if (callback == nullptr) {
@@ -553,7 +556,7 @@ void StatsPullerManager::RegisterPullAtomCallback(const int uid, const int32_t a
 
 void StatsPullerManager::UnregisterPullAtomCallback(const int uid, const int32_t atomTag) {
     ATRACE_CALL();
-    std::lock_guard<std::mutex> _l(mLock);
+    std::lock_guard _l(mLock);
     PullerKey key = {.uid = uid, .atomTag = atomTag};
     if (mAllPullAtomInfo.find(key) != mAllPullAtomInfo.end()) {
         StatsdStats::getInstance().notePullerCallbackRegistrationChanged(atomTag,

@@ -34,6 +34,8 @@ using android::util::ProtoOutputStream;
 using std::nullopt;
 using std::optional;
 using std::string;
+using std::unique_ptr;
+using std::vector;
 using zetasketch::android::AggregatorStateProto;
 
 namespace android {

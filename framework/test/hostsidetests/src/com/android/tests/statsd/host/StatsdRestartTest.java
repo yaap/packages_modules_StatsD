@@ -17,6 +17,7 @@
 package com.android.tests.statsd.host;
 
 import static com.google.common.truth.Truth.assertWithMessage;
+import android.cts.statsdatom.lib.DeviceUtils;
 
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
@@ -54,15 +55,11 @@ public class StatsdRestartTest extends BaseHostJUnit4Test {
   public void statsManagerApisThrowException() throws Exception {
     stopStatsd();
     // Run device tests
-    runStatsdDeviceTest("StatsdRestartTest", "testApisThrowExceptionWhenStatsdNotAlive");
+    runStatsdDeviceTest(".StatsdRestartTest", "testApisThrowExceptionWhenStatsdNotAlive");
   }
 
   private void runStatsdDeviceTest(String className, String methodName)
       throws Exception {
-    String fullClassName = STATSD_TEST_APP_PACKAGE + "." + className;
-    String fullTestName = fullClassName + "$" + methodName;
-    boolean result =
-        runDeviceTests(STATSD_TEST_APP_PACKAGE, fullClassName, methodName);
-    assertWithMessage(fullTestName + " failed.").that(result).isTrue();
+    DeviceUtils.runDeviceTests(getDevice(), STATSD_TEST_APP_PACKAGE, className, methodName);
   }
 }

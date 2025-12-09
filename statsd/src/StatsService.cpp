@@ -20,6 +20,7 @@
 #include "StatsService.h"
 
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android/binder_ibinder_platform.h>
 #include <cutils/multiuser.h>
@@ -34,7 +35,6 @@
 #include <unistd.h>
 #include <utils/String16.h>
 
-#include "android-base/stringprintf.h"
 #include "config/ConfigKey.h"
 #include "config/ConfigManager.h"
 #include "flags/FlagProvider.h"
@@ -46,12 +46,23 @@
 #include "utils/api_tracing.h"
 
 using namespace android;
-
 using android::base::StringPrintf;
 using android::util::FIELD_COUNT_REPEATED;
 using android::util::FIELD_TYPE_MESSAGE;
-
 using Status = ::ndk::ScopedAStatus;
+
+using std::make_unique;
+using std::mutex;
+using std::nullopt;
+using std::numeric_limits;
+using std::optional;
+using std::set;
+using std::shared_ptr;
+using std::thread;
+using std::unique_lock;
+using std::unique_ptr;
+using std::unordered_set;
+using std::vector;
 
 namespace android {
 namespace os {
@@ -68,7 +79,7 @@ constexpr const char* kPermissionRegisterPullAtom = "android.permission.REGISTER
 // for StatsDataDumpProto
 const int FIELD_ID_REPORTS_LIST = 1;
 
-static Status exception(int32_t code, const std::string& msg) {
+static Status exception(int32_t code, const string& msg) {
     ALOGE("%s (%d)", msg.c_str(), code);
     return Status::fromExceptionCodeWithMessage(code, msg.c_str());
 }
@@ -125,7 +136,7 @@ Status checkSid(const char* expectedSid) {
     }
 
 StatsService::StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> queue,
-                           const std::shared_ptr<LogEventFilter>& logEventFilter)
+                           shared_ptr<LogEventFilter> logEventFilter)
     : mUidMap(uidMap),
       mAnomalyAlarmMonitor(new AlarmMonitor(
               MIN_DIFF_TO_UPDATE_REGISTERED_ALARM_SECS,
@@ -151,12 +162,16 @@ StatsService::StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> q
                       StatsdStats::getInstance().noteRegisteredPeriodicAlarmChanged();
                   }
               })),
-      mEventQueue(std::move(queue)),
-      mLogEventFilter(logEventFilter),
+      mEventQueue(queue),
       mBootCompleteTrigger({kBootCompleteTag, kUidMapReceivedTag, kAllPullersRegisteredTag},
                            [this]() { onStatsdInitCompleted(kStatsdInitDelaySecs); }),
       mStatsCompanionServiceDeathRecipient(
-              AIBinder_DeathRecipient_new(StatsService::statsCompanionServiceDied)) {
+              AIBinder_DeathRecipient_new(StatsService::statsCompanionServiceDied)),
+      mAtomsInUseChangeDispatcher(std::make_shared<AtomsInUseChangeDispatcher>()),
+      mLogEventFilter(logEventFilter),
+      mSocketLogEventControl(std::make_shared<SocketLogEventControl>()) {
+    mAtomsInUseChangeDispatcher->addListener(mLogEventFilter);
+    mAtomsInUseChangeDispatcher->addListener(mSocketLogEventControl);
     mPullerManager = new StatsPullerManager();
     StatsPuller::SetUidMap(mUidMap);
     mConfigManager = new ConfigManager();
@@ -220,7 +235,7 @@ StatsService::StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> q
                 mConfigManager->SendRestrictedMetricsBroadcast(configPackages, key.GetId(),
                                                                delegateUids, restrictedMetrics);
             },
-            logEventFilter);
+            mAtomsInUseChangeDispatcher);
 
     mUidMap->setListener(mProcessor);
     mConfigManager->AddListener(mProcessor);
@@ -729,15 +744,15 @@ status_t StatsService::cmd_dump_report(int out, const Vector<String8>& args) {
         bool eraseData = true;
         int uid;
         string name;
-        if (!std::strcmp("--proto", args[argCount-1].c_str())) {
+        if (!strcmp("--proto", args[argCount - 1].c_str())) {
             proto = true;
             argCount -= 1;
         }
-        if (!std::strcmp("--include_current_bucket", args[argCount-1].c_str())) {
+        if (!strcmp("--include_current_bucket", args[argCount - 1].c_str())) {
             includeCurrentBucket = true;
             argCount -= 1;
         }
-        if (!std::strcmp("--keep_data", args[argCount-1].c_str())) {
+        if (!strcmp("--keep_data", args[argCount - 1].c_str())) {
             eraseData = false;
             argCount -= 1;
         }
@@ -781,7 +796,7 @@ status_t StatsService::cmd_dump_report(int out, const Vector<String8>& args) {
 status_t StatsService::cmd_print_stats(int out, const Vector<String8>& args) {
     int argCount = args.size();
     bool proto = false;
-    if (!std::strcmp("--proto", args[argCount-1].c_str())) {
+    if (!strcmp("--proto", args[argCount - 1].c_str())) {
         proto = true;
         argCount -= 1;
     }
@@ -806,7 +821,7 @@ status_t StatsService::cmd_print_stats(int out, const Vector<String8>& args) {
 
 status_t StatsService::cmd_print_uid_map(int out, const Vector<String8>& args) {
     if (args.size() > 1) {
-        if (!std::strcmp("--with_certificate_hash", args[1].c_str())) {
+        if (!strcmp("--with_certificate_hash", args[1].c_str())) {
             mUidMap->printUidMap(out, /* includeCertificateHash */ true);
         } else {
             string pkg;
@@ -941,7 +956,7 @@ status_t StatsService::cmd_clear_puller_cache(int out) {
     }
 }
 
-status_t StatsService::cmd_print_logs(int out, const Vector<String8>& args) {
+status_t StatsService::cmd_print_logs(int /*out*/, const Vector<String8>& args) {
     Status status = checkUid(AID_ROOT);
     if (!status.isOk()) {
         return PERMISSION_DENIED;
@@ -954,6 +969,10 @@ status_t StatsService::cmd_print_logs(int out, const Vector<String8>& args) {
         enabled = atoi(args[1].c_str()) != 0;
     }
     mProcessor->setPrintLogs(enabled);
+    // Turning on print logs turns off pushed event filtering to enforce
+    // complete log event buffer parsing
+    mLogEventFilter->setFilteringEnabled(!enabled);
+    mSocketLogEventControl->setControlEnabled(!enabled);
     return NO_ERROR;
 }
 
@@ -1033,7 +1052,7 @@ Status StatsService::informAlarmForSubscriberTriggeringFired() {
 
     VLOG("StatsService::informAlarmForSubscriberTriggeringFired was called");
     int64_t currentTimeSec = getElapsedRealtimeSec();
-    std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> alarmSet =
+    unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> alarmSet =
             mPeriodicAlarmMonitor->popSoonerThan(static_cast<uint32_t>(currentTimeSec));
     if (alarmSet.size() > 0) {
         VLOG("Found periodic alarm fired.");
@@ -1123,7 +1142,7 @@ void StatsService::onStatsdInitCompleted(int initEventDelaySecs) {
     // See MultiConditionTrigger::markComplete() executorThread for details
     // For more details see http://b/277958338
 
-    std::unique_lock<std::mutex> lk(mStatsdInitCompletedHandlerTerminationFlagMutex);
+    unique_lock<mutex> lk(mStatsdInitCompletedHandlerTerminationFlagMutex);
     if (mStatsdInitCompletedHandlerTerminationFlag.wait_for(
                 lk, std::chrono::seconds(initEventDelaySecs),
                 [this] { return mStatsdInitCompletedHandlerTerminationRequested; })) {
@@ -1132,6 +1151,9 @@ void StatsService::onStatsdInitCompleted(int initEventDelaySecs) {
     }
 
     mProcessor->onStatsdInitCompleted(getElapsedRealtimeNs());
+    // to not stress I/O subsystem reasonable to postpone atom ids file creation and avoid
+    // high volume read file requests from many apps which will log their first atom
+    mSocketLogEventControl->setControlEnabled(true);
 }
 
 void StatsService::Startup() {
@@ -1145,11 +1167,14 @@ void StatsService::Startup() {
 
     // Now that configs are initialized, begin reading logs
     if (mEventQueue != nullptr) {
-        mLogsReaderThread = std::make_unique<std::thread>([this] { readLogs(); });
+        mLogsReaderThread = make_unique<thread>([this] { readLogs(); });
         if (mLogsReaderThread) {
             pthread_setname_np(mLogsReaderThread->native_handle(), "statsd.reader");
         }
     }
+
+    // Enable the filter now since configs are initialized.
+    mLogEventFilter->setFilteringEnabled(true);
 }
 
 void StatsService::Terminate() {
@@ -1168,7 +1193,7 @@ void StatsService::Terminate() {
 
 void StatsService::onStatsdInitCompletedHandlerTermination() {
     {
-        std::unique_lock<std::mutex> lk(mStatsdInitCompletedHandlerTerminationFlagMutex);
+        unique_lock<mutex> lk(mStatsdInitCompletedHandlerTerminationFlagMutex);
         mStatsdInitCompletedHandlerTerminationRequested = true;
     }
     mStatsdInitCompletedHandlerTerminationFlag.notify_all();
@@ -1196,7 +1221,7 @@ Status StatsService::getDataFd(int64_t key, const int32_t callingUid,
     vector<uint8_t> reportData;
     getDataChecked(key, callingUid, &reportData);
 
-    if (reportData.size() >= std::numeric_limits<int32_t>::max()) {
+    if (reportData.size() >= numeric_limits<int32_t>::max()) {
         ALOGE("Report size is infeasible big and can not be returned");
         return exception(EX_ILLEGAL_STATE, "Report size is infeasible big.");
     }
@@ -1240,28 +1265,36 @@ Status StatsService::addConfiguration(int64_t key, const vector <uint8_t>& confi
     ATRACE_CALL();
     ENFORCE_UID(AID_SYSTEM);
 
-    if (addConfigurationChecked(callingUid, key, config)) {
-        return Status::ok();
-    } else {
+    StatsdConfig cfg;
+    if (!cfg.ParseFromArray(config.data(), config.size())) {
         return exception(EX_ILLEGAL_ARGUMENT, "Could not parse malformatted StatsdConfig.");
     }
+    addConfigurationChecked(key, callingUid, cfg);
+    return Status::ok();
 }
 
-bool StatsService::addConfigurationChecked(int uid, int64_t key, const vector<uint8_t>& config) {
+Status StatsService::addConfigurationFd(int64_t key, const ScopedFileDescriptor& configFd,
+                                        const int32_t callingUid) {
+    ATRACE_CALL();
+    ENFORCE_UID(AID_SYSTEM);
+
+    StatsdConfig cfg;
+    if (!cfg.ParseFromFileDescriptor(configFd.get())) {
+        return exception(EX_ILLEGAL_ARGUMENT, "Could not parse malformatted StatsdConfig.");
+    }
+    addConfigurationChecked(key, callingUid, cfg);
+    return Status::ok();
+}
+
+void StatsService::addConfigurationChecked(int64_t key, int32_t callingUid,
+                                           const StatsdConfig& cfg) {
+    ConfigKey cfgKey(callingUid, key);
     const bool pastFilterState = mLogEventFilter->getFilteringEnabled();
     // disabling filter to avoid skipping potentially interesting atoms required by
     // the new or updated configuration
     mLogEventFilter->setFilteringEnabled(false);
-    ConfigKey configKey(uid, key);
-    StatsdConfig cfg;
-    if (config.size() > 0) {  // If the config is empty, skip parsing.
-        if (!cfg.ParseFromArray(&config[0], config.size())) {
-            return false;
-        }
-    }
-    mConfigManager->UpdateConfig(configKey, cfg);
+    mConfigManager->UpdateConfig(cfgKey, cfg);
     mLogEventFilter->setFilteringEnabled(pastFilterState);
-    return true;
 }
 
 Status StatsService::removeDataFetchOperation(int64_t key,
@@ -1364,7 +1397,7 @@ Status StatsService::allPullersFromBootRegistered() {
 
 Status StatsService::registerPullAtomCallback(int32_t uid, int32_t atomTag, int64_t coolDownMillis,
                                               int64_t timeoutMillis,
-                                              const std::vector<int32_t>& additiveFields,
+                                              const vector<int32_t>& additiveFields,
                                               const shared_ptr<IPullAtomCallback>& pullerCallback) {
     ATRACE_CALL();
     ENFORCE_UID(AID_SYSTEM);
@@ -1377,7 +1410,7 @@ Status StatsService::registerPullAtomCallback(int32_t uid, int32_t atomTag, int6
 
 Status StatsService::registerNativePullAtomCallback(
         int32_t atomTag, int64_t coolDownMillis, int64_t timeoutMillis,
-        const std::vector<int32_t>& additiveFields,
+        const vector<int32_t>& additiveFields,
         const shared_ptr<IPullAtomCallback>& pullerCallback) {
     ATRACE_CALL();
     if (!checkPermission(kPermissionRegisterPullAtom)) {
@@ -1416,7 +1449,7 @@ Status StatsService::unregisterNativePullAtomCallback(int32_t atomTag) {
     return Status::ok();
 }
 
-Status StatsService::getRegisteredExperimentIds(std::vector<int64_t>* experimentIdsOut) {
+Status StatsService::getRegisteredExperimentIds(vector<int64_t>* experimentIdsOut) {
     ATRACE_CALL();
     ENFORCE_UID(AID_SYSTEM);
     // TODO: add verifier permission
@@ -1468,7 +1501,7 @@ void StatsService::statsCompanionServiceDiedImpl() {
         mProcessor->WriteDataToDisk(STATSCOMPANION_DIED, FAST, systemServerRestartNs, wallClockNs);
         mProcessor->resetConfigs();
 
-        std::string serializedActiveConfigs;
+        string serializedActiveConfigs;
         if (activeConfigsProto.serializeToString(&serializedActiveConfigs)) {
             ActiveConfigList activeConfigs;
             if (activeConfigs.ParseFromString(serializedActiveConfigs)) {
@@ -1525,8 +1558,7 @@ Status StatsService::querySql(const string& sqlQuery, const int32_t minSqlClient
     if (callback == nullptr) {
         ALOGW("querySql called with null callback.");
         StatsdStats::getInstance().noteQueryRestrictedMetricFailed(
-                configKey, configPackage, std::nullopt, callingUid,
-                InvalidQueryReason(NULL_CALLBACK));
+                configKey, configPackage, nullopt, callingUid, InvalidQueryReason(NULL_CALLBACK));
         return Status::ok();
     }
     mProcessor->querySql(sqlQuery, minSqlClientVersion, policyConfig, callback, configKey,
@@ -1566,9 +1598,10 @@ Status StatsService::flushSubscription(const shared_ptr<IStatsSubscriptionCallba
 }
 
 void StatsService::initShellSubscriber() {
-    std::lock_guard<std::mutex> lock(mShellSubscriberMutex);
+    std::lock_guard lock(mShellSubscriberMutex);
     if (mShellSubscriber == nullptr) {
-        mShellSubscriber = new ShellSubscriber(mUidMap, mPullerManager, mLogEventFilter);
+        mShellSubscriber =
+                new ShellSubscriber(mUidMap, mPullerManager, mAtomsInUseChangeDispatcher);
     }
 }
 
@@ -1576,7 +1609,7 @@ void StatsService::stopReadingLogs() {
     mIsStopRequested = true;
     // Push this event so that readLogs will process and break out of the loop
     // after the stop is requested.
-    std::unique_ptr<LogEvent> logEvent = std::make_unique<LogEvent>(/*uid=*/0, /*pid=*/0);
+    unique_ptr<LogEvent> logEvent = make_unique<LogEvent>(/*uid=*/0, /*pid=*/0);
     mEventQueue->push(std::move(logEvent));
 }
 

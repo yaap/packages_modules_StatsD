@@ -20,9 +20,6 @@
 #include "config/ConfigKey.h"
 #include "logd/LogEvent.h"
 
-using std::string;
-using std::vector;
-
 namespace android {
 namespace os {
 namespace statsd {
@@ -34,9 +31,9 @@ inline int32_t getDbVersion() {
     return SQLITE_VERSION_NUMBER;
 };
 
-string getDbName(const ConfigKey& key);
+std::string getDbName(const ConfigKey& key);
 
-string reformatMetricId(const int64_t metricId);
+std::string reformatMetricId(const int64_t metricId);
 
 /* Creates a new data table for a specified metric if one does not yet exist. */
 bool createTableIfNeeded(const ConfigKey& key, int64_t metricId, const LogEvent& event);
@@ -63,16 +60,18 @@ void closeDb(sqlite3* db);
 /* Inserts new data into the specified metric data table.
  * A temp sqlite handle is created using the ConfigKey.
  */
-bool insert(const ConfigKey& key, int64_t metricId, const vector<LogEvent>& events, string& error);
+bool insert(const ConfigKey& key, int64_t metricId, const std::vector<LogEvent>& events,
+            std::string& error);
 
 /* Inserts new data into the specified sqlite db handle. */
-bool insert(sqlite3* db, int64_t metricId, const vector<LogEvent>& events, string& error);
+bool insert(sqlite3* db, int64_t metricId, const std::vector<LogEvent>& events, std::string& error);
 
 /* Executes a sql query on the specified SQLite db.
  * A temp sqlite handle is created using the ConfigKey.
  */
-bool query(const ConfigKey& key, const string& zSql, vector<vector<string>>& rows,
-           vector<int32_t>& columnTypes, vector<string>& columnNames, string& err);
+bool query(const ConfigKey& key, const std::string& zSql,
+           std::vector<std::vector<std::string>>& rows, std::vector<int32_t>& columnTypes,
+           std::vector<std::string>& columnNames, std::string& err);
 
 bool flushTtl(sqlite3* db, int64_t metricId, int64_t ttlWallClockNs);
 
@@ -80,7 +79,7 @@ bool flushTtl(sqlite3* db, int64_t metricId, int64_t ttlWallClockNs);
 void verifyIntegrityAndDeleteIfNecessary(const ConfigKey& key);
 
 /* Creates and updates the device info table for the given configKey. */
-bool updateDeviceInfoTable(const ConfigKey& key, string& error);
+bool updateDeviceInfoTable(const ConfigKey& key, std::string& error);
 
 }  // namespace dbutils
 }  // namespace statsd

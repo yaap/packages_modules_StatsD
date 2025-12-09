@@ -20,12 +20,12 @@
 #include "storage/StorageManager.h"
 
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 #include <private/android_filesystem_config.h>
 #include <sys/stat.h>
 
 #include <fstream>
 
-#include "android-base/stringprintf.h"
 #include "guardrail/StatsdStats.h"
 #include "stats_log_util.h"
 #include "utils/DbUtils.h"
@@ -36,7 +36,10 @@ namespace statsd {
 
 using android::util::FIELD_COUNT_REPEATED;
 using android::util::FIELD_TYPE_MESSAGE;
+using std::ifstream;
 using std::map;
+using std::string;
+using std::vector;
 
 /**
  * NOTE: these directories are protected by SELinux, any changes here must also update
@@ -156,7 +159,7 @@ void StorageManager::writeFile(const char* file, const void* buffer, int numByte
 }
 
 bool StorageManager::writeTrainInfo(const InstallTrainInfo& trainInfo) {
-    std::lock_guard<std::mutex> lock(sTrainInfoMutex);
+    std::lock_guard lock(sTrainInfoMutex);
 
     if (trainInfo.trainName.empty()) {
       return false;
@@ -270,7 +273,7 @@ bool StorageManager::writeTrainInfo(const InstallTrainInfo& trainInfo) {
 }
 
 bool StorageManager::readTrainInfo(const std::string& trainName, InstallTrainInfo& trainInfo) {
-    std::lock_guard<std::mutex> lock(sTrainInfoMutex);
+    std::lock_guard lock(sTrainInfoMutex);
     return readTrainInfoLocked(trainName, trainInfo);
 }
 
@@ -433,7 +436,7 @@ bool StorageManager::readTrainInfoLocked(const std::string& trainName, InstallTr
 }
 
 vector<InstallTrainInfo> StorageManager::readAllTrainInfo() {
-    std::lock_guard<std::mutex> lock(sTrainInfoMutex);
+    std::lock_guard lock(sTrainInfoMutex);
     vector<InstallTrainInfo> trainInfoList;
     unique_ptr<DIR, decltype(&closedir)> dir(opendir(TRAIN_INFO_DIR), closedir);
     if (dir == NULL) {
@@ -757,7 +760,7 @@ void StorageManager::trimToFit(const char* path, bool parseTimestampOnly) {
         ifstream file(file_name.c_str(), ifstream::in | ifstream::binary);
         int fileSize = 0;
         if (file.is_open()) {
-            file.seekg(0, ios::end);
+            file.seekg(0, std::ios::end);
             fileSize = file.tellg();
             file.close();
             totalFileSize += fileSize;
@@ -808,7 +811,7 @@ void StorageManager::printDirStats(int outFd, const char* path) {
         string file_name = output.getFullFileName(path);
         ifstream file(file_name.c_str(), ifstream::in | ifstream::binary);
         if (file.is_open()) {
-            file.seekg(0, ios::end);
+            file.seekg(0, std::ios::end);
             int fileSize = file.tellg();
             file.close();
             dprintf(outFd, ", File Size: %d bytes", fileSize);

@@ -17,7 +17,7 @@
 /*
  * This file must be included at the top of the file. Other header files
  * occasionally include log.h, and if LOG_TAG isn't set when that happens
- * we'll get a preprocesser error when we try to define it here.
+ * we'll get a preprocessor error when we try to define it here.
  */
 
 #pragma once

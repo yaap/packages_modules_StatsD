@@ -20,8 +20,12 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <utility>
+
+#include "utils.h"
 
 class StatsSocketLossReporter {
 public:
@@ -36,29 +40,26 @@ public:
      * @return true if atom have been written into the socket successfully
      * @return false if atom have been written into the socket with an error
      */
-    void dumpAtomsLossStats(bool forceDump = false) __INTRODUCED_IN(__ANDROID_API_T__);
+    void dumpAtomsLossStats(bool forceDump = false);
 
     ~StatsSocketLossReporter();
 
 private:
     StatsSocketLossReporter();
 
-    void startCooldownTimer(int64_t elapsedRealtimeNanos);
-    bool isCooldownTimerActive(int64_t elapsedRealtimeNanos) const;
-
     const int32_t mUid;
     std::atomic_int64_t mFirstTsNanos = 0;
     std::atomic_int64_t mLastTsNanos = 0;
-    std::atomic_int64_t mCooldownTimerFinishAtNanos = 0;
+    CooldownTimer mCooldownTimer;
 
     // Loss info data will be logged to statsd as a regular AStatsEvent
     // which means it needs to obey event size limitations (4kB)
     // for N tag ids the loss info might take N * 12 + 8 + 8 + 4 bytes
-    // defining guardrail as a 100 tag ids should limit the atom size to
-    // 100 * 12 + 8 + 8 + 4 ~ 1.2kB
-    const size_t kMaxAtomTagsCount = 100;
+    // defining guardrail as a 300 tag ids should limit the atom size to
+    // 300 * 12 + 8 + 8 + 4 ~ 3.6kB
+    static constexpr size_t kMaxAtomTagsCount = 300;
 
-    const int64_t kCoolDownTimerDurationNanos = 10 * 1000 * 1000;  // 10ms
+    static constexpr int64_t kCoolDownTimerDurationNanos = 60 * 1'000'000'000LL;  // 1minute
 
     struct HashPair final {
         template <class TFirst, class TSecond>
@@ -73,7 +74,7 @@ private:
     // guards access to below mLossInfo
     mutable std::mutex mMutex;
 
-    using LossInfoKey = std::pair<int, int>;  // [error, tag]
+    using LossInfoKey = std::pair<int, int32_t>;  // [error, tag]
 
     // Represents loss info as a counter per [error, tag] pair
     std::unordered_map<LossInfoKey, int, HashPair> mLossInfo;

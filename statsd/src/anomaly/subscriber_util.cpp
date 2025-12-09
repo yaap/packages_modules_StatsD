@@ -19,6 +19,9 @@
 
 #include "subscriber_util.h"
 
+#include <algorithm>
+#include <limits>
+
 #include "external/Perfetto.h"
 #include "external/Uprobestats.h"
 #include "subscriber/IncidentdReporter.h"
@@ -28,8 +31,17 @@ namespace android {
 namespace os {
 namespace statsd {
 
+int64_t doubleToInt64Clamped(double value) {
+    double min_int64 = static_cast<double>(std::numeric_limits<int64_t>::min());
+    double max_int64 = static_cast<double>(std::numeric_limits<int64_t>::max());
+
+    double clamped_double = std::clamp(value, min_int64, max_int64);
+
+    return static_cast<int64_t>(clamped_double);
+}
+
 void triggerSubscribers(const int64_t ruleId, const int64_t metricId,
-                        const MetricDimensionKey& dimensionKey, int64_t metricValue,
+                        const MetricDimensionKey& dimensionKey, double metricValue,
                         const ConfigKey& configKey,
                         const std::vector<Subscription>& subscriptions) {
     VLOG("informSubscribers called.");
@@ -48,8 +60,11 @@ void triggerSubscribers(const int64_t ruleId, const int64_t metricId,
         }
         switch (subscription.subscriber_information_case()) {
             case Subscription::SubscriberInformationCase::kIncidentdDetails:
+                // incidentd is on the deprecation path. clamp the double
+                // value instead of creating new fields for double.
                 if (!GenerateIncidentReport(subscription.incidentd_details(), ruleId, metricId,
-                                            dimensionKey, metricValue, configKey)) {
+                                            dimensionKey, doubleToInt64Clamped(metricValue),
+                                            configKey)) {
                     ALOGW("Failed to generate incident report.");
                 }
                 break;

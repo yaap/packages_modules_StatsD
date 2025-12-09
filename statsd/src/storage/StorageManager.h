@@ -80,12 +80,12 @@ public:
     /**
      * Reads all train info and returns a vector of train info.
      */
-    static vector<InstallTrainInfo> readAllTrainInfo();
+    static std::vector<InstallTrainInfo> readAllTrainInfo();
 
     /**
      * Reads the file content to the buffer.
      */
-    static bool readFileToString(const char* file, string* content);
+    static bool readFileToString(const char* file, std::string* content);
 
     /**
      * Deletes a single file given a file name.
@@ -140,7 +140,7 @@ public:
      * exist or error occurs when reading the file.
      */
     static bool readConfigFromDisk(const ConfigKey& key, StatsdConfig* config);
-    static bool readConfigFromDisk(const ConfigKey& key, string* config);
+    static bool readConfigFromDisk(const ConfigKey& key, std::string* config);
 
     /**
      * Trims files in the provided directory to limit the total size, number of
@@ -151,19 +151,18 @@ public:
     /**
      * Returns true if there already exists identical configuration on device.
      */
-    static bool hasIdenticalConfig(const ConfigKey& key,
-                                   const vector<uint8_t>& config);
+    static bool hasIdenticalConfig(const ConfigKey& key, const std::vector<uint8_t>& config);
 
     /**
      * Prints disk usage statistics related to statsd.
      */
     static void printStats(int out);
 
-    static string getDataFileName(long wallClockSec, int uid, int64_t id);
+    static std::string getDataFileName(long wallClockSec, int uid, int64_t id);
 
-    static string getDataHistoryFileName(long wallClockSec, int uid, int64_t id);
+    static std::string getDataHistoryFileName(long wallClockSec, int uid, int64_t id);
 
-    static void sortFiles(vector<FileInfo>* fileNames);
+    static void sortFiles(std::vector<FileInfo>* fileNames);
 
     static void enforceDbGuardrails(const char* path, int64_t wallClockSec, int64_t maxBytes);
 

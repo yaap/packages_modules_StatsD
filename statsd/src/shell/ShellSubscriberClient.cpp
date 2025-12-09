@@ -23,12 +23,21 @@
 #include "matchers/matcher_util.h"
 #include "stats_log_util.h"
 
-using android::base::unique_fd;
-using Status = ::ndk::ScopedAStatus;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using android::base::unique_fd;
+using Status = ::ndk::ScopedAStatus;
+using std::max;
+using std::min;
+using std::nullopt;
+using std::optional;
+using std::set;
+using std::shared_ptr;
+using std::string;
+using std::unique_ptr;
+using std::vector;
 
 const static int FIELD_ID_SHELL_DATA__ATOM = 1;
 const static int FIELD_ID_SHELL_DATA__ELAPSED_TIMESTAMP_NANOS = 2;
@@ -46,7 +55,7 @@ struct ReadConfigResult {
 
 // Read and parse single config. There should only one config in the input.
 static optional<ReadConfigResult> readConfig(const vector<uint8_t>& configBytes,
-                                             int64_t startTimeMs, int64_t minPullIntervalMs) {
+                                             int64_t minPullIntervalMs) {
     // Parse the config.
     ShellSubscription config;
     if (!config.ParseFromArray(configBytes.data(), configBytes.size())) {
@@ -72,7 +81,7 @@ static optional<ReadConfigResult> readConfig(const vector<uint8_t>& configBytes,
         }
 
         const int64_t pullIntervalMs = max(pulled.freq_millis(), minPullIntervalMs);
-        result.pullInfo.emplace_back(pulled.matcher(), startTimeMs, pullIntervalMs, packages, uids);
+        result.pullInfo.emplace_back(pulled.matcher(), pullIntervalMs, packages, uids);
         ALOGD("ShellSubscriberClient: adding matcher for pulled atom %d",
               pulled.matcher().atom_id());
     }
@@ -82,22 +91,22 @@ static optional<ReadConfigResult> readConfig(const vector<uint8_t>& configBytes,
     return result;
 }
 
-ShellSubscriberClient::PullInfo::PullInfo(const SimpleAtomMatcher& matcher, int64_t startTimeMs,
-                                          int64_t intervalMs,
-                                          const std::vector<std::string>& packages,
-                                          const std::vector<int32_t>& uids)
+ShellSubscriberClient::PullInfo::PullInfo(const SimpleAtomMatcher& matcher, int64_t intervalMs,
+                                          const vector<std::string>& packages,
+                                          const vector<int32_t>& uids)
     : mPullerMatcher(matcher),
       mIntervalMs(intervalMs),
-      mPrevPullElapsedRealtimeMs(startTimeMs),
+      mPrevPullElapsedRealtimeMs(nullopt),
       mPullPackages(packages),
       mPullUids(uids) {
 }
 
-ShellSubscriberClient::ShellSubscriberClient(
-        int id, int out, const std::shared_ptr<IStatsSubscriptionCallback>& callback,
-        const std::vector<SimpleAtomMatcher>& pushedMatchers,
-        const std::vector<PullInfo>& pulledInfo, int64_t timeoutSec, int64_t startTimeSec,
-        const sp<UidMap>& uidMap, const sp<StatsPullerManager>& pullerMgr)
+ShellSubscriberClient::ShellSubscriberClient(int id, int out,
+                                             const shared_ptr<IStatsSubscriptionCallback>& callback,
+                                             const vector<SimpleAtomMatcher>& pushedMatchers,
+                                             const vector<PullInfo>& pulledInfo, int64_t timeoutSec,
+                                             int64_t startTimeSec, const sp<UidMap>& uidMap,
+                                             const sp<StatsPullerManager>& pullerMgr)
     : mId(id),
       mUidMap(uidMap),
       mPullerMgr(pullerMgr),
@@ -108,7 +117,7 @@ ShellSubscriberClient::ShellSubscriberClient(
       mTimeoutSec(timeoutSec),
       mStartTimeSec(startTimeSec),
       mLastWriteMs(startTimeSec * 1000),
-      mCacheSize(0){};
+      mCacheSize(0) {};
 
 unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
         int in, int out, int64_t timeoutSec, int64_t startTimeSec, const sp<UidMap>& uidMap,
@@ -135,7 +144,7 @@ unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
     }
 
     const optional<ReadConfigResult> readConfigResult =
-            readConfig(buffer, startTimeSec * 1000, /* minPullIntervalMs */ 0);
+            readConfig(buffer, /* minPullIntervalMs */ 0);
     if (!readConfigResult.has_value()) {
         return nullptr;
     }
@@ -166,8 +175,7 @@ unique_ptr<ShellSubscriberClient> ShellSubscriberClient::create(
     }
 
     const optional<ReadConfigResult> readConfigResult =
-            readConfig(subscriptionConfig, startTimeSec * 1000,
-                       ShellSubscriberClient::kMinCallbackPullIntervalMs);
+            readConfig(subscriptionConfig, ShellSubscriberClient::kMinCallbackPullIntervalMs);
     if (!readConfigResult.has_value()) {
         return nullptr;
     }
@@ -240,7 +248,8 @@ void ShellSubscriberClient::flushProtoIfNeeded() {
 int64_t ShellSubscriberClient::pullIfNeeded(int64_t nowSecs, int64_t nowMillis, int64_t nowNanos) {
     int64_t sleepTimeMs = 24 * 60 * 60 * 1000;  // 24 hours.
     for (PullInfo& pullInfo : mPulledInfo) {
-        if (pullInfo.mPrevPullElapsedRealtimeMs + pullInfo.mIntervalMs <= nowMillis) {
+        if (!pullInfo.mPrevPullElapsedRealtimeMs ||
+            *pullInfo.mPrevPullElapsedRealtimeMs + pullInfo.mIntervalMs <= nowMillis) {
             vector<int32_t> uids;
             getUidsForPullAtom(&uids, pullInfo);
 
@@ -258,7 +267,7 @@ int64_t ShellSubscriberClient::pullIfNeeded(int64_t nowSecs, int64_t nowMillis, 
         }
 
         // Determine how long to sleep before doing more work.
-        const int64_t nextPullTimeMs = pullInfo.mPrevPullElapsedRealtimeMs + pullInfo.mIntervalMs;
+        const int64_t nextPullTimeMs = *pullInfo.mPrevPullElapsedRealtimeMs + pullInfo.mIntervalMs;
 
         const int64_t timeBeforePullMs =
                 nextPullTimeMs - nowMillis;  // guaranteed to be non-negative
@@ -391,7 +400,7 @@ void ShellSubscriberClient::onUnsubscribe() {
     }
 }
 
-void ShellSubscriberClient::addAllAtomIds(LogEventFilter::AtomIdSet& allAtomIds) const {
+void ShellSubscriberClient::addAllAtomIds(AtomsInUseChangeListener::AtomIdSet& allAtomIds) const {
     for (const auto& matcher : mPushedMatchers) {
         allAtomIds.insert(matcher.atom_id());
     }

@@ -25,12 +25,13 @@
 #include "statslog_statsd.h"
 #include "storage/StorageManager.h"
 
-using std::make_shared;
-using std::shared_ptr;
-
 namespace android {
 namespace os {
 namespace statsd {
+
+using std::make_shared;
+using std::shared_ptr;
+using std::vector;
 
 TrainInfoPuller::TrainInfoPuller() :
     StatsPuller(util::TRAIN_INFO) {

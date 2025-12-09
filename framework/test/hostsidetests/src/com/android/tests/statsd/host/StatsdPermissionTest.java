@@ -17,6 +17,7 @@
 package com.android.tests.statsd.host;
 
 import static com.google.common.truth.Truth.assertWithMessage;
+import android.cts.statsdatom.lib.DeviceUtils;
 
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
@@ -27,7 +28,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Host side tests for tests that test that statsd APIs fail without the proper permissions.
+ * Host side tests for tests that test that statsd APIs fail without the proper
+ * permissions.
  */
 @RunWith(DeviceJUnit4ClassRunner.class)
 public class StatsdPermissionTest extends BaseHostJUnit4Test {
@@ -40,13 +42,11 @@ public class StatsdPermissionTest extends BaseHostJUnit4Test {
   @Test
   public void testApisThrowExceptionWithoutPermission() throws Exception {
     // Run device tests
-    runStatsdDeviceTest("StatsdPermissionTest", "testApisThrowExceptionWithoutPermission");
+    runStatsdDeviceTest(".StatsdPermissionTest", "testApisThrowExceptionWithoutPermission");
   }
 
-  private void runStatsdDeviceTest(String className, String methodName) throws Exception {
-    String fullClassName = STATSD_TEST_APP_PACKAGE + "." + className;
-    String fullTestName = fullClassName + "$" + methodName;
-    boolean result = runDeviceTests(STATSD_TEST_APP_PACKAGE, fullClassName, methodName);
-    assertWithMessage(fullTestName + " failed.").that(result).isTrue();
+  private void runStatsdDeviceTest(String className, String methodName)
+      throws Exception {
+    DeviceUtils.runDeviceTests(getDevice(), STATSD_TEST_APP_PACKAGE, className, methodName);
   }
 }

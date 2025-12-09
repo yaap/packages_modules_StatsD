@@ -26,6 +26,8 @@ namespace statsd {
 
 #ifdef __ANDROID__
 
+using std::vector;
+
 namespace {
 
 StatsdConfig CreateStatsdConfig(int num_buckets, int threshold) {

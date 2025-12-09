@@ -19,6 +19,7 @@
 #include "StatsSocketListenerIoUring.h"
 
 #include <IOUringSocketHandler/IOUringSocketHandler.h>
+#include <android-base/scopeguard.h>
 #include <ctype.h>
 #include <cutils/sockets.h>
 #include <limits.h>
@@ -31,7 +32,6 @@
 #include <unistd.h>
 
 #include "StatsSocketListener.h"
-#include "android-base/scopeguard.h"
 #include "guardrail/StatsdStats.h"
 #include "logd/logevent_util.h"
 #include "stats_log_util.h"

@@ -73,7 +73,7 @@ private:
                                      &server_configurable_flags::GetServerConfigurableFlag);
 
     inline void resetOverrides() {
-        std::lock_guard<std::mutex> lock(mFlagsMutex);
+        std::lock_guard lock(mFlagsMutex);
         overrideFuncsLocked();
         mLocalFlags.clear();
     }

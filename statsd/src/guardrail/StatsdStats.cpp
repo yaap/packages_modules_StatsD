@@ -44,9 +44,11 @@ using android::util::FIELD_TYPE_STRING;
 using android::util::FIELD_TYPE_UINT32;
 using android::util::ProtoOutputStream;
 using std::lock_guard;
+using std::optional;
 using std::shared_ptr;
 using std::string;
 using std::to_string;
+using std::unordered_map;
 using std::vector;
 
 const int FIELD_ID_BEGIN_TIME = 1;
@@ -68,7 +70,6 @@ const int FIELD_ID_SOCKET_LOSS_STATS = 24;
 const int FIELD_ID_QUEUE_STATS = 25;
 const int FIELD_ID_SOCKET_READ_STATS = 26;
 const int FIELD_ID_ERROR_STATS = 27;
-const int FIELD_ID_PEAK_LOGGING_RATES = 28;
 const int FIELD_ID_PULLER_ALARM_STATS = 29;
 
 const int FIELD_ID_RESTRICTED_METRIC_QUERY_STATS_CALLING_UID = 1;
@@ -271,7 +272,7 @@ void StatsdStats::noteConfigReceived(
         const ConfigKey& key, int metricsCount, int conditionsCount, int matchersCount,
         int alertsCount, const std::list<std::pair<const int64_t, const int32_t>>& annotations,
         const optional<InvalidConfigReason>& reason) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     int32_t nowTimeSec = getWallClockSec();
 
     // If there is an existing config for the same key, icebox the old config.
@@ -310,7 +311,7 @@ void StatsdStats::noteConfigRemovedInternalLocked(const ConfigKey& key) {
 }
 
 void StatsdStats::noteConfigRemoved(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     noteConfigRemovedInternalLocked(key);
 }
 
@@ -322,13 +323,13 @@ void StatsdStats::noteConfigResetInternalLocked(const ConfigKey& key) {
 }
 
 void StatsdStats::noteConfigReset(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     noteConfigResetInternalLocked(key);
 }
 
 void StatsdStats::noteLogLost(int32_t wallClockTimeSec, int32_t count, int32_t lastError,
                               int32_t lastTag, int32_t uid, int32_t pid) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     if (mLogLossStats.size() == kMaxLoggerErrors) {
         mLogLossStats.pop_front();
     }
@@ -356,7 +357,7 @@ void StatsdStats::noteBatchSocketRead(int32_t size, int64_t lastReadTimeNs, int6
     } else {                      // 2000+
         bin = 29;
     }
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mSocketBatchReadHistogram[bin] += 1;
 
     // More detailed stats for large batches.
@@ -381,17 +382,17 @@ void StatsdStats::noteBatchSocketRead(int32_t size, int64_t lastReadTimeNs, int6
 }
 
 void StatsdStats::notePullerAlarmNoPull() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPullerAlarmStats.alarm_without_pulls_count++;
 }
 
 void StatsdStats::notePullerAlarmHasPull() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPullerAlarmStats.alarm_with_pulls_count++;
 }
 
 void StatsdStats::notePullerAlarmError() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPullerAlarmStats.alarm_with_puller_errors_count++;
 }
 
@@ -400,7 +401,7 @@ void StatsdStats::noteBroadcastSent(const ConfigKey& key) {
 }
 
 void StatsdStats::noteBroadcastSent(const ConfigKey& key, int32_t timeSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -417,7 +418,7 @@ void StatsdStats::noteActiveStatusChanged(const ConfigKey& key, bool activated) 
 }
 
 void StatsdStats::noteActiveStatusChanged(const ConfigKey& key, bool activated, int32_t timeSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -436,7 +437,7 @@ void StatsdStats::noteActivationBroadcastGuardrailHit(const int uid) {
 }
 
 void StatsdStats::noteActivationBroadcastGuardrailHit(const int uid, const int32_t timeSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto& guardrailTimes = mActivationBroadcastGuardrailStats[uid];
     if (guardrailTimes.size() == kMaxTimestampCount) {
         guardrailTimes.pop_front();
@@ -449,7 +450,7 @@ void StatsdStats::noteDataDropped(const ConfigKey& key, const size_t totalBytes)
 }
 
 void StatsdStats::noteEventQueueOverflow(int64_t oldestEventTimestampNs, int32_t atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     mOverflowCount++;
 
@@ -467,7 +468,7 @@ void StatsdStats::noteEventQueueOverflow(int64_t oldestEventTimestampNs, int32_t
 }
 
 void StatsdStats::noteEventQueueSize(int32_t size, int64_t eventTimestampNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     if (mEventQueueMaxSizeObserved < size) {
         mEventQueueMaxSizeObserved = size;
@@ -486,7 +487,7 @@ void StatsdStats::noteAtomDroppedLocked(int32_t atomId) {
 void StatsdStats::noteAtomSocketLoss(const SocketLossInfo& lossInfo) {
     ALOGW("SocketLossEvent detected: %lld (firstLossTsNanos), %lld (lastLossTsNanos)",
           (long long)lossInfo.firstLossTsNanos, (long long)lossInfo.lastLossTsNanos);
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     if (mSocketLossStats.size() == kMaxSocketLossStatsSize) {
         // erase the oldest record
@@ -512,7 +513,7 @@ void StatsdStats::noteAtomSocketLoss(const SocketLossInfo& lossInfo) {
 }
 
 void StatsdStats::noteDataDropped(const ConfigKey& key, const size_t totalBytes, int32_t timeSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -533,7 +534,7 @@ void StatsdStats::noteMetricsReportSent(const ConfigKey& key, const size_t numBy
 
 void StatsdStats::noteMetricsReportSent(const ConfigKey& key, const size_t numBytes,
                                         int32_t timeSec, const int32_t reportNumber) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -547,7 +548,7 @@ void StatsdStats::noteMetricsReportSent(const ConfigKey& key, const size_t numBy
 }
 
 void StatsdStats::noteDeviceInfoTableCreationFailed(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -557,7 +558,7 @@ void StatsdStats::noteDeviceInfoTableCreationFailed(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbCorrupted(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -567,7 +568,7 @@ void StatsdStats::noteDbCorrupted(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbSizeExceeded(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -577,7 +578,7 @@ void StatsdStats::noteDbSizeExceeded(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbStatFailed(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -587,7 +588,7 @@ void StatsdStats::noteDbStatFailed(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbConfigInvalid(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -597,7 +598,7 @@ void StatsdStats::noteDbConfigInvalid(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbTooOld(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -607,7 +608,7 @@ void StatsdStats::noteDbTooOld(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbDeletionConfigRemoved(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -617,7 +618,7 @@ void StatsdStats::noteDbDeletionConfigRemoved(const ConfigKey& key) {
 }
 
 void StatsdStats::noteDbDeletionConfigUpdated(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -627,7 +628,7 @@ void StatsdStats::noteDbDeletionConfigUpdated(const ConfigKey& key) {
 }
 
 void StatsdStats::noteConfigMetadataProviderPromotionFailed(const ConfigKey& key) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(key);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", key.ToString().c_str());
@@ -637,27 +638,27 @@ void StatsdStats::noteConfigMetadataProviderPromotionFailed(const ConfigKey& key
 }
 
 void StatsdStats::noteUidMapDropped(int deltas) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mUidMapStats.dropped_changes += mUidMapStats.dropped_changes + deltas;
 }
 
 void StatsdStats::noteUidMapAppDeletionDropped() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mUidMapStats.deleted_apps++;
 }
 
 void StatsdStats::setUidMapChanges(int changes) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mUidMapStats.changes = changes;
 }
 
 void StatsdStats::setCurrentUidMapMemory(int bytes) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mUidMapStats.bytes_used = bytes;
 }
 
 void StatsdStats::noteConditionDimensionSize(const ConfigKey& key, const int64_t id, int size) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     // if name doesn't exist before, it will create the key with count 0.
     auto statsIt = mConfigStats.find(key);
     if (statsIt == mConfigStats.end()) {
@@ -671,7 +672,7 @@ void StatsdStats::noteConditionDimensionSize(const ConfigKey& key, const int64_t
 }
 
 void StatsdStats::noteMetricDimensionSize(const ConfigKey& key, const int64_t id, int size) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     // if name doesn't exist before, it will create the key with count 0.
     auto statsIt = mConfigStats.find(key);
     if (statsIt == mConfigStats.end()) {
@@ -685,7 +686,7 @@ void StatsdStats::noteMetricDimensionSize(const ConfigKey& key, const int64_t id
 
 void StatsdStats::noteMetricDimensionInConditionSize(const ConfigKey& key, const int64_t id,
                                                      int size) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     // if name doesn't exist before, it will create the key with count 0.
     auto statsIt = mConfigStats.find(key);
     if (statsIt == mConfigStats.end()) {
@@ -698,7 +699,7 @@ void StatsdStats::noteMetricDimensionInConditionSize(const ConfigKey& key, const
 }
 
 void StatsdStats::noteMatcherMatched(const ConfigKey& key, const int64_t id) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     auto statsIt = mConfigStats.find(key);
     if (statsIt == mConfigStats.end()) {
@@ -708,7 +709,7 @@ void StatsdStats::noteMatcherMatched(const ConfigKey& key, const int64_t id) {
 }
 
 void StatsdStats::noteAnomalyDeclared(const ConfigKey& key, const int64_t id) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto statsIt = mConfigStats.find(key);
     if (statsIt == mConfigStats.end()) {
         return;
@@ -717,33 +718,33 @@ void StatsdStats::noteAnomalyDeclared(const ConfigKey& key, const int64_t id) {
 }
 
 void StatsdStats::noteRegisteredAnomalyAlarmChanged() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mAnomalyAlarmRegisteredStats++;
 }
 
 void StatsdStats::noteRegisteredPeriodicAlarmChanged() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPeriodicAlarmRegisteredStats++;
 }
 
 void StatsdStats::updateMinPullIntervalSec(int pullAtomId, long intervalSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[pullAtomId].minPullIntervalSec =
             std::min(mPulledAtomStats[pullAtomId].minPullIntervalSec, intervalSec);
 }
 
 void StatsdStats::notePull(int pullAtomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[pullAtomId].totalPull++;
 }
 
 void StatsdStats::notePullFromCache(int pullAtomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[pullAtomId].totalPullFromCache++;
 }
 
 void StatsdStats::notePullTime(int pullAtomId, int64_t pullTimeNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto& pullStats = mPulledAtomStats[pullAtomId];
     pullStats.maxPullTimeNs = std::max(pullStats.maxPullTimeNs, pullTimeNs);
     pullStats.avgPullTimeNs = (pullStats.avgPullTimeNs * pullStats.numPullTime + pullTimeNs) /
@@ -752,7 +753,7 @@ void StatsdStats::notePullTime(int pullAtomId, int64_t pullTimeNs) {
 }
 
 void StatsdStats::notePullDelay(int pullAtomId, int64_t pullDelayNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto& pullStats = mPulledAtomStats[pullAtomId];
     pullStats.maxPullDelayNs = std::max(pullStats.maxPullDelayNs, pullDelayNs);
     pullStats.avgPullDelayNs =
@@ -762,14 +763,14 @@ void StatsdStats::notePullDelay(int pullAtomId, int64_t pullDelayNs) {
 }
 
 void StatsdStats::notePullDataError(int pullAtomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[pullAtomId].dataError++;
 }
 
 void StatsdStats::notePullTimeout(int pullAtomId,
                                   int64_t pullUptimeMillis,
                                   int64_t pullElapsedMillis) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     PulledAtomStats& pulledAtomStats = mPulledAtomStats[pullAtomId];
     pulledAtomStats.pullTimeout++;
 
@@ -781,12 +782,12 @@ void StatsdStats::notePullTimeout(int pullAtomId,
 }
 
 void StatsdStats::notePullExceedMaxDelay(int pullAtomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[pullAtomId].pullExceedMaxDelay++;
 }
 
 void StatsdStats::noteAtomLogged(int atomId, int64_t eventTimestampNs, bool isSkipped) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     noteAtomLoggedLocked(atomId, eventTimestampNs, isSkipped);
 }
@@ -813,7 +814,7 @@ void StatsdStats::noteAtomLoggedLocked(int atomId, int64_t eventTimestampNs, boo
 }
 
 void StatsdStats::noteSystemServerRestart(int32_t timeSec) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     if (mSystemServerRestartSec.size() == kMaxSystemServerRestarts) {
         mSystemServerRestartSec.pop_front();
@@ -826,32 +827,32 @@ bool StatsdStats::hasSystemServerRestart() {
 }
 
 void StatsdStats::notePullFailed(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].pullFailed++;
 }
 
 void StatsdStats::notePullUidProviderNotFound(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].pullUidProviderNotFound++;
 }
 
 void StatsdStats::notePullerNotFound(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].pullerNotFound++;
 }
 
 void StatsdStats::notePullBinderCallFailed(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].binderCallFailCount++;
 }
 
 void StatsdStats::noteEmptyData(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].emptyData++;
 }
 
 void StatsdStats::notePullerCallbackRegistrationChanged(int atomId, bool registered) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     if (registered) {
         mPulledAtomStats[atomId].registeredCount++;
     } else {
@@ -860,52 +861,52 @@ void StatsdStats::notePullerCallbackRegistrationChanged(int atomId, bool registe
 }
 
 void StatsdStats::noteHardDimensionLimitReached(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).hardDimensionLimitReached++;
 }
 
 void StatsdStats::noteLateLogEventSkipped(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).lateLogEventSkipped++;
 }
 
 void StatsdStats::noteSkippedForwardBuckets(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).skippedForwardBuckets++;
 }
 
 void StatsdStats::noteBadValueType(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).badValueType++;
 }
 
 void StatsdStats::noteBucketDropped(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).bucketDropped++;
 }
 
 void StatsdStats::noteBucketUnknownCondition(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).bucketUnknownCondition++;
 }
 
 void StatsdStats::noteConditionChangeInNextBucket(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).conditionChangeInNextBucket++;
 }
 
 void StatsdStats::noteInvalidatedBucket(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).invalidatedBucket++;
 }
 
 void StatsdStats::noteBucketCount(int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     getAtomMetricStats(metricId).bucketCount++;
 }
 
 void StatsdStats::noteBucketBoundaryDelayNs(int64_t metricId, int64_t timeDelayNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     AtomMetricStats& metricStats = getAtomMetricStats(metricId);
     metricStats.maxBucketBoundaryDelayNs =
             std::max(metricStats.maxBucketBoundaryDelayNs, timeDelayNs);
@@ -914,7 +915,7 @@ void StatsdStats::noteBucketBoundaryDelayNs(int64_t metricId, int64_t timeDelayN
 }
 
 void StatsdStats::noteAtomError(int atomTag, bool pull) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     if (pull) {
         mPulledAtomStats[atomTag].atomErrorCount++;
         return;
@@ -928,12 +929,12 @@ void StatsdStats::noteAtomError(int atomTag, bool pull) {
 }
 
 void StatsdStats::noteIllegalState(CounterType counter) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mErrorStats[counter]++;
 }
 
 bool StatsdStats::hasHitDimensionGuardrail(int64_t metricId) const {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto atomMetricStatsIter = mAtomMetricStats.find(metricId);
     if (atomMetricStatsIter != mAtomMetricStats.end()) {
         return atomMetricStatsIter->second.hardDimensionLimitReached > 0;
@@ -946,7 +947,7 @@ void StatsdStats::noteQueryRestrictedMetricSucceed(const int64_t configId,
                                                    const std::optional<int32_t> configUid,
                                                    const int32_t callingUid,
                                                    const int64_t latencyNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     if (mRestrictedMetricQueryStats.size() == kMaxRestrictedMetricQueryCount) {
         mRestrictedMetricQueryStats.pop_front();
@@ -961,7 +962,7 @@ void StatsdStats::noteQueryRestrictedMetricFailed(const int64_t configId,
                                                   const std::optional<int32_t> configUid,
                                                   const int32_t callingUid,
                                                   const InvalidQueryReason reason) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     noteQueryRestrictedMetricFailedLocked(configId, configPackage, configUid, callingUid, reason,
                                           /*error=*/"");
 }
@@ -969,7 +970,7 @@ void StatsdStats::noteQueryRestrictedMetricFailed(const int64_t configId,
 void StatsdStats::noteQueryRestrictedMetricFailed(
         const int64_t configId, const string& configPackage, const std::optional<int32_t> configUid,
         const int32_t callingUid, const InvalidQueryReason reason, const string& error) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     noteQueryRestrictedMetricFailedLocked(configId, configPackage, configUid, callingUid, reason,
                                           error);
 }
@@ -987,7 +988,7 @@ void StatsdStats::noteQueryRestrictedMetricFailedLocked(
 
 void StatsdStats::noteRestrictedMetricInsertError(const ConfigKey& configKey,
                                                   const int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it != mConfigStats.end()) {
         it->second->restricted_metric_stats[metricId].insertError++;
@@ -996,7 +997,7 @@ void StatsdStats::noteRestrictedMetricInsertError(const ConfigKey& configKey,
 
 void StatsdStats::noteRestrictedMetricTableCreationError(const ConfigKey& configKey,
                                                          const int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it != mConfigStats.end()) {
         it->second->restricted_metric_stats[metricId].tableCreationError++;
@@ -1005,7 +1006,7 @@ void StatsdStats::noteRestrictedMetricTableCreationError(const ConfigKey& config
 
 void StatsdStats::noteRestrictedMetricTableDeletionError(const ConfigKey& configKey,
                                                          const int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it != mConfigStats.end()) {
         it->second->restricted_metric_stats[metricId].tableDeletionError++;
@@ -1015,7 +1016,7 @@ void StatsdStats::noteRestrictedMetricTableDeletionError(const ConfigKey& config
 void StatsdStats::noteRestrictedMetricFlushLatency(const ConfigKey& configKey,
                                                    const int64_t metricId,
                                                    const int64_t flushLatencyNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", configKey.ToString().c_str());
@@ -1030,7 +1031,7 @@ void StatsdStats::noteRestrictedMetricFlushLatency(const ConfigKey& configKey,
 
 void StatsdStats::noteRestrictedConfigFlushLatency(const ConfigKey& configKey,
                                                    const int64_t totalFlushLatencyNs) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", configKey.ToString().c_str());
@@ -1045,7 +1046,7 @@ void StatsdStats::noteRestrictedConfigFlushLatency(const ConfigKey& configKey,
 
 void StatsdStats::noteRestrictedConfigDbSize(const ConfigKey& configKey,
                                              const int64_t elapsedTimeNs, const int64_t dbSize) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", configKey.ToString().c_str());
@@ -1063,7 +1064,7 @@ void StatsdStats::noteRestrictedConfigDbSize(const ConfigKey& configKey,
 
 void StatsdStats::noteRestrictedMetricCategoryChanged(const ConfigKey& configKey,
                                                       const int64_t metricId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mConfigStats.find(configKey);
     if (it == mConfigStats.end()) {
         ALOGE("Config key %s not found!", configKey.ToString().c_str());
@@ -1074,7 +1075,7 @@ void StatsdStats::noteRestrictedMetricCategoryChanged(const ConfigKey& configKey
 
 void StatsdStats::noteSubscriptionStarted(int subId, int32_t pushedAtomCount,
                                           int32_t pulledAtomCount) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     // If we're already keeping track of max # subscriptions, remove the earliest added
     // SubscriptionStats for which the corresponding subscription has ended.
@@ -1106,7 +1107,7 @@ void StatsdStats::noteSubscriptionStarted(int subId, int32_t pushedAtomCount,
 }
 
 void StatsdStats::noteSubscriptionEnded(int subId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mSubscriptionStats.find(subId);
     if (it == mSubscriptionStats.end()) {
         // We should not enter here since noteSubscriptionStarted should be called first and that
@@ -1119,7 +1120,7 @@ void StatsdStats::noteSubscriptionEnded(int subId) {
 }
 
 void StatsdStats::noteSubscriptionFlushed(int subId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     auto it = mSubscriptionStats.find(subId);
     if (it == mSubscriptionStats.end()) {
         // We should not enter here since noteSubscriptionStarted should be called first and that
@@ -1131,12 +1132,12 @@ void StatsdStats::noteSubscriptionFlushed(int subId) {
 }
 
 void StatsdStats::noteSubscriptionAtomPulled(int atomId) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mPulledAtomStats[atomId].subscriptionPullCount++;
 }
 
 void StatsdStats::noteSubscriptionPullThreadWakeup() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     mSubscriptionPullThreadWakeupCount++;
 }
 
@@ -1150,7 +1151,7 @@ StatsdStats::AtomMetricStats& StatsdStats::getAtomMetricStats(int64_t metricId) 
 }
 
 void StatsdStats::reset() {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     resetInternalLocked();
 }
 
@@ -1285,22 +1286,22 @@ bool StatsdStats::hasRestrictedConfigErrors(const std::shared_ptr<ConfigStats>& 
 }
 
 bool StatsdStats::hasEventQueueOverflow() const {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     return mOverflowCount != 0;
 }
 
 StatsdStats::QueueOverflowAtomsStatsMap StatsdStats::getQueueOverflowAtomsStats() const {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     return mPushedAtomDropsStats;
 }
 
 bool StatsdStats::hasSocketLoss() const {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     return !mLogLossStats.empty();
 }
 
 void StatsdStats::dumpStats(int out) const {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
     time_t t = mStartTimeSec;
     struct tm* tm = localtime(&t);
     char timeBuffer[80];
@@ -1958,7 +1959,7 @@ void addConfigStatsToProto(const ConfigStats& configStats, ProtoOutputStream* pr
 }
 
 void StatsdStats::dumpStats(vector<uint8_t>* output, bool reset) {
-    lock_guard<std::mutex> lock(mLock);
+    lock_guard lock(mLock);
 
     ProtoOutputStream proto;
     proto.write(FIELD_TYPE_INT32 | FIELD_ID_BEGIN_TIME, mStartTimeSec);

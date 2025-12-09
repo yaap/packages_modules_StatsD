@@ -51,5 +51,5 @@ aidl_interface {
             apex_available: ["com.android.os.statsd"],
             min_sdk_version: "30",
         },
-    }
+    },
 }

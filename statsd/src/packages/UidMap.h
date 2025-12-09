@@ -18,7 +18,6 @@
 
 #include <gtest/gtest_prod.h>
 #include <src/uid_data.pb.h>
-#include <stdio.h>
 #include <utils/RefBase.h>
 #include <utils/String16.h>
 
@@ -33,7 +32,6 @@
 #include "stats_util.h"
 
 using namespace android;
-using namespace std;
 
 using android::util::ProtoOutputStream;
 
@@ -43,22 +41,22 @@ namespace statsd {
 
 struct AppData {
     int64_t versionCode;
-    string versionString;
-    string installer;
+    std::string versionString;
+    std::string installer;
     bool deleted;
-    string certificateHash;
+    std::string certificateHash;
 
     // Empty constructor needed for unordered map.
     AppData() {
     }
 
-    AppData(const int64_t v, const string& versionString, const string& installer,
-            const string& certificateHash)
+    AppData(const int64_t v, const std::string& versionString, const std::string& installer,
+            const std::string& certificateHash)
         : versionCode(v),
           versionString(versionString),
           installer(installer),
           deleted(false),
-          certificateHash(certificateHash){};
+          certificateHash(certificateHash) {};
 };
 
 // When calling appendUidMap, we retrieve all the ChangeRecords since the last
@@ -66,16 +64,16 @@ struct AppData {
 struct ChangeRecord {
     const bool deletion;
     const int64_t timestampNs;
-    const string package;
+    const std::string package;
     const int32_t uid;
     const int64_t version;
     const int64_t prevVersion;
-    const string versionString;
-    const string prevVersionString;
+    const std::string versionString;
+    const std::string prevVersionString;
 
-    ChangeRecord(const bool isDeletion, int64_t timestampNs, const string& package,
-                 const int32_t uid, int64_t version, const string& versionString,
-                 const int64_t prevVersion, const string& prevVersionString)
+    ChangeRecord(const bool isDeletion, int64_t timestampNs, const std::string& package,
+                 const int32_t uid, int64_t version, const std::string& versionString,
+                 const int64_t prevVersion, const std::string& prevVersionString)
         : deletion(isDeletion),
           timestampNs(timestampNs),
           package(package),
@@ -93,8 +91,8 @@ struct UidMapOptions {
     uint8_t truncatedCertificateHashSize = 0;
     bool omitSystemUids = false;
     bool omitUnusedUids = false;
-    set<int32_t> usedUids = {};
-    set<string> allowlistedPackages = {};
+    std::set<int32_t> usedUids = {};
+    std::set<std::string> allowlistedPackages = {};
 };
 
 const unsigned int kBytesChangeRecord = sizeof(struct ChangeRecord);
@@ -111,18 +109,18 @@ public:
 
     void updateMap(const int64_t timestamp, const UidData& uidData);
 
-    void updateApp(const int64_t timestamp, const string& appName, const int32_t uid,
-                   const int64_t versionCode, const string& versionString, const string& installer,
-                   const vector<uint8_t>& certificateHash);
-    void removeApp(const int64_t timestamp, const string& app, const int32_t uid);
+    void updateApp(const int64_t timestamp, const std::string& appName, const int32_t uid,
+                   const int64_t versionCode, const std::string& versionString,
+                   const std::string& installer, const std::vector<uint8_t>& certificateHash);
+    void removeApp(const int64_t timestamp, const std::string& app, const int32_t uid);
 
     // Returns true if the given uid contains the specified app (eg. com.google.android.gms).
-    bool hasApp(int uid, const string& packageName) const;
+    bool hasApp(int uid, const std::string& packageName) const;
 
     // Returns the app names from uid.
-    std::set<string> getAppNamesFromUid(int32_t uid, bool returnNormalized) const;
+    std::set<std::string> getAppNamesFromUid(int32_t uid, bool returnNormalized) const;
 
-    int64_t getAppVersion(int uid, const string& packageName) const;
+    int64_t getAppVersion(int uid, const std::string& packageName) const;
 
     // Helper for debugging contents of this uid map. Can be triggered with:
     // adb shell cmd stats print-uid-map [--with_certificate_hash]
@@ -149,7 +147,7 @@ public:
     // If every config key has received a change or snapshot record, then this
     // record is deleted.
     void appendUidMap(int64_t timestamp, const ConfigKey& key, const UidMapOptions& options,
-                      std::set<string>* str_set, ProtoOutputStream* proto);
+                      std::set<std::string>* str_set, ProtoOutputStream* proto);
 
     // Forces the output to be cleared. We still generate a snapshot based on the current state.
     // This results in extra data uploaded but helps us reconstruct the uid mapping on the server
@@ -159,7 +157,7 @@ public:
     // Get currently cached value of memory used by UID map.
     size_t getBytesUsed() const;
 
-    virtual std::set<int32_t> getAppUid(const string& package) const;
+    virtual std::set<int32_t> getAppUid(const std::string& package) const;
 
     // Write current PackageInfoSnapshot to ProtoOutputStream.
     // interestingUids: If not empty, only write the package info for these uids. If empty, write
@@ -168,29 +166,29 @@ public:
     //          if null, write string to proto.
     void writeUidMapSnapshot(int64_t timestamp, const UidMapOptions& options,
                              const std::set<int32_t>& interestingUids,
-                             std::map<string, int>* installerIndices, std::set<string>* str_set,
-                             ProtoOutputStream* proto) const;
+                             std::map<std::string, int>* installerIndices,
+                             std::set<std::string>* str_set, ProtoOutputStream* proto) const;
 
 private:
-    std::set<string> getAppNamesFromUidLocked(int32_t uid, bool returnNormalized) const;
-    string normalizeAppName(const string& appName) const;
+    std::set<std::string> getAppNamesFromUidLocked(int32_t uid, bool returnNormalized) const;
+    std::string normalizeAppName(const std::string& appName) const;
 
     void writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOptions& options,
                                    const std::set<int32_t>& interestingUids,
-                                   std::map<string, int>* installerIndices,
-                                   std::set<string>* str_set, ProtoOutputStream* proto) const;
+                                   std::map<std::string, int>* installerIndices,
+                                   std::set<std::string>* str_set, ProtoOutputStream* proto) const;
 
-    mutable mutex mMutex;
-    mutable mutex mIsolatedMutex;
+    mutable std::mutex mMutex;
+    mutable std::mutex mIsolatedMutex;
 
     struct PairHash {
-        size_t operator()(const std::pair<int, string>& p) const noexcept {
+        size_t operator()(const std::pair<int, std::string>& p) const noexcept {
             std::hash<std::string> hash_fn;
             return hash_fn(std::to_string(p.first) + p.second);
         }
     };
     // Maps uid and package name to application data.
-    std::unordered_map<std::pair<int, string>, AppData, PairHash> mMap;
+    std::unordered_map<std::pair<int, std::string>, AppData, PairHash> mMap;
 
     // Maps isolated uid to the parent uid. Any metrics for an isolated uid will instead contribute
     // to the parent uid.
@@ -200,7 +198,7 @@ private:
     std::list<ChangeRecord> mChanges;
 
     // Store which uid and apps represent deleted ones.
-    std::list<std::pair<int, string>> mDeletedApps;
+    std::list<std::pair<int, std::string>> mDeletedApps;
 
     // Notify StatsLogProcessor if there's an upgrade/removal in any app.
     wp<PackageInfoListener> mSubscriber;

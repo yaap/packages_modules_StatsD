@@ -18,21 +18,24 @@
 #include "Log.h"
 
 #include "config/ConfigManager.h"
-#include "storage/StorageManager.h"
+
+#include <android-base/stringprintf.h>
+#include <stdio.h>
+
+#include <vector>
 
 #include "guardrail/StatsdStats.h"
 #include "stats_log_util.h"
 #include "stats_util.h"
-#include "stats_log_util.h"
-
-#include <stdio.h>
-#include <vector>
-#include "android-base/stringprintf.h"
+#include "storage/StorageManager.h"
 
 namespace android {
 namespace os {
 namespace statsd {
 
+using std::map;
+using std::set;
+using std::shared_ptr;
 using std::string;
 using std::vector;
 
@@ -61,14 +64,14 @@ void ConfigManager::StartupForTest() {
 }
 
 void ConfigManager::AddListener(const sp<ConfigListener>& listener) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mListeners.push_back(listener);
 }
 
 void ConfigManager::UpdateConfig(const ConfigKey& key, const StatsdConfig& config) {
     vector<sp<ConfigListener>> broadcastList;
     {
-        lock_guard <mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         const int numBytes = config.ByteSize();
         vector<uint8_t> buffer(numBytes);
@@ -114,18 +117,18 @@ void ConfigManager::UpdateConfig(const ConfigKey& key, const StatsdConfig& confi
 
 void ConfigManager::SetConfigReceiver(const ConfigKey& key,
                                       const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mConfigReceivers[key] = pir;
 }
 
 void ConfigManager::RemoveConfigReceiver(const ConfigKey& key) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mConfigReceivers.erase(key);
 }
 
 void ConfigManager::RemoveConfigReceiver(const ConfigKey& key,
                                          const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     auto it = mConfigReceivers.find(key);
     if (it != mConfigReceivers.end() && it->second == pir) {
         mConfigReceivers.erase(key);
@@ -134,18 +137,18 @@ void ConfigManager::RemoveConfigReceiver(const ConfigKey& key,
 
 void ConfigManager::SetActiveConfigsChangedReceiver(const int uid,
                                                     const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mActiveConfigsChangedReceivers[uid] = pir;
 }
 
 void ConfigManager::RemoveActiveConfigsChangedReceiver(const int uid) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     mActiveConfigsChangedReceivers.erase(uid);
 }
 
 void ConfigManager::RemoveActiveConfigsChangedReceiver(const int uid,
                                                        const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     auto it = mActiveConfigsChangedReceivers.find(uid);
     if (it != mActiveConfigsChangedReceivers.end() && it->second == pir) {
         mActiveConfigsChangedReceivers.erase(uid);
@@ -156,7 +159,7 @@ void ConfigManager::SetRestrictedMetricsChangedReceiver(const string& configPack
                                                         const int64_t configId,
                                                         const int32_t callingUid,
                                                         const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     ConfigKeyWithPackage configKey(configPackage, configId);
     mRestrictedMetricsChangedReceivers[configKey][callingUid] = pir;
 }
@@ -164,7 +167,7 @@ void ConfigManager::SetRestrictedMetricsChangedReceiver(const string& configPack
 void ConfigManager::RemoveRestrictedMetricsChangedReceiver(const string& configPackage,
                                                            const int64_t configId,
                                                            const int32_t callingUid) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     ConfigKeyWithPackage configKey(configPackage, configId);
     const auto& it = mRestrictedMetricsChangedReceivers.find(configKey);
     if (it != mRestrictedMetricsChangedReceivers.end()) {
@@ -178,7 +181,7 @@ void ConfigManager::RemoveRestrictedMetricsChangedReceiver(const string& configP
 void ConfigManager::RemoveRestrictedMetricsChangedReceiver(
         const ConfigKeyWithPackage& key, const int32_t delegateUid,
         const shared_ptr<IPendingIntentRef>& pir) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     const auto& it = mRestrictedMetricsChangedReceivers.find(key);
     if (it != mRestrictedMetricsChangedReceivers.end()) {
         const auto& pirIt = it->second.find(delegateUid);
@@ -197,7 +200,7 @@ void ConfigManager::SendRestrictedMetricsBroadcast(const set<string>& configPack
                                                    const vector<int64_t>& metricIds) {
     map<ConfigKeyWithPackage, map<int32_t, shared_ptr<IPendingIntentRef>>> intentsToSend;
     {
-        lock_guard<mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         // Invoke the pending intent for all matching configs, as long as the listening delegates
         // match the allowed delegate uids specified by the config.
         for (const string& configPackage : configPackages) {
@@ -232,7 +235,7 @@ void ConfigManager::SendRestrictedMetricsBroadcast(const set<string>& configPack
 void ConfigManager::RemoveConfig(const ConfigKey& key) {
     vector<sp<ConfigListener>> broadcastList;
     {
-        lock_guard <mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         auto uid = key.GetUid();
         auto uidIt = mConfigs.find(uid);
@@ -263,7 +266,7 @@ void ConfigManager::RemoveConfigs(int uid) {
     vector<ConfigKey> removed;
     vector<sp<ConfigListener>> broadcastList;
     {
-        lock_guard <mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         auto uidIt = mConfigs.find(uid);
         if (uidIt == mConfigs.end()) {
@@ -294,7 +297,7 @@ void ConfigManager::RemoveAllConfigs() {
     vector<ConfigKey> removed;
     vector<sp<ConfigListener>> broadcastList;
     {
-        lock_guard <mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
 
         for (auto uidIt = mConfigs.begin(); uidIt != mConfigs.end();) {
             for (auto it = uidIt->second.begin(); it != uidIt->second.end();) {
@@ -318,7 +321,7 @@ void ConfigManager::RemoveAllConfigs() {
 }
 
 vector<ConfigKey> ConfigManager::GetAllConfigKeys() const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     vector<ConfigKey> ret;
     for (auto uidIt = mConfigs.cbegin(); uidIt != mConfigs.cend(); ++uidIt) {
@@ -330,7 +333,7 @@ vector<ConfigKey> ConfigManager::GetAllConfigKeys() const {
 }
 
 const shared_ptr<IPendingIntentRef> ConfigManager::GetConfigReceiver(const ConfigKey& key) const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     auto it = mConfigReceivers.find(key);
     if (it == mConfigReceivers.end()) {
@@ -342,7 +345,7 @@ const shared_ptr<IPendingIntentRef> ConfigManager::GetConfigReceiver(const Confi
 
 const shared_ptr<IPendingIntentRef> ConfigManager::GetActiveConfigsChangedReceiver(const int uid)
         const {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     auto it = mActiveConfigsChangedReceivers.find(uid);
     if (it == mActiveConfigsChangedReceivers.end()) {
@@ -353,7 +356,7 @@ const shared_ptr<IPendingIntentRef> ConfigManager::GetActiveConfigsChangedReceiv
 }
 
 void ConfigManager::Dump(FILE* out) {
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     fprintf(out, "CONFIGURATIONS\n");
     fprintf(out, "     uid name\n");

@@ -28,6 +28,10 @@
 #include "stats_log_util.h"
 #include "stats_util.h"
 
+namespace android {
+namespace os {
+namespace statsd {
+
 using android::util::FIELD_COUNT_REPEATED;
 using android::util::FIELD_TYPE_BOOL;
 using android::util::FIELD_TYPE_FLOAT;
@@ -36,14 +40,14 @@ using android::util::FIELD_TYPE_INT64;
 using android::util::FIELD_TYPE_MESSAGE;
 using android::util::FIELD_TYPE_STRING;
 using android::util::ProtoOutputStream;
+using std::map;
+using std::nullopt;
+using std::optional;
+using std::shared_ptr;
 using std::string;
+using std::unique_ptr;
 using std::unordered_map;
 using std::vector;
-using std::shared_ptr;
-
-namespace android {
-namespace os {
-namespace statsd {
 
 // for StatsLogReport
 const int FIELD_ID_ID = 1;
@@ -266,7 +270,7 @@ optional<InvalidConfigReason> DurationMetricProducer::onConfigUpdatedLocked(
 }
 
 void DurationMetricProducer::initTrueDimensions(const int whatIndex, const int64_t startTimeNs) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     // Currently whatIndex will only be -1 in tests. In the future, we might want to avoid creating
     // a ConditionTracker if the condition is only used in the "what" of a duration metric. In that
     // scenario, -1 can also be passed.
@@ -285,7 +289,7 @@ void DurationMetricProducer::initTrueDimensions(const int whatIndex, const int64
 sp<AnomalyTracker> DurationMetricProducer::addAnomalyTracker(
         const Alert& alert, const sp<AlarmMonitor>& anomalyAlarmMonitor,
         const UpdateStatus& updateStatus, const int64_t updateTimeNs) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     if (mAggregationType == DurationMetric_AggregationType_SUM) {
         if (alert.trigger_if_sum_gt() > alert.num_buckets() * mBucketSizeNs) {
             ALOGW("invalid alert for SUM: threshold (%f) > possible recordable value (%d x %lld)",
@@ -305,7 +309,7 @@ sp<AnomalyTracker> DurationMetricProducer::addAnomalyTracker(
 // associated alert are preserved, which means the AnomalyTracker must be a DurationAnomalyTracker.
 void DurationMetricProducer::addAnomalyTracker(sp<AnomalyTracker>& anomalyTracker,
                                                const int64_t updateTimeNs) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     addAnomalyTrackerLocked(anomalyTracker, UpdateStatus::UPDATE_PRESERVE, updateTimeNs);
 }
 
@@ -321,7 +325,7 @@ void DurationMetricProducer::onStateChanged(const int64_t eventTimeNs, const int
                                             const HashableDimensionKey& primaryKey,
                                             const FieldValue& oldState,
                                             const FieldValue& newState) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     // Check if this metric has a StateMap. If so, map the new state value to
     // the correct state group id.
     FieldValue newStateCopy = newState;

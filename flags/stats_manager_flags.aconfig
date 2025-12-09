@@ -1,0 +1,12 @@
+package: "com.android.os.statsd.flags"
+container: "com.android.os.statsd"
+
+flag {
+  name: "add_config_fd"
+  namespace: "statsd"
+  description: "Whether to use file descriptor to add configs."
+  bug: "400719385"
+  metadata {
+    purpose: PURPOSE_BUGFIX
+  }
+}

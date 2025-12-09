@@ -21,6 +21,11 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+using std::optional;
+using std::string;
+using std::vector;
+
 #ifdef __ANDROID__
 
 namespace {

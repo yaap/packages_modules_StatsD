@@ -31,6 +31,10 @@
 #include "stats_log_util.h"
 #include "stats_util.h"
 
+namespace android {
+namespace os {
+namespace statsd {
+
 using android::util::FIELD_COUNT_REPEATED;
 using android::util::FIELD_TYPE_BOOL;
 using android::util::FIELD_TYPE_INT32;
@@ -38,15 +42,15 @@ using android::util::FIELD_TYPE_INT64;
 using android::util::FIELD_TYPE_MESSAGE;
 using android::util::ProtoOutputStream;
 using dist_proc::aggregation::KllQuantile;
+using std::map;
+using std::nullopt;
 using std::optional;
+using std::set;
 using std::shared_ptr;
+using std::string;
 using std::unique_ptr;
 using std::unordered_map;
 using std::vector;
-
-namespace android {
-namespace os {
-namespace statsd {
 
 // for StatsLogReport
 const int FIELD_ID_ID = 1;
@@ -161,7 +165,7 @@ template <typename AggregatedValue, typename DimExtras>
 void ValueMetricProducer<AggregatedValue, DimExtras>::onStatsdInitCompleted(
         const int64_t eventTimeNs) {
     ATRACE_CALL();
-    lock_guard<mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
 
     if (isPulled() && mCondition == ConditionState::kTrue && mIsActive) {
         pullAndMatchEventsLocked(eventTimeNs);
@@ -256,7 +260,7 @@ template <typename AggregatedValue, typename DimExtras>
 void ValueMetricProducer<AggregatedValue, DimExtras>::onStateChanged(
         int64_t eventTimeNs, int32_t atomId, const HashableDimensionKey& primaryKey,
         const FieldValue& oldState, const FieldValue& newState) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     VLOG("ValueMetricProducer %lld onStateChanged time %lld, State %d, key %s, %d -> %d",
          (long long)mMetricId, (long long)eventTimeNs, atomId, primaryKey.toString().c_str(),
          oldState.mValue.get<int32_t>(), newState.mValue.get<int32_t>());

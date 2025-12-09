@@ -16,9 +16,9 @@
 
 #include "utils/DbUtils.h"
 
+#include <android-base/stringprintf.h>
 #include <gtest/gtest.h>
 
-#include "android-base/stringprintf.h"
 #include "storage/StorageManager.h"
 #include "tests/statsd_test_util.h"
 

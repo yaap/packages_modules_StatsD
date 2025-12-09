@@ -23,11 +23,12 @@
 #include <private/android_filesystem_config.h>
 
 #include <memory>
+#include <optional>
 
 #include "external/StatsPullerManager.h"
 #include "logd/LogEvent.h"
 #include "packages/UidMap.h"
-#include "socket/LogEventFilter.h"
+#include "socket/AtomsInUseChangeListener.h"
 #include "src/shell/shell_config.pb.h"
 #include "src/statsd_config.pb.h"
 
@@ -43,12 +44,12 @@ namespace statsd {
 class ShellSubscriberClient {
 public:
     struct PullInfo {
-        PullInfo(const SimpleAtomMatcher& matcher, int64_t startTimeMs, int64_t interval,
+        PullInfo(const SimpleAtomMatcher& matcher, int64_t interval,
                  const std::vector<std::string>& packages, const std::vector<int32_t>& uids);
 
         const SimpleAtomMatcher mPullerMatcher;
         const int64_t mIntervalMs;
-        int64_t mPrevPullElapsedRealtimeMs;
+        std::optional<int64_t> mPrevPullElapsedRealtimeMs;
         const std::vector<std::string> mPullPackages;
         const std::vector<int32_t> mPullUids;
     };
@@ -86,7 +87,7 @@ public:
         return kMaxSizeKb;
     }
 
-    void addAllAtomIds(LogEventFilter::AtomIdSet& allAtomIds) const;
+    void addAllAtomIds(AtomsInUseChangeListener::AtomIdSet& allAtomIds) const;
 
     // Minimum pull interval for callback subscriptions.
     static constexpr int64_t kMinCallbackPullIntervalMs = 60'000;  // 60 seconds.
@@ -108,12 +109,12 @@ private:
 
     int64_t pullIfNeeded(int64_t nowSecs, int64_t nowMillis, int64_t nowNanos);
 
-    void writePulledAtomsLocked(const vector<std::shared_ptr<LogEvent>>& data,
+    void writePulledAtomsLocked(const std::vector<std::shared_ptr<LogEvent>>& data,
                                 const SimpleAtomMatcher& matcher);
 
     void attemptWriteToPipeLocked();
 
-    void getUidsForPullAtom(vector<int32_t>* uids, const PullInfo& pullInfo);
+    void getUidsForPullAtom(std::vector<int32_t>* uids, const PullInfo& pullInfo);
 
     void flushProtoIfNeeded();
 

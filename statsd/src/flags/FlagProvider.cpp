@@ -50,7 +50,7 @@ bool FlagProvider::getBootFlagBool(const string& flagName, const string& default
 }
 
 void FlagProvider::initBootFlags(const vector<string>& flags) {
-    std::lock_guard<std::mutex> lock(mFlagsMutex);
+    std::lock_guard lock(mFlagsMutex);
     mBootFlags.clear();
     for (const string& flagName : flags) {
         string flagVal = mGetServerFlagFunc(STATSD_NATIVE_BOOT_NAMESPACE, flagName, FLAG_EMPTY);
@@ -62,13 +62,13 @@ void FlagProvider::initBootFlags(const vector<string>& flags) {
 
 void FlagProvider::overrideFlag(const string& flagName, const std::string& flagValue,
                                 const bool isBootFlag) {
-    std::lock_guard<std::mutex> lock(mFlagsMutex);
+    std::lock_guard lock(mFlagsMutex);
     mLocalFlags[getLocalFlagKey(flagName, isBootFlag)] = flagValue;
 }
 
 void FlagProvider::overrideFuncs(const IsAtLeastSFunc& isAtLeastSFunc,
                                  const GetServerFlagFunc& getServerFlagFunc) {
-    std::lock_guard<std::mutex> lock(mFlagsMutex);
+    std::lock_guard lock(mFlagsMutex);
     overrideFuncsLocked(isAtLeastSFunc, getServerFlagFunc);
 }
 
@@ -86,7 +86,7 @@ string FlagProvider::getLocalFlagKey(const string& flagName, const bool isBootFl
 string FlagProvider::getFlagStringInternal(const std::string& flagName,
                                            const std::string& defaultValue,
                                            const bool isBootFlag) const {
-    std::lock_guard<std::mutex> lock(mFlagsMutex);
+    std::lock_guard lock(mFlagsMutex);
     if (!mIsAtLeastSFunc()) {
         return defaultValue;
     }

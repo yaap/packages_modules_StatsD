@@ -32,18 +32,19 @@
 #include "tests/statsd_test_util.h"
 #include "utils/DbUtils.h"
 
-using namespace android;
-using namespace testing;
-using ::ndk::SharedRefBase;
-using std::shared_ptr;
-
 namespace android {
 namespace os {
 namespace statsd {
 
+using namespace android;
+using namespace testing;
+
 using android::base::StringPrintf;
 using android::util::ProtoOutputStream;
-
+using ::ndk::SharedRefBase;
+using std::shared_ptr;
+using std::unique_ptr;
+using std::vector;
 using ::testing::Expectation;
 
 #ifdef __ANDROID__
@@ -1677,7 +1678,7 @@ TEST(StatsLogProcessorTest, TestActivationsPersistAcrossSystemServerRestart) {
     const shared_ptr<StatsService> service = SharedRefBase::make<StatsService>(
             uidMap, /* queue */ nullptr, std::make_shared<LogEventFilter>());
     string serialized = config1.SerializeAsString();
-    service->addConfigurationChecked(uid, configId, {serialized.begin(), serialized.end()});
+    service->addConfiguration(configId, {serialized.begin(), serialized.end()}, uid);
 
     // Make sure the config is stored on disk. Otherwise, we will not reset on system server death.
     StatsdConfig tmpConfig;
@@ -1852,29 +1853,6 @@ TEST(StatsLogProcessorTest, TestActivationsPersistAcrossSystemServerRestart) {
     service->mProcessor->onDumpReport(cfgKey1, getElapsedRealtimeNs(),
                                       false /* include_current_bucket*/, true /* erase_data */,
                                       ADB_DUMP, NO_TIME_CONSTRAINTS, nullptr);
-}
-
-TEST(StatsLogProcessorTest, LogEventFilterOnSetPrintLogs) {
-    sp<UidMap> m = new UidMap();
-    sp<StatsPullerManager> pullerManager = new StatsPullerManager();
-    sp<AlarmMonitor> anomalyAlarmMonitor;
-    sp<AlarmMonitor> periodicAlarmMonitor;
-
-    std::shared_ptr<MockLogEventFilter> mockLogEventFilter = std::make_shared<MockLogEventFilter>();
-    EXPECT_CALL(*mockLogEventFilter, setAtomIds(StatsLogProcessor::getDefaultAtomIdSet(), _))
-            .Times(1);
-    StatsLogProcessor p(
-            m, pullerManager, anomalyAlarmMonitor, periodicAlarmMonitor, 0,
-            [](const ConfigKey& key) { return true; },
-            [](const int&, const vector<int64_t>&) { return true; },
-            [](const ConfigKey&, const string&, const vector<int64_t>&) {}, mockLogEventFilter);
-
-    Expectation filterSetFalse =
-            EXPECT_CALL(*mockLogEventFilter, setFilteringEnabled(false)).Times(1);
-    EXPECT_CALL(*mockLogEventFilter, setFilteringEnabled(true)).Times(1).After(filterSetFalse);
-
-    p.setPrintLogs(true);
-    p.setPrintLogs(false);
 }
 
 TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogHostUid) {

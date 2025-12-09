@@ -25,6 +25,9 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+using std::vector;
+
 #ifdef __ANDROID__
 
 TEST(DurationMetricE2eTest, TestOneBucket) {

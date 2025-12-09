@@ -20,7 +20,7 @@ import android.os.StatsSubscriptionCallbackReason;
 
 /**
   * Binder interface for callback that provides data for a subscription.
-  * {@hide}
+  * @hide
   */
 oneway interface IStatsSubscriptionCallback {
     /**

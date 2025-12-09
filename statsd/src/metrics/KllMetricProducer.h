@@ -57,10 +57,10 @@ public:
 
 protected:
 private:
-    inline optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
-                                                     const int configIndex) const override {
+    inline std::optional<int64_t> getConditionIdForMetric(const StatsdConfig& config,
+                                                          const int configIndex) const override {
         const KllMetric& metric = config.kll_metric(configIndex);
-        return metric.has_condition() ? make_optional(metric.condition()) : nullopt;
+        return metric.has_condition() ? std::make_optional(metric.condition()) : std::nullopt;
     }
 
     inline int64_t getWhatAtomMatcherIdForMetric(const StatsdConfig& config,

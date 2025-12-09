@@ -42,6 +42,8 @@ namespace {
 
 using namespace testing;
 using PerSubscriptionStats = StatsdStatsReport_SubscriptionStats_PerSubscriptionStats;
+using std::nullopt;
+using std::optional;
 using std::tuple;
 using std::unordered_map;
 using std::vector;

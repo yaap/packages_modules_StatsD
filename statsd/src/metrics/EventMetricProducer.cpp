@@ -31,14 +31,16 @@ using android::util::FIELD_TYPE_BOOL;
 using android::util::FIELD_TYPE_FLOAT;
 using android::util::FIELD_TYPE_INT32;
 using android::util::FIELD_TYPE_INT64;
-using android::util::FIELD_TYPE_STRING;
 using android::util::FIELD_TYPE_MESSAGE;
+using android::util::FIELD_TYPE_STRING;
 using android::util::ProtoOutputStream;
 using std::map;
+using std::nullopt;
+using std::optional;
+using std::shared_ptr;
 using std::string;
 using std::unordered_map;
 using std::vector;
-using std::shared_ptr;
 
 namespace android {
 namespace os {

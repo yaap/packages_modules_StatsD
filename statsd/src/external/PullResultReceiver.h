@@ -17,8 +17,6 @@
 #include <aidl/android/os/BnPullAtomResultReceiver.h>
 #include <aidl/android/util/StatsEventParcel.h>
 
-using namespace std;
-
 using Status = ::ndk::ScopedAStatus;
 using aidl::android::os::BnPullAtomResultReceiver;
 using aidl::android::util::StatsEventParcel;
@@ -29,18 +27,19 @@ namespace statsd {
 
 class PullResultReceiver : public BnPullAtomResultReceiver {
 public:
-    PullResultReceiver(
-            function<void(int32_t, bool, const vector<StatsEventParcel>&)> pullFinishCallback);
-    ~PullResultReceiver();
+    using PullCallback = std::function<void(int32_t, bool, const std::vector<StatsEventParcel>&)>;
+
+    PullResultReceiver(PullCallback pullFinishCallback);
+    ~PullResultReceiver() = default;
 
     /**
      * Binder call for finishing a pull.
      */
     Status pullFinished(int32_t atomTag, bool success,
-                        const vector<StatsEventParcel>& output) override;
+                        const std::vector<StatsEventParcel>& output) override;
 
 private:
-    function<void(int32_t, bool, const vector<StatsEventParcel>&)> pullFinishCallback;
+    PullCallback pullFinishCallback;
 };
 
 }  // namespace statsd

@@ -36,7 +36,6 @@ using std::make_shared;
 using std::shared_ptr;
 using std::vector;
 using std::this_thread::sleep_for;
-using testing::Contains;
 
 namespace {
 int pullTagId = 10014;

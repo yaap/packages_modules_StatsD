@@ -27,9 +27,6 @@
 using namespace android;
 
 using aidl::android::os::IStatsCompanionService;
-using std::function;
-using std::shared_ptr;
-using std::unordered_set;
 
 namespace android {
 namespace os {
@@ -60,15 +57,16 @@ struct InternalAlarm : public RefBase {
  */
 class AlarmMonitor : public RefBase {
 public:
+    using UpdateAlarmFunc =
+            std::function<void(const std::shared_ptr<IStatsCompanionService>&, int64_t)>;
+    using CancelAlarmFunc = std::function<void(const std::shared_ptr<IStatsCompanionService>&)>;
     /**
      * @param minDiffToUpdateRegisteredAlarmTimeSec If the soonest alarm differs
      * from the registered alarm by more than this amount, update the registered
      * alarm.
      */
-    AlarmMonitor(uint32_t minDiffToUpdateRegisteredAlarmTimeSec,
-                 const function<void(const shared_ptr<IStatsCompanionService>&, int64_t)>&
-                         updateAlarm,
-                 const function<void(const shared_ptr<IStatsCompanionService>&)>& cancelAlarm);
+    AlarmMonitor(uint32_t minDiffToUpdateRegisteredAlarmTimeSec, const UpdateAlarmFunc& updateAlarm,
+                 const CancelAlarmFunc& cancelAlarm);
     ~AlarmMonitor();
 
     /**
@@ -77,7 +75,8 @@ public:
      * If nullptr, AnomalyMonitor will continue to add/remove alarms, but won't
      * update IStatsCompanionService (until such time as it is set non-null).
      */
-    void setStatsCompanionService(const shared_ptr<IStatsCompanionService>& statsCompanionService);
+    void setStatsCompanionService(
+            const std::shared_ptr<IStatsCompanionService>& statsCompanionService);
 
     /**
      * Adds the given alarm (reference) to the queue.
@@ -95,7 +94,7 @@ public:
      * Returns and removes all alarms whose timestamp <= the given timestampSec.
      * Always updates the registered alarm if return is non-empty.
      */
-    unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> popSoonerThan(
+    std::unordered_set<sp<const InternalAlarm>, SpHash<InternalAlarm>> popSoonerThan(
             uint32_t timestampSec);
 
     /**
@@ -126,7 +125,7 @@ private:
     /**
      * Binder interface for communicating with StatsCompanionService.
      */
-    shared_ptr<IStatsCompanionService> mStatsCompanionService = nullptr;
+    std::shared_ptr<IStatsCompanionService> mStatsCompanionService = nullptr;
 
     /**
      * Amount by which the soonest projected alarm must differ from
@@ -150,11 +149,10 @@ private:
     int64_t secToMs(uint32_t timeSec);
 
     // Callback function to update the alarm via StatsCompanionService.
-    std::function<void(const shared_ptr<IStatsCompanionService>, int64_t)> mUpdateAlarm;
+    UpdateAlarmFunc mUpdateAlarm;
 
     // Callback function to cancel the alarm via StatsCompanionService.
-    std::function<void(const shared_ptr<IStatsCompanionService>)> mCancelAlarm;
-
+    CancelAlarmFunc mCancelAlarm;
 };
 
 }  // namespace statsd

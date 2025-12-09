@@ -18,7 +18,7 @@ package android.os;
 
 /**
   * Binder interface to communicate with the Java-based statistics service helper.
-  * {@hide}
+  * @hide
   */
 interface IStatsCompanionService {
     /**

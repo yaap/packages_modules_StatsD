@@ -1,1 +1,2 @@
 rule com.android.modules.utils.** com.android.internal.statsd.@0
+rule com.android.os.statsd.flags.** com.android.internal.statsd.flags.@0

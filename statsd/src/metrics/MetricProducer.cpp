@@ -34,6 +34,14 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::map;
+using std::nullopt;
+using std::optional;
+using std::set;
+using std::shared_ptr;
+using std::unordered_map;
+using std::vector;
+
 // for ActiveMetric
 const int FIELD_ID_ACTIVE_METRIC_ID = 1;
 const int FIELD_ID_ACTIVE_METRIC_ACTIVATION = 2;
@@ -47,9 +55,8 @@ MetricProducer::MetricProducer(
         int64_t metricId, const ConfigKey& key, const int64_t timeBaseNs, const int conditionIndex,
         const vector<ConditionState>& initialConditionCache, const sp<ConditionWizard>& wizard,
         const uint64_t protoHash,
-        const std::unordered_map<int, std::shared_ptr<Activation>>& eventActivationMap,
-        const std::unordered_map<int, std::vector<std::shared_ptr<Activation>>>&
-                eventDeactivationMap,
+        const std::unordered_map<int, shared_ptr<Activation>>& eventActivationMap,
+        const std::unordered_map<int, vector<shared_ptr<Activation>>>& eventDeactivationMap,
         const vector<int>& slicedStateAtoms,
         const unordered_map<int, unordered_map<int, int64_t>>& stateGroupMap,
         const optional<bool> splitBucketForAppUpgrade,
@@ -233,7 +240,7 @@ bool MetricProducer::evaluateActiveStateLocked(int64_t elapsedTimestampNs) {
 }
 
 void MetricProducer::flushIfExpire(int64_t elapsedTimestampNs) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard lock(mMutex);
     if (!mIsActive) {
         return;
     }
@@ -314,7 +321,7 @@ void MetricProducer::writeActiveMetricToProtoOutputStream(
     proto->write(FIELD_TYPE_INT64 | FIELD_ID_ACTIVE_METRIC_ID, (long long)mMetricId);
     for (auto& it : mEventActivationMap) {
         const int atom_matcher_index = it.first;
-        const std::shared_ptr<Activation>& activation = it.second;
+        const shared_ptr<Activation>& activation = it.second;
 
         if (ActivationState::kNotActive == activation->state ||
                 (ActivationState::kActive == activation->state &&

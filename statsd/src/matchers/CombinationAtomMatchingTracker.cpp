@@ -24,6 +24,8 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::nullopt;
+using std::optional;
 using std::set;
 using std::shared_ptr;
 using std::unordered_map;
@@ -37,105 +39,98 @@ CombinationAtomMatchingTracker::CombinationAtomMatchingTracker(const int64_t id,
 CombinationAtomMatchingTracker::~CombinationAtomMatchingTracker() {
 }
 
-MatcherInitResult CombinationAtomMatchingTracker::init(
-        int matcherIndex, const vector<AtomMatcher>& allAtomMatchers,
-        const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
-        const unordered_map<int64_t, int>& matcherMap, vector<uint8_t>& stack) {
-    MatcherInitResult result{nullopt /* invalidConfigReason */,
-                             false /* hasStringTransformation */};
-    if (mInitialized) {
-        // CombinationMatchers do not support string transformations so if mInitialized = true,
-        // we know that there is no string transformation and we do not need to check for it again.
-        return result;
+void CombinationAtomMatchingTracker::init(
+        const unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+        const unordered_map<int64_t, int>& matcherMap) {
+    AtomMatcher_Combination matcher =
+            (allAtomMatcherMap.find(mId))->second.atomMatcher.combination();
+    mLogicalOperation = matcher.operation();
+    for (const auto& child : matcher.matcher()) {
+        auto pair = matcherMap.find(child);
+        int childIndex = pair->second;
+
+        mChildren.push_back(childIndex);
+
+        const set<int>& childTagIds =
+                (allAtomMatcherMap.find(child))->second.atomMatchingTracker->getAtomIds();
+        mAtomIds.insert(childTagIds.begin(), childTagIds.end());
     }
+    return;
+}
 
+MatcherValidResult CombinationAtomMatchingTracker::isTrackerValid(
+        const std::unordered_map<int64_t, AtomMatcherValue>& allAtomMatcherMap,
+        std::unordered_set<int64_t>& stack) const {
+    MatcherValidResult matcherValidResult = {nullopt /* invalidConfigReason */,
+                                             false /* hasStringTransformation */};
     // mark this node as visited in the recursion stack.
-    stack[matcherIndex] = true;
+    stack.insert(mId);
 
-    AtomMatcher_Combination matcher = allAtomMatchers[matcherIndex].combination();
+    AtomMatcher_Combination matcher = allAtomMatcherMap.find(mId)->second.atomMatcher.combination();
 
     // LogicalOperation is missing in the config
     if (!matcher.has_operation()) {
-        result.invalidConfigReason = createInvalidConfigReasonWithMatcher(
+        matcherValidResult.invalidConfigReason = createInvalidConfigReasonWithMatcher(
                 INVALID_CONFIG_REASON_MATCHER_NO_OPERATION, mId);
-        return result;
+        return matcherValidResult;
     }
 
-    mLogicalOperation = matcher.operation();
-
-    if (mLogicalOperation == LogicalOperation::NOT && matcher.matcher_size() != 1) {
-        result.invalidConfigReason = createInvalidConfigReasonWithMatcher(
+    if (matcher.operation() == LogicalOperation::NOT && matcher.matcher_size() != 1) {
+        matcherValidResult.invalidConfigReason = createInvalidConfigReasonWithMatcher(
                 INVALID_CONFIG_REASON_MATCHER_NOT_OPERATION_IS_NOT_UNARY, mId);
-        return result;
+        return matcherValidResult;
     }
 
     for (const auto& child : matcher.matcher()) {
-        auto pair = matcherMap.find(child);
-        if (pair == matcherMap.end()) {
+        auto pair = allAtomMatcherMap.find(child);
+        if (pair == allAtomMatcherMap.end() || pair->second.atomMatchingTracker == nullptr) {
             ALOGW("Matcher %lld not found in the config", (long long)child);
-            result.invalidConfigReason = createInvalidConfigReasonWithMatcher(
+            matcherValidResult.invalidConfigReason = createInvalidConfigReasonWithMatcher(
                     INVALID_CONFIG_REASON_MATCHER_CHILD_NOT_FOUND, mId);
-            result.invalidConfigReason->matcherIds.push_back(child);
-            return result;
+            matcherValidResult.invalidConfigReason->matcherIds.push_back(child);
+            return matcherValidResult;
         }
 
-        int childIndex = pair->second;
+        int64_t childMatcherId = pair->first;
 
         // if the child is a visited node in the recursion -> circle detected.
-        if (stack[childIndex]) {
+        if (stack.find(childMatcherId) != stack.end()) {
             ALOGE("Circle detected in matcher config");
-            result.invalidConfigReason =
+            matcherValidResult.invalidConfigReason =
                     createInvalidConfigReasonWithMatcher(INVALID_CONFIG_REASON_MATCHER_CYCLE, mId);
-            result.invalidConfigReason->matcherIds.push_back(child);
-            return result;
+            return matcherValidResult;
         }
+
         auto [invalidConfigReason, hasStringTransformation] =
-                allAtomMatchingTrackers[childIndex]->init(
-                        childIndex, allAtomMatchers, allAtomMatchingTrackers, matcherMap, stack);
+                allAtomMatcherMap.find(childMatcherId)
+                        ->second.atomMatchingTracker->isTrackerValid(allAtomMatcherMap, stack);
         if (hasStringTransformation) {
             ALOGE("String transformation detected in CombinationMatcher");
-            result.invalidConfigReason = createInvalidConfigReasonWithMatcher(
+            matcherValidResult.invalidConfigReason = createInvalidConfigReasonWithMatcher(
                     INVALID_CONFIG_REASON_MATCHER_COMBINATION_WITH_STRING_REPLACE, mId);
-            result.hasStringTransformation = true;
-            return result;
+            matcherValidResult.hasStringTransformation = true;
+            return matcherValidResult;
         }
 
         if (invalidConfigReason.has_value()) {
             ALOGW("child matcher init failed %lld", (long long)child);
             invalidConfigReason->matcherIds.push_back(mId);
-            result.invalidConfigReason = invalidConfigReason;
-            return result;
+            matcherValidResult.invalidConfigReason = invalidConfigReason;
+            return matcherValidResult;
         }
-
-        mChildren.push_back(childIndex);
-
-        const set<int>& childTagIds = allAtomMatchingTrackers[childIndex]->getAtomIds();
-        mAtomIds.insert(childTagIds.begin(), childTagIds.end());
     }
-
-    mInitialized = true;
-    // unmark this node in the recursion stack.
-    stack[matcherIndex] = false;
-    return result;
+    stack.erase(mId);
+    return matcherValidResult;
 }
 
-optional<InvalidConfigReason> CombinationAtomMatchingTracker::onConfigUpdated(
+void CombinationAtomMatchingTracker::onConfigUpdated(
         const AtomMatcher& matcher, const unordered_map<int64_t, int>& atomMatchingTrackerMap) {
     mChildren.clear();
     const AtomMatcher_Combination& combinationMatcher = matcher.combination();
     for (const int64_t child : combinationMatcher.matcher()) {
         const auto& pair = atomMatchingTrackerMap.find(child);
-        if (pair == atomMatchingTrackerMap.end()) {
-            ALOGW("Matcher %lld not found in the config", (long long)child);
-            optional<InvalidConfigReason> invalidConfigReason =
-                    createInvalidConfigReasonWithMatcher(
-                            INVALID_CONFIG_REASON_MATCHER_CHILD_NOT_FOUND, matcher.id());
-            invalidConfigReason->matcherIds.push_back(child);
-            return invalidConfigReason;
-        }
         mChildren.push_back(pair->second);
     }
-    return nullopt;
 }
 
 void CombinationAtomMatchingTracker::onLogEvent(

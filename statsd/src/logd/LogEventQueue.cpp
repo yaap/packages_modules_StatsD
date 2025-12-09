@@ -23,7 +23,6 @@ namespace android {
 namespace os {
 namespace statsd {
 
-using std::unique_lock;
 using std::unique_ptr;
 
 unique_ptr<LogEvent> LogEventQueue::waitPop() {
@@ -42,7 +41,7 @@ unique_ptr<LogEvent> LogEventQueue::waitPop() {
 LogEventQueue::Result LogEventQueue::push(unique_ptr<LogEvent> item) {
     Result result;
     {
-        std::unique_lock<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         if (mQueue.size() < mQueueLimit) {
             mQueue.push(std::move(item));
             result.success = true;

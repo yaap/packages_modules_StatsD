@@ -47,9 +47,15 @@ using android::util::FIELD_TYPE_MESSAGE;
 using android::util::FIELD_TYPE_STRING;
 using android::util::ProtoOutputStream;
 
+using std::map;
+using std::nullopt;
+using std::optional;
 using std::set;
+using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
+using std::unordered_map;
+using std::unordered_set;
 using std::vector;
 
 namespace android {
@@ -349,7 +355,7 @@ void MetricsManager::initializeConfigActiveStatus() {
 }
 
 void MetricsManager::initAllowedLogSources() {
-    std::lock_guard<std::mutex> lock(mAllowedLogSourcesMutex);
+    std::lock_guard lock(mAllowedLogSourcesMutex);
     mAllowedLogSources.clear();
     mAllowedLogSources.insert(mAllowedUid.begin(), mAllowedUid.end());
 
@@ -365,7 +371,7 @@ void MetricsManager::initAllowedLogSources() {
 }
 
 void MetricsManager::initPullAtomSources() {
-    std::lock_guard<std::mutex> lock(mAllowedLogSourcesMutex);
+    std::lock_guard lock(mAllowedLogSourcesMutex);
     mCombinedPullAtomUids.clear();
     for (const auto& [atomId, uids] : mPullAtomUids) {
         mCombinedPullAtomUids[atomId].insert(uids.begin(), uids.end());
@@ -450,7 +456,7 @@ void MetricsManager::init() {
 }
 
 vector<int32_t> MetricsManager::getPullAtomUids(int32_t atomId) {
-    std::lock_guard<std::mutex> lock(mAllowedLogSourcesMutex);
+    std::lock_guard lock(mAllowedLogSourcesMutex);
     vector<int32_t> uids;
     const auto& it = mCombinedPullAtomUids.find(atomId);
     if (it != mCombinedPullAtomUids.end()) {
@@ -467,7 +473,7 @@ bool MetricsManager::useV2SoftMemoryCalculation() {
 void MetricsManager::dumpStates(int out, bool verbose) {
     dprintf(out, "ConfigKey %s, allowed source:", mConfigKey.ToString().c_str());
     {
-        std::lock_guard<std::mutex> lock(mAllowedLogSourcesMutex);
+        std::lock_guard lock(mAllowedLogSourcesMutex);
         for (const auto& source : mAllowedLogSources) {
             dprintf(out, "%d ", source);
         }
@@ -542,7 +548,7 @@ bool MetricsManager::checkLogCredentials(const int32_t uid, const int32_t atomId
         return true;
     }
 
-    std::lock_guard<std::mutex> lock(mAllowedLogSourcesMutex);
+    std::lock_guard lock(mAllowedLogSourcesMutex);
     if (mAllowedLogSources.find(uid) == mAllowedLogSources.end()) {
         VLOG("log source %d not on the whitelist", uid);
         return false;
@@ -960,7 +966,7 @@ vector<int64_t> MetricsManager::getAllMetricIds() const {
     return metricIds;
 }
 
-void MetricsManager::addAllAtomIds(LogEventFilter::AtomIdSet& allIds) const {
+void MetricsManager::addAllAtomIds(AtomsInUseChangeListener::AtomIdSet& allIds) const {
     for (const auto& [atomId, _] : mTagIdsToMatchersMap) {
         allIds.insert(atomId);
     }

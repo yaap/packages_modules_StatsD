@@ -24,6 +24,7 @@ import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IPullAtomCallback;
 import android.os.IStatsManagerService;
 import android.os.IStatsQueryCallback;
@@ -209,6 +210,11 @@ public class StatsManagerService extends IStatsManagerService.Stub {
         public IPullAtomCallback getCallback() {
             return mCallback;
         }
+    }
+
+    @FunctionalInterface
+    private interface StatsdAction {
+        void run(IStatsd statsd, int callingUid) throws RemoteException;
     }
 
     private final ArrayMap<PullerKey, PullerValue> mPullers = new ArrayMap<>();
@@ -509,22 +515,21 @@ public class StatsManagerService extends IStatsManagerService.Stub {
     @Override
     public void addConfiguration(long configId, byte[] config, String packageName)
             throws IllegalStateException {
-        enforceDumpAndUsageStatsPermission(packageName);
-        int callingUid = Binder.getCallingUid();
-        final long token = Binder.clearCallingIdentity();
-        try {
-            IStatsd statsd = waitForStatsd();
-            if (statsd != null) {
-                statsd.addConfiguration(configId, config, callingUid);
-                return;
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Failed to addConfiguration with statsd");
-            throw new IllegalStateException(e.getMessage(), e);
-        } finally {
-            Binder.restoreCallingIdentity(token);
-        }
-        throw new IllegalStateException("Failed to connect to statsd to addConfig");
+        executeWithStatsd(
+            packageName,
+            "addConfiguration",
+            (statsd, callingUid) -> statsd.addConfiguration(configId, config, callingUid)
+        );
+    }
+
+    @Override
+    public void addConfigurationFd(long configId, ParcelFileDescriptor readFd, String packageName)
+            throws IllegalStateException {
+        executeWithStatsd(
+            packageName,
+            "addConfigurationFd",
+            (statsd, callingUid) -> addConfigurationToStatsd(statsd, configId, callingUid, readFd)
+        );
     }
 
     @Override
@@ -849,6 +854,28 @@ public class StatsManagerService extends IStatsManagerService.Stub {
             }
         }
     }
+
+    private void executeWithStatsd(String packageName, String actionName,
+            StatsdAction action) throws IllegalStateException {
+        enforceDumpAndUsageStatsPermission(packageName);
+        final int callingUid = Binder.getCallingUid();
+        final long token = Binder.clearCallingIdentity();
+        try {
+            IStatsd statsd = waitForStatsd();
+            if (statsd != null) {
+                action.run(statsd, callingUid);
+                return;
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Failed to " + actionName + " with statsd", e);
+            throw new IllegalStateException(e.getMessage(), e);
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+
+        throw new IllegalStateException("Failed to connect to statsd to " + actionName);
+    }
+
     private static final int CHUNK_SIZE = 1024 * 64; // 64 kB
 
     /**
@@ -908,6 +935,48 @@ public class StatsManagerService extends IStatsManagerService.Stub {
         } catch (IOException e) {
             Log.e(TAG, "Failed to read data from statsd pipe", e);
             throw new IllegalStateException("Failed to read data from statsd pipe.", e);
+        }
+    }
+
+    private static void addConfigurationToStatsd(IStatsd statsd, long configKey, int callingUid,
+                                                 ParcelFileDescriptor srcFd)
+                                                 throws IllegalStateException, RemoteException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            statsd.addConfigurationFd(configKey, srcFd, callingUid);
+            try {
+                srcFd.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to close FD", e);
+                throw new IllegalStateException("Failed to close FD.", e);
+            }
+        } else {
+            ParcelFileDescriptor[] pipe;
+            try {
+                pipe = ParcelFileDescriptor.createPipe();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to create a pipe to receive reports.", e);
+                throw new IllegalStateException("Failed to create a pipe to receive reports.", e);
+            }
+
+            ParcelFileDescriptor readFd = pipe[0];
+            ParcelFileDescriptor writeFd = pipe[1];
+
+            statsd.addConfigurationFd(configKey, readFd, callingUid);
+
+            try (FileInputStream inputStream = new ParcelFileDescriptor.AutoCloseInputStream(srcFd);
+                 FileOutputStream outputStream =
+                        new ParcelFileDescriptor.AutoCloseOutputStream(writeFd);
+                 readFd) {
+                byte[] chunk = new byte[CHUNK_SIZE];
+                int chunkLen = 0;
+
+                while ((chunkLen = inputStream.read(chunk, 0, CHUNK_SIZE)) != -1) {
+                    outputStream.write(chunk, 0, chunkLen);
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to copy config to statsd pipe", e);
+                throw new IllegalStateException("Failed to copy config to statsd pipe.", e);
+            }
         }
     }
 }

@@ -30,7 +30,7 @@ class TrainInfoPuller : public StatsPuller {
   TrainInfoPuller();
 
  private:
-     PullErrorCode PullInternal(vector<std::shared_ptr<LogEvent>>* data) override;
+     PullErrorCode PullInternal(std::vector<std::shared_ptr<LogEvent>>* data) override;
 };
 
 }  // namespace statsd

@@ -61,7 +61,7 @@ class GaugeMetricProducer : public MetricProducer, public virtual PullDataReceiv
 public:
     GaugeMetricProducer(
             const ConfigKey& key, const GaugeMetric& gaugeMetric, int conditionIndex,
-            const vector<ConditionState>& initialConditionCache,
+            const std::vector<ConditionState>& initialConditionCache,
             const sp<ConditionWizard>& conditionWizard, const uint64_t protoHash,
             const int whatMatcherIndex, const sp<EventMatcherWizard>& matcherWizard,
             const int pullTagId, int triggerAtomId, int atomId, const int64_t timeBaseNs,
@@ -83,7 +83,7 @@ public:
 
     // Determine if metric needs to pull
     bool isPullNeeded() const override {
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         return mIsActive && (mCondition == ConditionState::kTrue) &&
                shouldKeepRandomSample(mPullProbability);
     };
@@ -99,7 +99,7 @@ public:
     // GaugeMetric needs to immediately trigger another pull when we create the partial bucket.
     void onStatsdInitCompleted(int64_t eventTimeNs) override {
         ATRACE_CALL();
-        std::lock_guard<std::mutex> lock(mMutex);
+        std::lock_guard lock(mMutex);
         flushLocked(eventTimeNs);
         if (mIsPulled && mSamplingType == GaugeMetric::RANDOM_ONE_SAMPLE && mIsActive) {
             pullAndMatchEventsLocked(eventTimeNs);
@@ -123,7 +123,7 @@ protected:
 private:
     void onDumpReportLocked(const int64_t dumpTimeNs, const bool include_current_partial_bucket,
                             const bool erase_data, const DumpLatency dumpLatency,
-                            std::set<string>* str_set, std::set<int32_t>& usedUids,
+                            std::set<std::string>* str_set, std::set<int32_t>& usedUids,
                             android::util::ProtoOutputStream* protoOutput) override;
     void clearPastBucketsLocked(const int64_t dumpTimeNs) override;
 
@@ -158,7 +158,7 @@ private:
             const std::unordered_map<AtomDimensionKey, std::vector<int64_t>>& aggregatedAtoms)
             const;
 
-    optional<InvalidConfigReason> onConfigUpdatedLocked(
+    std::optional<InvalidConfigReason> onConfigUpdatedLocked(
             const StatsdConfig& config, int configIndex, int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -259,6 +259,7 @@ private:
 
     FRIEND_TEST(GaugeMetricProducerTest_PartialBucket, TestPushedEvents);
     FRIEND_TEST(GaugeMetricProducerTest_PartialBucket, TestPulled);
+    FRIEND_TEST(GaugeMetricProducerTest_PulledAnomaly, TestPulledEventsAnomalyDetection);
 
     FRIEND_TEST(ConfigUpdateTest, TestUpdateGaugeMetrics);
 

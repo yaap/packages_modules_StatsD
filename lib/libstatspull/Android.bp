@@ -72,6 +72,9 @@ cc_library_shared {
         "statsd_flags_c_lib",
     ],
     stl: "libc++_static",
+    // APIs are not ABI-stable, and this should only be used as an
+    // implementation detail of LL-NDK libraries
+    vendor_available: false,
 }
 
 cc_library_headers {
@@ -82,6 +85,15 @@ cc_library_headers {
         "//apex_available:platform",
     ],
     min_sdk_version: "30",
+    // APIs are not ABI-stable, and this should only be used as an
+    // implementation detail of LL-NDK libraries
+    vendor_available: false,
+    host_supported: true,
+    target: {
+        windows: {
+            enabled: true,
+        },
+    },
 }
 
 filegroup {
@@ -159,4 +171,23 @@ cc_test {
     ],
     require_root: true,
     min_sdk_version: "30",
+}
+
+cc_test_library {
+    name: "libstatspull-fake",
+    host_supported: true,
+    header_libs: [
+        "libstatspull_headers",
+    ],
+    export_header_lib_headers: [
+        "libstatspull_headers",
+    ],
+    srcs: [
+        "fake/libstatspull.c",
+    ],
+    target: {
+        windows: {
+            enabled: true,
+        },
+    },
 }

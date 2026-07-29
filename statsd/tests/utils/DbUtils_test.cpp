@@ -37,6 +37,7 @@ namespace {
 const ConfigKey key = ConfigKey(111, 222);
 const int64_t metricId = 111;
 const int32_t tagId = 1;
+const int32_t tagId2 = 2;
 
 AStatsEvent* makeAStatsEvent(int32_t atomId, int64_t timestampNs) {
     AStatsEvent* statsEvent = AStatsEvent_obtain();
@@ -422,6 +423,52 @@ TEST_F(DbUtilsTest, TestUpdateDeviceInfoTableInvokeTwice) {
     EXPECT_THAT(columnNames,
                 ElementsAre("sdkVersion", "model", "product", "hardware", "device", "osBuild",
                             "fingerprint", "brand", "manufacturer", "board"));
+}
+
+TEST_F(DbUtilsTest, TestQueryTwoTablesWithDifferentSchema) {
+    int64_t eventElapsedTimeNs = 10000000000;
+    int64_t metricId2 = 222;
+
+    AStatsEvent* statsEvent1 = makeAStatsEvent(tagId, eventElapsedTimeNs + 10);
+    AStatsEvent_writeString(statsEvent1, "test_string");
+    LogEvent logEvent1 = makeLogEvent(statsEvent1);
+    vector<LogEvent> events1{logEvent1};
+    EXPECT_TRUE(createTableIfNeeded(key, metricId, logEvent1));
+    string err;
+    EXPECT_TRUE(insert(key, metricId, events1, err));
+
+    AStatsEvent* statsEvent2 = makeAStatsEvent(tagId2, eventElapsedTimeNs + 20);
+    AStatsEvent_writeInt32(statsEvent2, 999);
+    LogEvent logEvent2 = makeLogEvent(statsEvent2);
+    vector<LogEvent> events2{logEvent2};
+    EXPECT_TRUE(createTableIfNeeded(key, metricId2, logEvent2));
+    EXPECT_TRUE(insert(key, metricId2, events2, err));
+
+    std::vector<int32_t> columnTypes;
+    std::vector<string> columnNames;
+    std::vector<std::vector<std::string>> rows;
+    string zSql =
+            "SELECT elapsedTimestampNs, wallTimestampNs, atomId, field_1 AS str_field, "
+            "CAST(NULL AS INTEGER) AS int_field FROM metric_111 "
+            "UNION "
+            "SELECT elapsedTimestampNs, wallTimestampNs, atomId, CAST(NULL AS TEXT) AS str_field, "
+            "field_1 AS int_field FROM metric_222 "
+            "ORDER BY elapsedTimestampNs";
+    EXPECT_TRUE(query(key, zSql, rows, columnTypes, columnNames, err));
+
+    ASSERT_EQ(rows.size(), 2);
+    EXPECT_THAT(rows[0],
+                ElementsAre(
+                    to_string(eventElapsedTimeNs + 10), _, to_string(tagId), "test_string", ""));
+    EXPECT_THAT(rows[1],
+                ElementsAre(
+                    to_string(eventElapsedTimeNs + 20), _, to_string(tagId2), "", "999"));
+
+    EXPECT_THAT(columnNames, ElementsAre("elapsedTimestampNs", "wallTimestampNs", "atomId",
+                                         "str_field", "int_field"));
+    EXPECT_THAT(columnTypes,
+                ElementsAre(SQLITE_INTEGER, SQLITE_INTEGER, SQLITE_INTEGER, SQLITE_TEXT,
+                            /* Representing NULL*/ 0));
 }
 
 }  // namespace dbutils

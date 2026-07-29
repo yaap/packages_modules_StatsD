@@ -42,7 +42,7 @@ BufferWriterQueue::~BufferWriterQueue() {
     drainQueue();
 }
 
-bool BufferWriterQueue::write(const uint8_t* buffer, size_t size, uint32_t atomId) {
+bool BufferWriterQueue::write(const uint8_t* buffer, size_t size, AStatsEventAtomId atomId) {
     Cmd cmd = createWriteBufferCmd(buffer, size, atomId);
     if (cmd.buffer == NULL) {
         return false;
@@ -79,7 +79,7 @@ bool BufferWriterQueue::pushToQueue(const Cmd& cmd) {
 }
 
 BufferWriterQueue::Cmd BufferWriterQueue::createWriteBufferCmd(const uint8_t* buffer, size_t size,
-                                                               uint32_t atomId) {
+                                                               AStatsEventAtomId atomId) {
     BufferWriterQueue::Cmd writeCmd;
     writeCmd.atomId = atomId;
     writeCmd.buffer = (uint8_t*)malloc(size);
@@ -111,8 +111,10 @@ void BufferWriterQueue::drainQueue() {
 
 void BufferWriterQueue::processCommands() {
     prctl(PR_SET_NAME, "socket_writer_queue");
+    int retryCount = 0;
+
     while (true) {
-        // temporary local thread copy
+        // temporary thread-local copy
         Cmd cmd;
         {
             std::unique_lock<std::mutex> lock(mMutex);
@@ -127,10 +129,13 @@ void BufferWriterQueue::processCommands() {
             return;
         }
 
-        const bool writeSuccess = handleCommand(cmd);
-        if (writeSuccess) {
-            // no event drop is observed otherwise command remains in the queue
-            // and worker thread will try to log later on
+        // for the final retry if it is failed - the log drop will be noted
+        const bool isFinalRetry = ++retryCount >= kQueueRetryCount;
+        const bool writeSuccess = handleCommand(cmd, isFinalRetry);
+        // when write fails, command remains in the queue and worker thread will
+        // try to write it later, until it reaches kQueueRetryCount attempts
+        if (writeSuccess || isFinalRetry) {
+            retryCount = 0;
 
             // call free() explicitly here to free memory before the mutex lock
             free(cmd.buffer);
@@ -141,7 +146,6 @@ void BufferWriterQueue::processCommands() {
                 mCmdQueue.pop();
             }
         }
-        // TODO (b/258003151): add logging info about retry count
 
         if (mDoTerminate) {
             return;
@@ -156,26 +160,24 @@ void BufferWriterQueue::processCommands() {
     }
 }
 
-bool BufferWriterQueue::handleCommand(const Cmd& cmd) const {
+bool BufferWriterQueue::handleCommand(const Cmd& cmd, bool doNoteDrop) const {
     // skip log drop if occurs, since the atom remains in the queue and write will be retried
-    return write_buffer_to_statsd_impl(cmd.buffer, cmd.size, cmd.atomId, /*doNoteDrop*/ false) > 0;
+    return write_buffer_to_statsd_impl(cmd.buffer, cmd.size, cmd.atomId, doNoteDrop) > 0;
 }
 
-bool write_buffer_to_statsd_queue(const uint8_t* buffer, size_t size, uint32_t atomId) {
+bool write_buffer_to_statsd_queue(const uint8_t* buffer, size_t size, AStatsEventAtomId atomId) {
     static BufferWriterQueue queue;
     return queue.write(buffer, size, atomId);
 }
 
-bool should_write_via_queue(uint32_t atomId) {
+bool should_write_via_queue(uid_t appUid, AStatsEventAtomId atomId) {
     // bootstats is very short living process - queue does not have sufficient
     // time to be drained entirely so writing this atom straight to socket
     if (atomId == kBootTimeEventElapsedTimeAtomId) {
         return false;
     }
 
-    const uint32_t appUid = getuid();
-
-    // hard-coded push all system server atoms to queue
+    // hard-coded push all atoms to queue for the system user
     if (appUid == AID_SYSTEM) {
         return true;
     }

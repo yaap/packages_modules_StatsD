@@ -66,6 +66,9 @@ public:
             return;
         }
 
+        // TODO: this component particularly interested only in pushed atoms ids
+        //       if there are new pulled atoms - no need to update logging config
+
         std::lock_guard lock(mTagIdsMutex);
         mAtomIdSetManager.setAtomIds(tagIds, consumer);
         if (mIsEnabled) {
@@ -87,10 +90,7 @@ private:
     void setLoggingConfigLocked(const AtomIdSet& atomsInUse) {
         // sets system property & creates atom list file
         const std::vector<int32_t> atomIds{atomsInUse.begin(), atomsInUse.end()};
-        if (!mAtomsInUseListProducer.setAtomsIds(atomIds)) {
-            // if for some reason up to date list was not set - disable the logging control
-            mAtomsInUseListProducer.reset();
-        }
+        mAtomsInUseListProducer.setAtomsIds(atomIds);
     }
 
     void resetConfigLocked() {

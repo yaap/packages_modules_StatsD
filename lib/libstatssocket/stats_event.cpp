@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "include/stats_buffer_writer.h"
+#include "stats_event_type.h"
 #include "utils.h"
 
 #define LOGGER_ENTRY_MAX_PAYLOAD 4068
@@ -66,22 +67,6 @@
 #define KEY_VALUE_PAIRS_TYPE 0x08
 #define ATTRIBUTION_CHAIN_TYPE 0x09
 #define ERROR_TYPE 0x0F
-
-// The AStatsEvent struct holds the serialized encoding of an event
-// within a buf. Also includes other required fields.
-struct AStatsEvent {
-    uint8_t* buf;
-    // Location of last field within the buf. Here, field denotes either a
-    // metadata field (e.g. timestamp) or an atom field.
-    size_t lastFieldPos;
-    // Number of valid bytes within the buffer.
-    size_t numBytesWritten;
-    uint32_t numElements;
-    uint32_t atomId;
-    uint32_t errors;
-    bool built;
-    size_t bufSize;
-};
 
 AStatsEvent* AStatsEvent_obtain() {
     AStatsEvent* event = static_cast<AStatsEvent*>(malloc(sizeof(AStatsEvent)));

@@ -72,7 +72,7 @@ TEST_P(ConfigUpdateE2eAbTest, TestUidMapVersionStringInstaller) {
 
     ConfigKey cfgKey(0, 12345);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(baseTimeNs, baseTimeNs, config, cfgKey, nullptr, 0, uidMap);
+            CreateStatsLogProcessor(baseTimeNs, baseTimeNs, config, cfgKey, {.uidMap = uidMap});
     EXPECT_EQ(processor->mMetricsManagers.size(), 1u);
     sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
     EXPECT_TRUE(metricsManager->isConfigValid());
@@ -114,7 +114,7 @@ TEST_P(ConfigUpdateE2eAbTest, TestHashStrings) {
 
     ConfigKey cfgKey(0, 12345);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(baseTimeNs, baseTimeNs, config, cfgKey, nullptr, 0, uidMap);
+            CreateStatsLogProcessor(baseTimeNs, baseTimeNs, config, cfgKey, {.uidMap = uidMap});
     EXPECT_EQ(processor->mMetricsManagers.size(), 1u);
     sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
     EXPECT_TRUE(metricsManager->isConfigValid());
@@ -320,9 +320,10 @@ TEST_P(ConfigUpdateE2eAbTest, TestExistingGaugePullRandomOneSample) {
     ConfigKey key(123, 987);
     uint64_t bucketStartTimeNs = getElapsedRealtimeNs();
     uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(TEN_MINUTES) * 1000000LL;
-    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
-            bucketStartTimeNs, bucketStartTimeNs, config, key,
-            SharedRefBase::make<FakeSubsystemSleepCallback>(), util::SUBSYSTEM_SLEEP_STATE);
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, key,
+                                    {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(),
+                                     .pullAtomId = util::SUBSYSTEM_SLEEP_STATE});
 
     uint64_t updateTimeNs = bucketStartTimeNs + 60 * NS_PER_SEC;
     processor->OnConfigUpdated(updateTimeNs, key, config, GetParam());

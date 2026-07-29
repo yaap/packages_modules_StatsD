@@ -38,7 +38,6 @@ namespace statsd {
 
 using aidl::android::util::StatsEventParcel;
 using android::util::ProtoOutputStream;
-using android::util::ProtoReader;
 using ::ndk::SharedRefBase;
 using Change = UidMapping_Change;
 
@@ -749,7 +748,7 @@ protected:
 
     inline sp<StatsLogProcessor> createStatsLogProcessor(const StatsdConfig& config) const {
         return CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey,
-                                       /* puller */ nullptr, /* puller atomTag */ 0, uidMap);
+                                       {.uidMap = uidMap});
     }
 
     UidMapping getUidMapping(const sp<StatsLogProcessor>& processor) const {
@@ -826,6 +825,43 @@ TEST_F(UidMapTestAppendUidMapSystemUsedUids, testOmitSystemAndUnusedUids) {
     ASSERT_EQ(results.snapshots_size(), 1);
     EXPECT_THAT(results.snapshots(0).package_info(),
                 UnorderedElementsAre(Property(&PackageInfo::uid, AID_APP_START + 1)));
+    ASSERT_EQ(results.changes_size(), 0);
+}
+
+TEST_F(UidMapTestAppendUidMapSystemUsedUids, testOmitSystemAndUnusedUidsWithSandboxUids) {
+    config.mutable_statsd_config_options()->set_omit_system_uids_in_uidmap(true);
+    config.mutable_statsd_config_options()->set_omit_unused_uids_in_uidmap(true);
+
+    sp<StatsLogProcessor> processor = createStatsLogProcessor(config);
+
+    int32_t sandboxUid = AID_SDK_SANDBOX_PROCESS_START + 1;
+    auto event = CreateSyncStartEvent(bucketStartTimeNs + 1, {sandboxUid}, {"tag"}, "sync_name");
+    processor->OnLogEvent(event.get());
+
+    UidMapping results = getUidMapping(processor);
+
+    ASSERT_EQ(results.snapshots_size(), 1);
+    EXPECT_THAT(results.snapshots(0).package_info(),
+                UnorderedElementsAre(Property(&PackageInfo::uid, AID_APP_START + 1)));
+    ASSERT_EQ(results.changes_size(), 0);
+}
+
+TEST_F(UidMapTestAppendUidMapSystemUsedUids, testOmitSystemAndUnusedUidsWithPccComponentUids) {
+    config.mutable_statsd_config_options()->set_omit_system_uids_in_uidmap(true);
+    config.mutable_statsd_config_options()->set_omit_unused_uids_in_uidmap(true);
+
+    sp<StatsLogProcessor> processor = createStatsLogProcessor(config);
+
+    int32_t pccUid = AID_USER_OFFSET + AID_PCC_COMPONENT_PROCESS_START + 2;
+    auto event = CreateSyncStartEvent(bucketStartTimeNs + 1, {pccUid}, {"tag"}, "sync_name");
+    processor->OnLogEvent(event.get());
+
+    UidMapping results = getUidMapping(processor);
+
+    ASSERT_EQ(results.snapshots_size(), 1);
+    EXPECT_THAT(
+            results.snapshots(0).package_info(),
+            UnorderedElementsAre(Property(&PackageInfo::uid, AID_USER_OFFSET + AID_APP_START + 2)));
     ASSERT_EQ(results.changes_size(), 0);
 }
 
@@ -968,7 +1004,9 @@ TEST(UidMapTest, TestUsedUidsE2e) {
     ConfigKey key(123, 987);
     sp<StatsLogProcessor> p =
             CreateStatsLogProcessor(startTimeNs, startTimeNs, config, key,
-                                    SharedRefBase::make<FakePullAtomCallback>(), ATOM_5, uidMap);
+                                    {.puller = SharedRefBase::make<FakePullAtomCallback>(),
+                                     .pullAtomId = ATOM_5,
+                                     .uidMap = uidMap});
 
     const uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(TEN_MINUTES) * 1000000LL;
     std::vector<std::shared_ptr<LogEvent>> events;
@@ -1134,7 +1172,9 @@ TEST(UidMapTest, TestUsedUidsFromMetricE2e) {
     ConfigKey key(123, 987);
     sp<StatsLogProcessor> p =
             CreateStatsLogProcessor(startTimeNs, startTimeNs, config, key,
-                                    SharedRefBase::make<FakePullAtomCallback>(), ATOM_5, uidMap);
+                                    {.puller = SharedRefBase::make<FakePullAtomCallback>(),
+                                     .pullAtomId = ATOM_5,
+                                     .uidMap = uidMap});
 
     const uint64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(TEN_MINUTES) * 1000000LL;
     std::vector<std::shared_ptr<LogEvent>> events;

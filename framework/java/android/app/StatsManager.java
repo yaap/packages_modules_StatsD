@@ -453,10 +453,10 @@ public final class StatsManager {
      * <p>
      * The device information table is named device_info and contains the following columns:
      * sdkVersion, model, product, hardware, device, osBuild, fingerprint, brand, manufacturer, and
-     * board. These columns correspond to {@link Build.VERSION.SDK_INT}, {@link Build.MODEL},
-     * {@link Build.PRODUCT}, {@link Build.HARDWARE}, {@link Build.DEVICE}, {@link Build.ID},
-     * {@link Build.FINGERPRINT}, {@link Build.BRAND}, {@link Build.MANUFACTURER},
-     * {@link Build.BOARD} respectively.
+     * board. These columns correspond to {@link Build.VERSION#SDK_INT}, {@link Build#MODEL},
+     * {@link Build#PRODUCT}, {@link Build#HARDWARE}, {@link Build#DEVICE}, {@link Build#ID},
+     * {@link Build#FINGERPRINT}, {@link Build#BRAND}, {@link Build#MANUFACTURER},
+     * {@link Build#BOARD} respectively.
      * </p>
      * <p>
      * The metric tables are named metric_METRIC_ID where METRIC_ID is the metric id that is part

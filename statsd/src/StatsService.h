@@ -359,6 +359,11 @@ private:
     status_t cmd_print_logs(int outFd, const Vector<String8>& args);
 
     /**
+     * Enable or disable logging control.
+     */
+    status_t cmd_logging_control(int outFd, const Vector<String8>& args);
+
+    /**
      * Implementation for request data for the configuration key.
      */
     void getDataChecked(int64_t key, const int32_t callingUid, std::vector<uint8_t>* output);
@@ -422,7 +427,9 @@ private:
      */
     void onStatsdInitCompletedHandlerTermination();
 
-    std::atomic<bool> mIsStopRequested = false;
+    std::atomic_bool mPrintAllLogs = false;
+
+    std::atomic_bool mIsStopRequested = false;
 
     /**
      * Tracks the uid <--> package name mapping.
@@ -487,6 +494,8 @@ private:
     std::shared_ptr<AtomsInUseChangeDispatcher> mAtomsInUseChangeDispatcher;
     std::shared_ptr<LogEventFilter> mLogEventFilter;
     std::shared_ptr<SocketLogEventControl> mSocketLogEventControl;
+
+    std::atomic_bool mLoggingControlDisabled = false;
 
     friend class StatsServiceConfigTest;
     friend class RestrictedConfigE2ETest;

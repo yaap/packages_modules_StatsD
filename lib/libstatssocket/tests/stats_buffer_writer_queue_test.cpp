@@ -40,7 +40,8 @@ static AStatsEvent* generateTestEvent() {
 class BasicBufferWriterQueueMock : public BufferWriterQueue {
 public:
     BasicBufferWriterQueueMock() = default;
-    MOCK_METHOD(bool, handleCommand, (const BufferWriterQueue::Cmd& cmd), (const override));
+    MOCK_METHOD(bool, handleCommand, (const BufferWriterQueue::Cmd& cmd, bool doNoteDrop),
+                (const override));
 };
 
 typedef StrictMock<BasicBufferWriterQueueMock> BufferWriterQueueMock;
@@ -58,7 +59,7 @@ TEST(StatsBufferWriterQueueTest, TestWriteSuccess) {
     const uint32_t atomId = AStatsEvent_getAtomId(event);
 
     BufferWriterQueueMock queue;
-    EXPECT_CALL(queue, handleCommand(_)).WillOnce(Return(true));
+    EXPECT_CALL(queue, handleCommand(_, _)).WillOnce(Return(true));
     // simulate failed write to stats socket
     const bool addedToQueue = queue.write(buffer, eventBufferSize, atomId);
     AStatsEvent_release(event);
@@ -81,7 +82,7 @@ TEST(StatsBufferWriterQueueTest, TestWriteOverflow) {
     const uint32_t atomId = AStatsEvent_getAtomId(event);
 
     BufferWriterQueueMock queue;
-    EXPECT_CALL(queue, handleCommand(_)).WillRepeatedly(Return(false));
+    EXPECT_CALL(queue, handleCommand(_, _)).WillRepeatedly(Return(false));
     // simulate failed write to stats socket
     for (int i = 0; i < BufferWriterQueueMock::kQueueMaxSizeLimit; i++) {
         const bool addedToQueue = queue.write(buffer, eventBufferSize, atomId);
@@ -111,16 +112,16 @@ TEST(StatsBufferWriterQueueTest, TestSleepOnOverflow) {
     std::vector<int64_t> attemptsTs;
 
     BufferWriterQueueMock queue;
-    ON_CALL(queue, handleCommand(_))
+    ON_CALL(queue, handleCommand(_, _))
             .WillByDefault(DoAll(
-                    [&attemptsTs](const BufferWriterQueue::Cmd&) {
+                    [&attemptsTs](const BufferWriterQueue::Cmd&, bool /*doNoteDrop*/) {
                         // store timestamp for command handler invocations
                         attemptsTs.push_back(get_elapsed_realtime_ns());
                         return false;
                     },
                     Return(false)));
 
-    EXPECT_CALL(queue, handleCommand(_)).Times(AnyNumber());
+    EXPECT_CALL(queue, handleCommand(_, _)).Times(AnyNumber());
 
     // simulate failed write to stats socket to fill the queue
     for (int i = 0; i < BufferWriterQueueMock::kQueueMaxSizeLimit; i++) {
@@ -153,7 +154,7 @@ TEST(StatsBufferWriterQueueTest, TestTerminateNonEmptyQueue) {
     const uint32_t atomId = AStatsEvent_getAtomId(event);
 
     BufferWriterQueueMock queue;
-    EXPECT_CALL(queue, handleCommand(_)).WillRepeatedly(Return(false));
+    EXPECT_CALL(queue, handleCommand(_, _)).WillRepeatedly(Return(false));
     // simulate failed write to stats socket
     for (int i = 0; i < BufferWriterQueueMock::kQueueMaxSizeLimit; i++) {
         const bool addedToQueue = queue.write(buffer, eventBufferSize, atomId);
@@ -161,6 +162,34 @@ TEST(StatsBufferWriterQueueTest, TestTerminateNonEmptyQueue) {
     }
     AStatsEvent_release(event);
     EXPECT_EQ(queue.getQueueSize(), BufferWriterQueueMock::kQueueMaxSizeLimit);
+    queue.drainQueue();
+    EXPECT_EQ(queue.getQueueSize(), 0);
+}
+
+TEST(StatsBufferWriterQueueTest, TestCommandRetryCount) {
+    AStatsEvent* event = generateTestEvent();
+
+    size_t eventBufferSize = 0;
+    const uint8_t* buffer = AStatsEvent_getBuffer(event, &eventBufferSize);
+    EXPECT_GE(eventBufferSize, 0);
+    EXPECT_TRUE(buffer != nullptr);
+
+    const uint32_t atomId = AStatsEvent_getAtomId(event);
+
+    BufferWriterQueueMock queue;
+    EXPECT_CALL(queue, handleCommand(_, false))
+            .Times(BufferWriterQueueMock::kQueueRetryCount - 1)
+            .WillRepeatedly(Return(false));
+    EXPECT_CALL(queue, handleCommand(_, true)).Times(1).WillRepeatedly(Return(false));
+
+    const bool addedToQueue = queue.write(buffer, eventBufferSize, atomId);
+    AStatsEvent_release(event);
+    EXPECT_TRUE(addedToQueue);
+    // to yield to the queue worker thread
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+            WAIT_MS + BufferWriterQueueMock::kQueueRetryCount *
+                              BufferWriterQueueMock::kDelayOnFailedWriteMs));
+
     queue.drainQueue();
     EXPECT_EQ(queue.getQueueSize(), 0);
 }

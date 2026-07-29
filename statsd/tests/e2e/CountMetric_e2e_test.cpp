@@ -418,6 +418,7 @@ TEST(CountMetricE2eTest, TestSlicedState) {
     ASSERT_EQ(2, data.bucket_info_size());
     EXPECT_EQ(1, data.bucket_info(0).count());
     EXPECT_EQ(1, data.bucket_info(1).count());
+    StateManager::getInstance().clear();
 }
 
 /**
@@ -599,6 +600,7 @@ TEST(CountMetricE2eTest, TestSlicedStateWithMap) {
     ASSERT_EQ(2, data.bucket_info_size());
     EXPECT_EQ(4, data.bucket_info(0).count());
     EXPECT_EQ(2, data.bucket_info(1).count());
+    StateManager::getInstance().clear();
 }
 
 /**
@@ -809,6 +811,7 @@ TEST(CountMetricE2eTest, TestSlicedStateWithPrimaryFields) {
     ValidateUidDimension(data.dimensions_in_what(), util::APP_CRASH_OCCURRED, 2);
     ASSERT_EQ(1, data.bucket_info_size());
     EXPECT_EQ(1, data.bucket_info(0).count());
+    StateManager::getInstance().clear();
 }
 
 TEST(CountMetricE2eTest, TestMultipleSlicedStates) {
@@ -1083,6 +1086,7 @@ TEST(CountMetricE2eTest, TestMultipleSlicedStates) {
     ValidateUidDimension(data.dimensions_in_what(), util::APP_CRASH_OCCURRED, 2);
     ASSERT_EQ(1, data.bucket_info_size());
     EXPECT_EQ(1, data.bucket_info(0).count());
+    StateManager::getInstance().clear();
 }
 
 TEST(CountMetricE2eTest, TestUploadThreshold) {
@@ -1960,8 +1964,8 @@ TEST(CountMetricE2eTest, TestDimensionalSampling) {
     int64_t cfgId = 98765;
     ConfigKey cfgKey(uid, cfgId);
 
-    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
-            bucketStartTimeNs, bucketStartTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey);
 
     int appUid1 = 1001;  // odd hash value
     int appUid2 = 1002;  // even hash value

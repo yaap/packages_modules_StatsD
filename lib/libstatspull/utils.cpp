@@ -17,24 +17,12 @@
 #include "utils.h"
 
 #include <android/binder_manager.h>
-#include <com_android_os_statsd_flags.h>
-
-namespace flags = com::android::os::statsd::flags;
 
 ndk::SpAIBinder getStatsdBinder() {
     ndk::SpAIBinder binder;
-    // below ifs cannot be combined into single statement due to the way how
-    // macro __builtin_available is handler by compiler:
-    // - it should be used explicitly & independently to guard the corresponding API call
-    // once use_wait_for_service_api flag will be finalized, external if/else pair will be
-    // removed
 #ifdef __ANDROID__
-    if (flags::use_wait_for_service_api()) {
-        if (__builtin_available(android __ANDROID_API_S__, *)) {
-            binder.set(AServiceManager_waitForService("stats"));
-        } else {
-            binder.set(AServiceManager_getService("stats"));
-        }
+    if (__builtin_available(android __ANDROID_API_S__, *)) {
+        binder.set(AServiceManager_waitForService("stats"));
     } else {
         binder.set(AServiceManager_getService("stats"));
     }

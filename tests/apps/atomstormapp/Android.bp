@@ -37,4 +37,7 @@ android_test_helper_app {
         "androidx.test.rules",
     ],
     compile_multilib: "both",
+    lint: {
+        baseline_filename: "lint-baseline.xml",
+    },
 }

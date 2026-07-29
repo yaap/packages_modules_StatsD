@@ -131,7 +131,7 @@ bool StatsPullerManager::PullLocked(int tagId, const vector<int32_t>& uids,
 bool StatsPullerManager::PullerForMatcherExists(int tagId) const {
     // Pulled atoms might be registered after we parse the config, so just make sure the id is in
     // an appropriate range.
-    return isVendorPulledAtom(tagId) || isPulledAtom(tagId);
+    return isPulledAtom(tagId);
 }
 
 void StatsPullerManager::updateAlarmLocked() {

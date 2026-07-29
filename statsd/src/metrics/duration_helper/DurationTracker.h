@@ -274,8 +274,11 @@ protected:
 
     FRIEND_TEST(MaxDurationTrackerTest_DimLimit, TestDimLimit);
 
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitAlertsHasInvalidAlerts);
+
     FRIEND_TEST(ConfigUpdateTest, TestUpdateDurationMetrics);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateAlerts);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateAlertsHasInvalidAlert);
 };
 
 }  // namespace statsd

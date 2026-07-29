@@ -25,13 +25,14 @@
 #include <unordered_map>
 #include <utility>
 
+#include "stats_event_type.h"
 #include "utils.h"
 
 class StatsSocketLossReporter {
 public:
     static StatsSocketLossReporter& getInstance();
 
-    void noteDrop(int32_t error, int32_t atomId);
+    void noteDrop(int32_t error, AStatsEventAtomId atomId);
 
     /**
      * @brief Dump loss info into statsd as a STATS_SOCKET_LOSS_REPORTED atom instance
@@ -55,11 +56,11 @@ private:
     // Loss info data will be logged to statsd as a regular AStatsEvent
     // which means it needs to obey event size limitations (4kB)
     // for N tag ids the loss info might take N * 12 + 8 + 8 + 4 bytes
-    // defining guardrail as a 300 tag ids should limit the atom size to
-    // 300 * 12 + 8 + 8 + 4 ~ 3.6kB
-    static constexpr size_t kMaxAtomTagsCount = 300;
+    // defining guardrail as a 100 tag ids should limit the atom size to
+    // 100 * 12 + 8 + 8 + 4 ~ 1.2kB (max array field length is 127)
+    static constexpr size_t kMaxAtomTagsCount = 100;
 
-    static constexpr int64_t kCoolDownTimerDurationNanos = 60 * 1'000'000'000LL;  // 1minute
+    static constexpr int64_t kCoolDownTimerDurationNanos = 60 * 1'000'000'000LL;  // 1 minute
 
     struct HashPair final {
         template <class TFirst, class TSecond>
@@ -74,7 +75,7 @@ private:
     // guards access to below mLossInfo
     mutable std::mutex mMutex;
 
-    using LossInfoKey = std::pair<int, int32_t>;  // [error, tag]
+    using LossInfoKey = std::pair<int, AStatsEventAtomId>;  // [error, tag]
 
     // Represents loss info as a counter per [error, tag] pair
     std::unordered_map<LossInfoKey, int, HashPair> mLossInfo;

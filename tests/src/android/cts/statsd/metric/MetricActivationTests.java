@@ -296,7 +296,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 0 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act1MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // First logged event for Metric 1.
         // Metric 2 event ignored, will activate after boot.
@@ -309,6 +309,8 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 1: 200 seconds
         // Metric 2 Activation 2: 0 seconds
         DeviceUtils.rebootDeviceAndWaitUntilReady(getDevice());
+        RunUtil.getDefault().sleep(10_000L);
+
 
         // Second logged event for Metric 1.
         // First logged event for Metric 2.
@@ -335,7 +337,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 400 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act2MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // Metric 1 event ignored, will activate after boot.
         // Second logged event for Metric 2.
@@ -350,7 +352,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 400 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act1MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // Third logged event for Metric 1.
         // Third logged event for Metric 2.
@@ -370,6 +372,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 1: 200 seconds
         // Metric 2 Activation 2: 300 seconds
         DeviceUtils.rebootDeviceAndWaitUntilReady(getDevice());
+        RunUtil.getDefault().sleep(10_000L);
 
         // Fourth logged event for Metric 1.
         // Fourth logged event for Metric 2.
@@ -405,6 +408,8 @@ public class MetricActivationTests extends DeviceTestCase {
         ConfigMetricsReportList reportList = ReportUtils.getReportList(getDevice(),
                 ExtensionRegistry.getEmptyRegistry());
         List<ConfigMetricsReport> reports = getSortedConfigMetricsReports(reportList);
+        // Note: Sometimes there might be 4-5 reports due to 2
+        // separate reboot signals sent to statsd and they are > 20 secs apart.
         assertThat(reports).hasSize(3);
 
         // Report before restart.
@@ -452,7 +457,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 0 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act1MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // First logged event for Metric 1.
         // Metric 2 event ignored, will activate after boot.
@@ -479,7 +484,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 0 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act1MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // Third logged event for Metric 1.
         // Metric 2 event ignored, will activate after boot.
@@ -492,6 +497,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 1: 200 seconds
         // Metric 2 Activation 2: 0 seconds
         DeviceUtils.rebootDeviceAndWaitUntilReady(getDevice());
+        RunUtil.getDefault().sleep(10_000L);
 
         // Fourth logged event for Metric 1.
         // First logged event for Metric 2.
@@ -506,7 +512,7 @@ public class MetricActivationTests extends DeviceTestCase {
         // Metric 2 Activation 2: 0 seconds
         AtomTestUtils.sendAppBreadcrumbReportedAtom(getDevice(),
                 AppBreadcrumbReported.State.UNSPECIFIED.getNumber(), act1MatcherId);
-        RunUtil.getDefault().sleep(10L);
+        RunUtil.getDefault().sleep(1000L);
 
         // Fifth logged event for Metric 1.
         // Second logged event for Metric 2.
@@ -542,6 +548,8 @@ public class MetricActivationTests extends DeviceTestCase {
         ConfigMetricsReportList reportList = ReportUtils.getReportList(getDevice(),
                 ExtensionRegistry.getEmptyRegistry());
         List<ConfigMetricsReport> reports = getSortedConfigMetricsReports(reportList);
+        // Note: Sometimes there might be 4-5 reports due to 2
+        // separate reboot signals sent to statsd and they are > 20 secs apart.
         assertThat(reports).hasSize(3);
 
         // Report before restart.

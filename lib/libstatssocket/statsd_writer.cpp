@@ -16,6 +16,7 @@
 #include "statsd_writer.h"
 
 #include <android-base/threads.h>
+#include <com_android_os_statsd_flags.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -37,6 +38,8 @@
 #include "stats_event.h"
 #include "stats_socket_loss_reporter.h"
 #include "utils.h"
+
+namespace flags = com::android::os::statsd::flags;
 
 // Compatibility shims for glibc-2.17 in the Android tree.
 #ifndef __BIONIC__
@@ -78,7 +81,7 @@ static int statsdAvailable();
 static int statsdOpen();
 static void statsdClose();
 static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr);
-static void statsdNoteDrop(int error, int tag);
+static void statsdNoteDrop(int error, AStatsEventAtomId tag);
 static int statsdIsClosed();
 
 struct android_log_transport_write statsdLoggerWrite = {
@@ -166,7 +169,7 @@ static int statsdAvailable() {
     return 1;
 }
 
-static void statsdNoteDrop(int error, int tag) {
+static void statsdNoteDrop(int error, AStatsEventAtomId tag) {
     dropped.fetch_add(1, std::memory_order_relaxed);
     log_error.exchange(error, std::memory_order_relaxed);
     atom_tag.exchange(tag, std::memory_order_relaxed);
@@ -246,9 +249,11 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
             if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
                 dropped.fetch_add(snapshot, std::memory_order_relaxed);
             } else {
-                // try to send socket loss info only when socket connection established
-                // and it is proved by previous write that socket is available
-                StatsSocketLossReporter::getInstance().dumpAtomsLossStats();
+                if (!flags::logging_control_enabled()) {
+                    // try to send socket loss info only when socket connection established
+                    // and it is proved by previous write that socket is available
+                    StatsSocketLossReporter::getInstance().dumpAtomsLossStats();
+                }
             }
         }
     }
@@ -311,6 +316,15 @@ static int statsdWrite(struct timespec* ts, struct iovec* vec, size_t nr) {
 
     if (ret > (ssize_t)sizeof(header)) {
         ret -= sizeof(header);
+    }
+
+    if (flags::logging_control_enabled()) {
+        if (ret > 0) {
+            // try to send socket loss info only when socket connection established
+            // and it is proved by previous write that socket is available
+            // below call internally rate limited
+            StatsSocketLossReporter::getInstance().dumpAtomsLossStats();
+        }
     }
 
     return ret;

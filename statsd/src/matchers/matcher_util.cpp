@@ -435,7 +435,7 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
         case FieldValueMatcher::ValueMatcherCase::kEqAnyInt: {
             const auto& int_list = matcher.eq_any_int();
             for (int i = start; i < end; i++) {
-                for (const int int_value : int_list.int_value()) {
+                for (const auto& int_value : int_list.int_value()) {
                     if (values[i].mValue.getType() == INT &&
                         (int_value == values[i].mValue.get<int32_t>())) {
                         return {true, std::move(transformedEvent)};
@@ -453,7 +453,7 @@ static MatchResult matchesSimple(const sp<UidMap>& uidMap, const FieldValueMatch
             const auto& int_list = matcher.neq_any_int();
             for (int i = start; i < end; i++) {
                 bool notEqAll = true;
-                for (const int int_value : int_list.int_value()) {
+                for (const auto& int_value : int_list.int_value()) {
                     if (values[i].mValue.getType() == INT &&
                         (int_value == values[i].mValue.get<int32_t>())) {
                         notEqAll = false;

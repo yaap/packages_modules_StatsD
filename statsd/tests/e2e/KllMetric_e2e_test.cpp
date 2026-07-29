@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <com_android_os_statsd_flags.h>
 #include <gtest/gtest.h>
 
 #include "src/StatsLogProcessor.h"
 #include "tests/statsd_test_util.h"
+
+namespace flags = com::android::os::statsd::flags;
 
 namespace android {
 namespace os {
@@ -198,8 +201,20 @@ TEST_F(KllMetricE2eTest, TestInitWithKllFieldPositionALL) {
     sp<StatsLogProcessor> processor =
             CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey);
 
-    // Config initialization fails.
-    ASSERT_EQ(0, processor->mMetricsManagers.size());
+    if (flags::partial_invalid_configs()) {
+        // No Metrics Initialized.
+        ASSERT_EQ(processor->mMetricsManagers.size(), 1);
+        const sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
+        EXPECT_EQ(metricsManager->getNumMetrics(), 0);
+        auto& invalidEntities = metricsManager->mInvalidEntities;
+        InvalidConfigReason reason =
+                invalidEntities[InvalidEntityKey{kllMetric->id(), INVALID_ENTITY_TYPE_METRIC}];
+        EXPECT_EQ(reason.reason, INVALID_CONFIG_REASON_KLL_METRIC_KLL_FIELD_HAS_POSITION_ALL);
+        ASSERT_TRUE(reason.metricId.has_value());
+        EXPECT_EQ(reason.metricId.value(), kllMetric->id());
+    } else {
+        ASSERT_EQ(0, processor->mMetricsManagers.size());
+    }
 }
 
 TEST_F(KllMetricE2eTest, TestDimensionalSampling) {
@@ -229,8 +244,8 @@ TEST_F(KllMetricE2eTest, TestDimensionalSampling) {
     int64_t cfgId = 98765;
     ConfigKey cfgKey(uid, cfgId);
 
-    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
-            bucketStartTimeNs, bucketStartTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey);
 
     int appUid1 = 1001;  // odd hash value
     int appUid2 = 1002;  // even hash value

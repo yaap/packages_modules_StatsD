@@ -49,6 +49,9 @@ shared_ptr<StatsService> gStatsService = nullptr;
 sp<BaseStatsSocketListener> gSocketListener = nullptr;
 int gCtrlPipe[2];
 
+// io_uring support is enabled from API level 37
+#define IO_URING_API_VERSION 37
+
 void signalHandler(int sig) {
     ALOGW("statsd terminated on receiving signal %d.", sig);
     const char c = 'q';
@@ -107,7 +110,16 @@ int main(int /*argc*/, char** /*argv*/) {
     // Start reading events from the socket as early as possible.
     // Processing from the queue is delayed until StatsService::startup to allow
     // config initialization to occur before we start processing atoms.
-    if (flags::use_iouring() && IOUringSocketHandler::IsIouringSupported()) {
+    //
+    // io_uring support is guarded by API level 37, as the feature is dependent
+    // on kernel bug fixes related to performance and is available from that version.
+    bool use_iouring = false;
+    if (__builtin_available(android IO_URING_API_VERSION, *)) {
+        use_iouring = (flags::use_iouring_socket_listener() &&
+                       IOUringSocketHandler::IsIouringSupported());
+    }
+
+    if (use_iouring) {
         gSocketListener = new StatsSocketListenerIoUring(eventQueue, logEventFilter);
     } else {
         gSocketListener = new StatsSocketListener(eventQueue, logEventFilter);

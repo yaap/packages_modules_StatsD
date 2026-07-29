@@ -103,18 +103,6 @@ void writeDataCorruptedReasons(ProtoOutputStream& proto, int fieldIdDataCorrupte
                                bool hasQueueOverflow, bool hasSocketLoss,
                                bool hasSystemServerRestart);
 
-template<class T>
-bool parseProtoOutputStream(ProtoOutputStream& protoOutput, T* message) {
-    std::string pbBytes;
-    sp<android::util::ProtoReader> reader = protoOutput.data();
-    while (reader->readBuffer() != NULL) {
-        size_t toRead = reader->currentToRead();
-         pbBytes.append(reinterpret_cast<const char*>(reader->readBuffer()), toRead);
-        reader->move(toRead);
-    }
-    return message->ParseFromArray(pbBytes.c_str(), pbBytes.size());
-}
-
 // Checks the truncate timestamp annotation as well as the restricted range of 300,000 - 304,999.
 // Returns the truncated timestamp to the nearest 5 minutes if needed.
 int64_t truncateTimestampIfNecessary(const LogEvent& event);
@@ -122,13 +110,7 @@ int64_t truncateTimestampIfNecessary(const LogEvent& event);
 // Checks permission for given pid and uid.
 bool checkPermissionForIds(const char* permission, pid_t pid, uid_t uid);
 
-inline bool isVendorPulledAtom(int atomId) {
-    return atomId >= StatsdStats::kVendorPulledAtomStartTag && atomId < StatsdStats::kMaxAtomTag;
-}
-
-inline bool isPulledAtom(int atomId) {
-    return atomId >= StatsdStats::kPullAtomStartTag && atomId < StatsdStats::kVendorAtomStartTag;
-}
+bool isPulledAtom(int atomId);
 
 void mapIsolatedUidsToHostUidInLogEvent(const sp<UidMap>& uidMap, LogEvent& event);
 

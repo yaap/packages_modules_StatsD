@@ -134,6 +134,7 @@ static void callback(int32_t subscription_id, AStatsManager_SubscriptionCallback
 }
 
 constexpr static int WAIT_MS = 500;
+constexpr static int LOGGING_CONTROL_TTL_MS = 2000;
 
 TEST_F(SubscriptionTest, TestSubscription) {
     if (__builtin_available(android __STATSD_SUBS_MIN_API__, *)) {
@@ -153,7 +154,7 @@ TEST_F(SubscriptionTest, TestSubscription) {
         subId = AStatsManager_addSubscription(reinterpret_cast<const uint8_t*>(configBytes.data()),
                                               configBytes.size(), &callback, &callbackData);
         ASSERT_GT(subId, 0);
-        sleep_for(std::chrono::milliseconds(WAIT_MS));
+        sleep_for(std::chrono::milliseconds(WAIT_MS + LOGGING_CONTROL_TTL_MS));
 
         // Log events without exceeding statsd cache.
         stats_write(SCREEN_BRIGHTNESS_CHANGED, 100);

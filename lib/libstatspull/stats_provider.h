@@ -16,6 +16,7 @@
 
 #include <aidl/android/os/IStatsd.h>
 #include <android/binder_auto_utils.h>
+#include <utils/RefBase.h>
 
 using StatsProviderBinderDiedCallback = void (*)(void);
 
@@ -24,7 +25,8 @@ using StatsProviderBinderDiedCallback = void (*)(void);
  * It handles Binder death and registers a callback for when the Binder service is restored after
  * death.
  */
-class StatsProvider {
+
+class StatsProvider final : public android::RefBase {
 public:
     StatsProvider(StatsProviderBinderDiedCallback callback);
 

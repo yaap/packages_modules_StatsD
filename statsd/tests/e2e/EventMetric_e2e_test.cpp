@@ -39,6 +39,7 @@ class EventMetricE2eTest : public ::testing::Test {
 
     void TearDown() override {
         FlagProvider::getInstance().resetOverrides();
+        StateManager::getInstance().clear();
     }
 
 public:

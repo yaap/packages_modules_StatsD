@@ -77,6 +77,10 @@ int StatsSocketListenerIoUring::stopListener() {
         return 0;
     }
     mShouldStopThreadFunction = true;
+    if (mIoUringSocketHandler != nullptr) {
+        mIoUringSocketHandler->Stop();
+    }
+
     if (mThread.joinable()) {
         mThread.join();
     }

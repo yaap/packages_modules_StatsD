@@ -51,6 +51,12 @@ public class BootstrapApexTests extends DeviceTestCase {
         return getDevice().getBooleanProperty("ro.apex.updatable", false);
     }
 
+    // Check the number of mount namespaces. Bootstrap APEXes are only activated when there are two
+    // mount namespaces.
+    private final boolean usesBootstrapApexes() throws Exception {
+        return getDevice().getIntProperty("ro.init.mnt_ns.count", 2) == 2;
+    }
+
     private List<ApexInfo> readBootstrapApexes() throws Exception {
         File file = getDevice().pullFile(BOOTSTRAP_APEX_FILE1);
         if (file == null) {
@@ -66,6 +72,9 @@ public class BootstrapApexTests extends DeviceTestCase {
             return;
         }
         if (!isApexUpdateSupported()) {
+            return;
+        }
+        if (!usesBootstrapApexes()) {
             return;
         }
 

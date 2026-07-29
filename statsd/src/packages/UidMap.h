@@ -160,12 +160,10 @@ public:
     virtual std::set<int32_t> getAppUid(const std::string& package) const;
 
     // Write current PackageInfoSnapshot to ProtoOutputStream.
-    // interestingUids: If not empty, only write the package info for these uids. If empty, write
-    //                  package info for all uids.
+    // options: contains options for what to include in the snapshot.
     // str_set: if not null, add new string to the set and write str_hash to proto
     //          if null, write string to proto.
     void writeUidMapSnapshot(int64_t timestamp, const UidMapOptions& options,
-                             const std::set<int32_t>& interestingUids,
                              std::map<std::string, int>* installerIndices,
                              std::set<std::string>* str_set, ProtoOutputStream* proto) const;
 
@@ -174,7 +172,6 @@ private:
     std::string normalizeAppName(const std::string& appName) const;
 
     void writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOptions& options,
-                                   const std::set<int32_t>& interestingUids,
                                    std::map<std::string, int>* installerIndices,
                                    std::set<std::string>* str_set, ProtoOutputStream* proto) const;
 

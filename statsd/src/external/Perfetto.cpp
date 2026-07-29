@@ -15,16 +15,18 @@
  */
 
 #define STATSD_DEBUG false  // STOPSHIP if true
-#include "config/ConfigKey.h"
 #include "Log.h"
-
-#include "src/statsd_config.pb.h"  // Alert
 
 #include <android-base/unique_fd.h>
 #include <inttypes.h>
 #include <sys/wait.h>
 
 #include <string>
+#include <thread>
+
+#include "config/ConfigKey.h"
+#include "src/statsd_config.pb.h"  // Alert
+#include "utils/api_tracing.h"
 
 namespace {
 const char kDropboxTag[] = "perfetto";
@@ -34,104 +36,105 @@ namespace android {
 namespace os {
 namespace statsd {
 
-bool CollectPerfettoTraceAndUploadToDropbox(const PerfettoDetails& config,
-                                            int64_t subscription_id,
-                                            int64_t alert_id,
-                                            const ConfigKey& configKey) {
-    VLOG("Starting trace collection through perfetto");
-
+void CollectPerfettoTraceAndUploadToDropbox(const PerfettoDetails& config, int64_t subscription_id,
+                                            int64_t alert_id, const ConfigKey& configKey) {
     if (!config.has_trace_config()) {
         ALOGE("The perfetto trace config is empty, aborting");
-        return false;
+        return;
     }
 
-    char subscriptionId[25];
-    char alertId[25];
-    char configId[25];
-    char configUid[25];
-    snprintf(subscriptionId, sizeof(subscriptionId), "%" PRId64, subscription_id);
-    snprintf(alertId, sizeof(alertId), "%" PRId64, alert_id);
-    snprintf(configId, sizeof(configId), "%" PRId64, configKey.GetId());
-    snprintf(configUid, sizeof(configUid), "%d", configKey.GetUid());
+    std::thread([=] {
+        ATRACE_CALL();
+        VLOG("Starting trace collection through perfetto");
 
-    android::base::unique_fd readPipe;
-    android::base::unique_fd writePipe;
-    if (!android::base::Pipe(&readPipe, &writePipe)) {
-        ALOGE("pipe() failed while calling the Perfetto client: %s", strerror(errno));
-        return false;
-    }
+        char subscriptionId[25];
+        char alertId[25];
+        char configId[25];
+        char configUid[25];
+        snprintf(subscriptionId, sizeof(subscriptionId), "%lld", (long long)subscription_id);
+        snprintf(alertId, sizeof(alertId), "%lld", (long long)alert_id);
+        snprintf(configId, sizeof(configId), "%lld", (long long)configKey.GetId());
+        snprintf(configUid, sizeof(configUid), "%d", configKey.GetUid());
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        ALOGE("fork() failed while calling the Perfetto client: %s", strerror(errno));
-        return false;
-    }
-
-    if (pid == 0) {
-        // Child process.
-
-        // No malloc calls or library calls after this point. Remember that even
-        // ALOGx (aka android_printLog()) can use dynamic memory for vsprintf().
-
-        writePipe.reset();  // Close the write end (owned by the main process).
-
-        // Replace stdin with |readPipe| so the main process can write into it.
-        if (dup2(readPipe.get(), STDIN_FILENO) < 0) _exit(1);
-        readPipe.reset();
-
-        // Replace stdout/stderr with /dev/null and close any other file
-        // descriptor. This is to avoid SELinux complaining about perfetto
-        // trying to access files accidentally left open by statsd (i.e. files
-        // that have been opened without the O_CLOEXEC flag).
-        int devNullFd = open("/dev/null", O_RDWR | O_CLOEXEC);
-        if (dup2(devNullFd, STDOUT_FILENO) < 0) _exit(2);
-        if (dup2(devNullFd, STDERR_FILENO) < 0) _exit(3);
-        close(devNullFd);
-        for (int i = 0; i < 1024; i++) {
-            if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) close(i);
+        android::base::unique_fd readPipe;
+        android::base::unique_fd writePipe;
+        if (!android::base::Pipe(&readPipe, &writePipe)) {
+            ALOGE("pipe() failed while calling the Perfetto client: %s", strerror(errno));
+            return;
         }
 
-        execl("/system/bin/perfetto", "perfetto", "--background", "--config", "-", "--dropbox",
-              kDropboxTag, "--alert-id", alertId, "--config-id", configId, "--config-uid",
-              configUid, "--subscription-id", subscriptionId, nullptr);
+        pid_t pid = fork();
+        if (pid < 0) {
+            ALOGE("fork() failed while calling the Perfetto client: %s", strerror(errno));
+            return;
+        }
 
-        // execl() doesn't return in case of success, if we get here something
-        // failed.
-        _exit(4);
-    }
+        if (pid == 0) {
+            // Child process.
 
-    // Main process.
+            // No malloc calls or library calls after this point. Remember that even
+            // ALOGx (aka android_printLog()) can use dynamic memory for vsprintf().
 
-    readPipe.reset();  // Close the read end (owned by the child process).
+            writePipe.reset();  // Close the write end (owned by the main process).
 
-    // Using fdopen() because fwrite() has the right logic to chunking write()
-    // over a pipe (see __sfvwrite()).
-    FILE* writePipeStream = android::base::Fdopen(std::move(writePipe), "wb");
-    if (!writePipeStream) {
-        ALOGE("fdopen() failed while calling the Perfetto client: %s", strerror(errno));
-        return false;
-    }
+            // Replace stdin with |readPipe| so the main process can write into it.
+            if (dup2(readPipe.get(), STDIN_FILENO) < 0) _exit(1);
+            readPipe.reset();
 
-    const std::string& cfgProto = config.trace_config();
-    size_t bytesWritten = fwrite(cfgProto.data(), 1, cfgProto.size(), writePipeStream);
-    fclose(writePipeStream);
-    if (bytesWritten != cfgProto.size() || cfgProto.size() == 0) {
-        ALOGE("fwrite() failed (ret: %zd) while calling the Perfetto client: %s", bytesWritten,
-              strerror(errno));
-        return false;
-    }
+            // Replace stdout/stderr with /dev/null and close any other file
+            // descriptor. This is to avoid SELinux complaining about perfetto
+            // trying to access files accidentally left open by statsd (i.e. files
+            // that have been opened without the O_CLOEXEC flag).
+            int devNullFd = open("/dev/null", O_RDWR | O_CLOEXEC);
+            if (dup2(devNullFd, STDOUT_FILENO) < 0) _exit(2);
+            if (dup2(devNullFd, STDERR_FILENO) < 0) _exit(3);
+            close(devNullFd);
+            for (int i = 0; i < 1024; i++) {
+                if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) close(i);
+            }
 
-    // This does NOT wait for the full duration of the trace. It just waits until
-    // the process has read the config from stdin and detached.
-    int childStatus = 0;
-    waitpid(pid, &childStatus, 0);
-    if (!WIFEXITED(childStatus) || WEXITSTATUS(childStatus) != 0) {
-        ALOGE("Child process failed (0x%x) while calling the Perfetto client", childStatus);
-        return false;
-    }
+            execl("/system/bin/perfetto", "perfetto", "--background", "--config", "-", "--dropbox",
+                  kDropboxTag, "--alert-id", alertId, "--config-id", configId, "--config-uid",
+                  configUid, "--subscription-id", subscriptionId, nullptr);
 
-    VLOG("CollectPerfettoTraceAndUploadToDropbox() succeeded");
-    return true;
+            // execl() doesn't return in case of success, if we get here something
+            // failed.
+            _exit(4);
+        }
+
+        // Main process.
+
+        readPipe.reset();  // Close the read end (owned by the child process).
+
+        // Using fdopen() because fwrite() has the right logic to chunking write()
+        // over a pipe (see __sfvwrite()).
+        FILE* writePipeStream = android::base::Fdopen(std::move(writePipe), "wb");
+        if (!writePipeStream) {
+            ALOGE("fdopen() failed while calling the Perfetto client: %s", strerror(errno));
+            return;
+        }
+
+        const std::string& cfgProto = config.trace_config();
+        size_t bytesWritten = fwrite(cfgProto.data(), 1, cfgProto.size(), writePipeStream);
+        fclose(writePipeStream);
+        if (bytesWritten != cfgProto.size() || cfgProto.size() == 0) {
+            ALOGE("fwrite() failed (ret: %zd) while calling the Perfetto client: %s", bytesWritten,
+                  strerror(errno));
+            return;
+        }
+
+        // This does NOT wait for the full duration of the trace. It just waits until
+        // the process has read the config from stdin and detached.
+        int childStatus = 0;
+        waitpid(pid, &childStatus, 0);
+        if (!WIFEXITED(childStatus) || WEXITSTATUS(childStatus) != 0) {
+            ALOGE("Child process failed (0x%x) while calling the Perfetto client", childStatus);
+            return;
+        }
+
+        VLOG("CollectPerfettoTraceAndUploadToDropbox() succeeded");
+    }).detach();
+    return;
 }
 
 }  // namespace statsd

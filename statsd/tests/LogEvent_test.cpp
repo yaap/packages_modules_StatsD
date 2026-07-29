@@ -284,7 +284,7 @@ TEST_P(LogEventTest, TestEventWithInvalidHeaderParsing) {
     EXPECT_FALSE(ParseBuffer(logEvent, buf, size));
     EXPECT_FALSE(logEvent.isValid());
     EXPECT_FALSE(logEvent.isParsedHeaderOnly());
-
+    EXPECT_THAT(logEvent.ToString(), HasSubstr("Atom invalid"));
     AStatsEvent_release(event);
 }
 

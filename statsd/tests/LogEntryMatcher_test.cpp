@@ -15,6 +15,8 @@
 #include <gtest/gtest.h>
 #include <stdio.h>
 
+#include <cstdint>
+
 #include "matchers/matcher_util.h"
 #include "src/statsd_config.pb.h"
 #include "stats_annotations.h"
@@ -49,6 +51,16 @@ void makeIntLogEvent(LogEvent* logEvent, const int32_t atomId, const int64_t tim
     AStatsEvent_setAtomId(statsEvent, atomId);
     AStatsEvent_overwriteTimestamp(statsEvent, timestamp);
     AStatsEvent_writeInt32(statsEvent, value);
+
+    parseStatsEventToLogEvent(statsEvent, logEvent);
+}
+
+void makeLongLogEvent(LogEvent* logEvent, const int32_t atomId, const int64_t timestamp,
+                      const int64_t value) {
+    AStatsEvent* statsEvent = AStatsEvent_obtain();
+    AStatsEvent_setAtomId(statsEvent, atomId);
+    AStatsEvent_overwriteTimestamp(statsEvent, timestamp);
+    AStatsEvent_writeInt64(statsEvent, value);
 
     parseStatsEventToLogEvent(statsEvent, logEvent);
 }
@@ -1437,6 +1449,8 @@ TEST(AtomMatcherTest, TestEqAnyIntMatcher) {
     IntListMatcher* eqIntList = fieldValueMatcher->mutable_eq_any_int();
     eqIntList->add_int_value(3);
     eqIntList->add_int_value(5);
+    eqIntList->add_int_value(INT64_MAX);
+    eqIntList->add_int_value(INT64_MIN);
 
     // First int matched.
     LogEvent event1(/*uid=*/0, /*pid=*/0);
@@ -1452,6 +1466,53 @@ TEST(AtomMatcherTest, TestEqAnyIntMatcher) {
     LogEvent event3(/*uid=*/0, /*pid=*/0);
     makeIntLogEvent(&event3, TAG_ID, 0, 4);
     EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event3).matched);
+
+    // Int64 max matched.
+    LogEvent event4(/*uid=*/0, /*pid=*/0);
+    makeLongLogEvent(&event4, TAG_ID, 0, INT64_MAX);
+    EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event4).matched);
+
+    // Int64 min matched.
+    LogEvent event5(/*uid=*/0, /*pid=*/0);
+    makeLongLogEvent(&event5, TAG_ID, 0, INT64_MIN);
+    EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event5).matched);
+}
+
+TEST(AtomMatcherTest, TestNeqAnyIntMatcher2) {
+    sp<UidMap> uidMap = new UidMap();
+
+    // Set up the matcher
+    AtomMatcher matcher;
+    SimpleAtomMatcher* simpleMatcher = matcher.mutable_simple_atom_matcher();
+    simpleMatcher->set_atom_id(TAG_ID);
+
+    FieldValueMatcher* fieldValueMatcher = simpleMatcher->add_field_value_matcher();
+    fieldValueMatcher->set_field(FIELD_ID_1);
+    IntListMatcher* neqIntList = fieldValueMatcher->mutable_neq_any_int();
+    neqIntList->add_int_value(3);
+    neqIntList->add_int_value(5);
+    neqIntList->add_int_value(INT64_MAX);
+    neqIntList->add_int_value(INT64_MIN);
+
+    // First int matched.
+    LogEvent event1(/*uid=*/0, /*pid=*/0);
+    makeIntLogEvent(&event1, TAG_ID, 0, 3);
+    EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event1).matched);
+
+    // No ints matched.
+    LogEvent event3(/*uid=*/0, /*pid=*/0);
+    makeLongLogEvent(&event3, TAG_ID, 0, INT64_MAX - 1);
+    EXPECT_TRUE(matchesSimple(uidMap, *simpleMatcher, event3).matched);
+
+    // Int64 max matched.
+    LogEvent event4(/*uid=*/0, /*pid=*/0);
+    makeLongLogEvent(&event4, TAG_ID, 0, INT64_MAX);
+    EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event4).matched);
+
+    // Int64 min matched.
+    LogEvent event5(/*uid=*/0, /*pid=*/0);
+    makeLongLogEvent(&event5, TAG_ID, 0, INT64_MIN);
+    EXPECT_FALSE(matchesSimple(uidMap, *simpleMatcher, event5).matched);
 }
 
 TEST(AtomMatcherTest, TestNeqAnyIntMatcher) {

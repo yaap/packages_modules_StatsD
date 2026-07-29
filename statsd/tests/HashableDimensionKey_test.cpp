@@ -26,7 +26,6 @@ namespace android {
 namespace os {
 namespace statsd {
 
-using android::util::ProtoReader;
 using std::vector;
 
 /**

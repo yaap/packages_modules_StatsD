@@ -46,14 +46,14 @@ TEST_F(AtomsInUseListProducerTest, TestSetAtomsList) {
     AtomsInUseListProducer producer(kTestFileName, kTestVersionProperty);
 
     std::vector<int32_t> atoms = {2, 3, 4, 100001, 200001, 300001};
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     int64_t listVersion = std::numeric_limits<int64_t>::max();
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &listVersion));
     verifyAtomsInUseFileContent(kTestFileName, atoms);
 
     // Test update with a new list
     atoms = {4, 5, 6};
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     int64_t newVersion = std::numeric_limits<int64_t>::max();
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &newVersion));
     EXPECT_GT(newVersion, listVersion);
@@ -61,7 +61,7 @@ TEST_F(AtomsInUseListProducerTest, TestSetAtomsList) {
     listVersion = newVersion;
 
     atoms = {7, 8, 9};
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &newVersion));
     EXPECT_GT(newVersion, listVersion);
     verifyAtomsInUseFileContent(kTestFileName, atoms);
@@ -71,14 +71,14 @@ TEST_F(AtomsInUseListProducerTest, TestResetWithEmptyList) {
     AtomsInUseListProducer producer(kTestFileName, kTestVersionProperty);
 
     std::vector<int32_t> atoms = {2, 3, 4, 100001, 200001, 300001};
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     int64_t listVersion = std::numeric_limits<int64_t>::max();
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &listVersion));
     verifyAtomsInUseFileContent(kTestFileName, atoms);
 
     // Test update with a new list
     atoms = {4, 5, 6};
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     int64_t newVersion = std::numeric_limits<int64_t>::max();
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &newVersion));
     EXPECT_GT(newVersion, listVersion);
@@ -87,8 +87,7 @@ TEST_F(AtomsInUseListProducerTest, TestResetWithEmptyList) {
 
     // Test reset with an empty list
     std::vector<int32_t> emptyAtoms;
-    ASSERT_TRUE(producer.setAtomsIds(emptyAtoms));
-
+    producer.setAtomsIds(emptyAtoms);
     verifyAtomsInUseListAbsence(kTestFileName, kTestVersionProperty);
 }
 
@@ -97,7 +96,7 @@ TEST_F(AtomsInUseListProducerTest, TestReset) {
     std::vector<int32_t> atoms = {1, 2, 3};
 
     // Setup
-    ASSERT_TRUE(producer.setAtomsIds(atoms));
+    producer.setAtomsIds(atoms);
     int64_t newVersion = std::numeric_limits<int64_t>::max();
     ASSERT_TRUE(ParseInt(android::base::GetProperty(kTestVersionProperty, ""), &newVersion));
 
@@ -115,8 +114,7 @@ TEST_F(AtomsInUseListProducerTest, TestAtomIdsLimitExceeded) {
     AtomsInUseListProducer producer(kTestFileName, kTestVersionProperty);
     std::vector<int32_t> atoms(AtomsInUseListProducer::kMaxAtomIdsInList + 1, 1);
 
-    ASSERT_FALSE(producer.setAtomsIds(atoms));
-
+    producer.setAtomsIds(atoms);
     verifyAtomsInUseListAbsence(kTestFileName, kTestVersionProperty);
 }
 

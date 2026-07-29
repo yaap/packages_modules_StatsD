@@ -185,7 +185,7 @@ GaugeMetricProducer::~GaugeMetricProducer() {
     }
 }
 
-optional<InvalidConfigReason> GaugeMetricProducer::onConfigUpdatedLocked(
+void GaugeMetricProducer::onConfigUpdatedLocked(
         const StatsdConfig& config, const int configIndex, const int metricIndex,
         const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
         const unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -194,50 +194,35 @@ optional<InvalidConfigReason> GaugeMetricProducer::onConfigUpdatedLocked(
         const vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& conditionTrackerMap, const sp<ConditionWizard>& wizard,
         const unordered_map<int64_t, int>& metricToActivationMap,
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
         unordered_map<int, vector<int>>& activationAtomTrackerToMetricMap,
         unordered_map<int, vector<int>>& deactivationAtomTrackerToMetricMap,
         vector<int>& metricsWithActivation) {
-    optional<InvalidConfigReason> invalidConfigReason = MetricProducer::onConfigUpdatedLocked(
+    MetricProducer::onConfigUpdatedLocked(
             config, configIndex, metricIndex, allAtomMatchingTrackers, oldAtomMatchingTrackerMap,
             newAtomMatchingTrackerMap, matcherWizard, allConditionTrackers, conditionTrackerMap,
-            wizard, metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
-            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
-            metricsWithActivation);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+            wizard, metricToActivationMap, allConditionsMap, trackerToMetricMap,
+            conditionToMetricMap, activationAtomTrackerToMetricMap,
+            deactivationAtomTrackerToMetricMap, metricsWithActivation);
 
     const GaugeMetric& metric = config.gauge_metric(configIndex);
     // Update appropriate indices: mWhatMatcherIndex, mConditionIndex and MetricsManager maps.
-    invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-            metric.what(), mMetricId, metricIndex, /*enforceOneAtom=*/false,
-            allAtomMatchingTrackers, newAtomMatchingTrackerMap, trackerToMetricMap,
-            mWhatMatcherIndex);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+    handleMetricWithAtomMatchingTrackers(metric.what(), metricIndex, newAtomMatchingTrackerMap,
+                                         trackerToMetricMap, mWhatMatcherIndex);
 
     // Need to update maps since the index changed, but mTriggerAtomId will not change.
     int triggerTrackerIndex;
     if (metric.has_trigger_event()) {
-        invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-                metric.trigger_event(), mMetricId, metricIndex,
-                /*enforceOneAtom=*/true, allAtomMatchingTrackers, newAtomMatchingTrackerMap,
-                trackerToMetricMap, triggerTrackerIndex);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithAtomMatchingTrackers(metric.trigger_event(), metricIndex,
+                                             newAtomMatchingTrackerMap, trackerToMetricMap,
+                                             triggerTrackerIndex);
     }
 
     if (metric.has_condition()) {
-        invalidConfigReason = handleMetricWithConditions(
-                metric.condition(), mMetricId, metricIndex, conditionTrackerMap, metric.links(),
-                allConditionTrackers, mConditionTrackerIndex, conditionToMetricMap);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithConditions(metric.condition(), metricIndex, conditionTrackerMap,
+                                   mConditionTrackerIndex, conditionToMetricMap);
     }
     sp<EventMatcherWizard> tmpEventWizard = mEventMatcherWizard;
     mEventMatcherWizard = matcherWizard;
@@ -247,7 +232,6 @@ optional<InvalidConfigReason> GaugeMetricProducer::onConfigUpdatedLocked(
     if (mCondition == ConditionState::kTrue && mIsActive && mIsPulled && isRandomNSamples()) {
         pullAndMatchEventsLocked(mCurrentBucketStartTimeNs);
     }
-    return std::nullopt;
 }
 
 void GaugeMetricProducer::onStateChanged(const int64_t eventTimeNs, const int32_t atomId,

@@ -33,37 +33,6 @@ namespace statsd {
 const int32_t timestampNs = 1000;
 const int32_t kStateUnknown = -1;
 
-/**
- * Mock StateListener class for testing.
- * Stores primary key and state pairs.
- */
-class TestStateListener : public virtual StateListener {
-public:
-    TestStateListener(){};
-
-    virtual ~TestStateListener(){};
-
-    struct Update {
-        Update(const HashableDimensionKey& key, int state) : mKey(key), mState(state){};
-        HashableDimensionKey mKey;
-        int mState;
-    };
-
-    std::vector<Update> updates;
-
-    void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
-                        const HashableDimensionKey& primaryKey, const FieldValue& oldState,
-                        const FieldValue& newState) {
-        updates.emplace_back(primaryKey, newState.mValue.get<int32_t>());
-    }
-};
-
-int getStateInt(StateManager& mgr, int atomId, const HashableDimensionKey& queryKey) {
-    FieldValue output;
-    mgr.getStateValue(atomId, queryKey, &output);
-    return output.mValue.get<int32_t>();
-}
-
 // START: build event functions.
 // Incorrect event - missing fields
 std::unique_ptr<LogEvent> buildIncorrectOverlayEvent(int uid, const std::string& packageName,
@@ -121,7 +90,6 @@ TEST(StateManagerTest, TestOnLogEvent) {
     sp<MockUidMap> uidMap = makeMockUidMapForPackage("com.android.systemui", {10111});
     sp<TestStateListener> listener1 = new TestStateListener();
     StateManager mgr;
-    mgr.updateLogSources(uidMap);
     // Add StateTracker by registering a listener.
     mgr.registerListener(util::SCREEN_STATE_CHANGED, listener1);
 
@@ -141,16 +109,6 @@ TEST(StateManagerTest, TestOnLogEvent) {
     mgr.onLogEvent(*event);
 
     // check StateTracker was updated by querying for state
-    queryKey = DEFAULT_DIMENSION_KEY;
-    EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
-              getStateInt(mgr, util::SCREEN_STATE_CHANGED, queryKey));
-
-    // log event using non-whitelisted uid
-    event = CreateScreenStateChangedEvent(timestampNs,
-                                          android::view::DisplayStateEnum::DISPLAY_STATE_ON, 10112);
-    mgr.onLogEvent(*event);
-
-    // check StateTracker was NOT updated by querying for state
     queryKey = DEFAULT_DIMENSION_KEY;
     EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF,
               getStateInt(mgr, util::SCREEN_STATE_CHANGED, queryKey));
@@ -303,8 +261,8 @@ TEST(StateTrackerTest, TestStateChangeReset) {
     ASSERT_EQ(1, listener->updates.size());
     EXPECT_EQ(1000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(BleScanStateChanged::ON, listener->updates[0].mState);
-    FieldValue stateFieldValue;
-    mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
+    FieldValue stateFieldValue =
+            mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey);
     EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
@@ -315,7 +273,7 @@ TEST(StateTrackerTest, TestStateChangeReset) {
     ASSERT_EQ(1, listener->updates.size());
     EXPECT_EQ(2000, listener->updates[0].mKey.getValues()[0].mValue.get<int32_t>());
     EXPECT_EQ(BleScanStateChanged::ON, listener->updates[0].mState);
-    mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
+    stateFieldValue = mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, listener->updates[0].mKey);
     EXPECT_EQ(BleScanStateChanged::ON, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
@@ -327,7 +285,7 @@ TEST(StateTrackerTest, TestStateChangeReset) {
     for (const TestStateListener::Update& update : listener->updates) {
         EXPECT_EQ(BleScanStateChanged::OFF, update.mState);
 
-        mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, update.mKey, &stateFieldValue);
+        stateFieldValue = mgr.getStateValue(util::BLE_SCAN_STATE_CHANGED, update.mKey);
         EXPECT_EQ(BleScanStateChanged::OFF, stateFieldValue.mValue.get<int32_t>());
     }
 }
@@ -575,8 +533,8 @@ TEST(StateTrackerTest, TestMalformedStateEvent_ExistingStateValue) {
     mgr.onLogEvent(*event1);
     ASSERT_EQ(1, listener->updates.size());
     EXPECT_EQ(BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, listener->updates[0].mState);
-    FieldValue stateFieldValue;
-    mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey, &stateFieldValue);
+    FieldValue stateFieldValue =
+            mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey);
     EXPECT_EQ(BatteryPluggedStateEnum::BATTERY_PLUGGED_USB, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 
@@ -585,8 +543,7 @@ TEST(StateTrackerTest, TestMalformedStateEvent_ExistingStateValue) {
     mgr.onLogEvent(*event2);
     ASSERT_EQ(1, listener->updates.size());
     EXPECT_EQ(kStateUnknown, listener->updates[0].mState);
-    EXPECT_FALSE(mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey,
-                                   &stateFieldValue));
+    stateFieldValue = mgr.getStateValue(util::PLUGGED_STATE_CHANGED, listener->updates[0].mKey);
     EXPECT_EQ(kStateUnknown, stateFieldValue.mValue.get<int32_t>());
     listener->updates.clear();
 }

@@ -20,6 +20,7 @@
 
 #include <android-base/file.h>
 #include <inttypes.h>
+#include <sys/prctl.h>
 #include <utils/Timers.h>
 
 #include "guardrail/StatsdStats.h"
@@ -92,7 +93,10 @@ bool ShellSubscriber::startNewSubscriptionLocked(unique_ptr<ShellSubscriberClien
         if (mThread.joinable()) {
             mThread.join();
         }
-        mThread = std::thread([this] { pullAndSendHeartbeats(); });
+        mThread = std::thread([this] {
+            prctl(PR_SET_NAME, "ShellSubHrtBts");
+            pullAndSendHeartbeats();
+        });
     } else {
         // If pullAndSendHeartbeats() thread is sleeping, force a wake-up to trigger the initial
         // pull for the newly added subscription.

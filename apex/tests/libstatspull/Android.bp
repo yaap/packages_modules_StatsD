@@ -14,13 +14,17 @@
 
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_android_telemetry_client_infra",
 }
 
 android_test {
     name: "LibStatsPullTests",
     static_libs: [
         "androidx.test.rules",
+        "compatibility-device-util-axt",
+        "libstatsconfigutils",
         "platformprotoslite",
+        "statsd_flags_java_lib",
         "statsdprotolite",
         "truth",
     ],
@@ -34,6 +38,7 @@ android_test {
     srcs: [
         "src/**/*.java",
         "protos/**/*.proto",
+        ":statslog-statsdtest-java-gen",
     ],
     test_suites: [
         "device-tests",

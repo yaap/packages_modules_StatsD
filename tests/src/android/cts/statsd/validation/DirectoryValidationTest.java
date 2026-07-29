@@ -4,18 +4,13 @@ import static com.google.common.truth.Truth.assertThat;
 
 import android.cts.statsd.metric.MetricsUtils;
 import android.cts.statsdatom.lib.DeviceUtils;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.host.HostFlagsValueProvider;
 
-import com.android.os.statsd.flags.Flags;
 import com.android.tradefed.build.IBuildInfo;
 import com.android.tradefed.testtype.DeviceTestCase;
 import com.android.tradefed.testtype.IBuildReceiver;
 import com.android.tradefed.testtype.DeviceJUnit4ClassRunner;
 import com.android.tradefed.testtype.junit4.BaseHostJUnit4Test;
 import com.android.tradefed.util.RunUtil;
-
-import android.platform.test.annotations.RequiresFlagsEnabled;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -29,9 +24,6 @@ import org.junit.Rule;
  */
 @RunWith(DeviceJUnit4ClassRunner.class)
 public class DirectoryValidationTest extends BaseHostJUnit4Test implements IBuildReceiver {
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule =
-            HostFlagsValueProvider.createCheckFlagsRule(this::getDevice);
 
     private IBuildInfo mCtsBuild;
 
@@ -84,7 +76,6 @@ public class DirectoryValidationTest extends BaseHostJUnit4Test implements IBuil
     }
 
     @Test
-    @RequiresFlagsEnabled(Flags.FLAG_LOGGING_CONTROL_ENABLED)
     public void testStatsAtomsInUseDirectoryExists() throws Exception {
         DeviceUtils.runDeviceTests(getDevice(), MetricsUtils.DEVICE_SIDE_TEST_PACKAGE,
                 ".DirectoryTests", "testStatsAtomsInUseDirectoryExists");

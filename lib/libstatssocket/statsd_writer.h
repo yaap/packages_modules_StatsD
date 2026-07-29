@@ -17,10 +17,12 @@
 #ifndef ANDROID_STATS_LOG_STATS_WRITER_H
 #define ANDROID_STATS_LOG_STATS_WRITER_H
 
-#include <pthread.h>
+#include <sys/cdefs.h>
 #include <sys/socket.h>
 
 #include <atomic>
+
+#include "stats_event_type.h"
 
 __BEGIN_DECLS
 
@@ -42,7 +44,7 @@ struct android_log_transport_write {
     /* write log to transport, returns number of bytes propagated, or -errno */
     int (*write)(struct timespec* ts, struct iovec* vec, size_t nr);
     /* note one log drop */
-    void (*noteDrop)(int error, int tag);
+    void (*noteDrop)(int error, AStatsEventAtomId tag);
     /* checks if the socket is closed */
     int (*isClosed)();
 };

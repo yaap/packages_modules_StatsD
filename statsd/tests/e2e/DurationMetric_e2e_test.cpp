@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <com_android_os_statsd_flags.h>
 #include <gtest/gtest.h>
 
 #include <vector>
@@ -20,6 +21,8 @@
 #include "src/state/StateTracker.h"
 #include "src/stats_log_util.h"
 #include "tests/statsd_test_util.h"
+
+namespace flags = com::android::os::statsd::flags;
 
 namespace android {
 namespace os {
@@ -952,6 +955,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedState) {
     EXPECT_EQ(40 * NS_PER_SEC, data.bucket_info(0).duration_nanos());
     EXPECT_EQ(10 * NS_PER_SEC, data.bucket_info(0).start_bucket_elapsed_nanos());
     EXPECT_EQ(310 * NS_PER_SEC, data.bucket_info(0).end_bucket_elapsed_nanos());
+    StateManager::getInstance().clear();
 }
 
 TEST(DurationMetricE2eTest, TestWithConditionAndSlicedState) {
@@ -1113,6 +1117,7 @@ TEST(DurationMetricE2eTest, TestWithConditionAndSlicedState) {
     EXPECT_EQ(30 * NS_PER_SEC, data.bucket_info(0).duration_nanos());
     EXPECT_EQ(10 * NS_PER_SEC, data.bucket_info(0).start_bucket_elapsed_nanos());
     EXPECT_EQ(310 * NS_PER_SEC, data.bucket_info(0).end_bucket_elapsed_nanos());
+    StateManager::getInstance().clear();
 }
 
 TEST(DurationMetricE2eTest, TestWithSlicedStateMapped) {
@@ -1260,6 +1265,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedStateMapped) {
     EXPECT_EQ(80 * NS_PER_SEC, data.bucket_info(1).duration_nanos());
     EXPECT_EQ(310 * NS_PER_SEC, data.bucket_info(1).start_bucket_elapsed_nanos());
     EXPECT_EQ(500 * NS_PER_SEC, data.bucket_info(1).end_bucket_elapsed_nanos());
+    StateManager::getInstance().clear();
 }
 
 TEST(DurationMetricE2eTest, TestSlicedStatePrimaryFieldsNotSubsetDimInWhat) {
@@ -1300,9 +1306,22 @@ TEST(DurationMetricE2eTest, TestSlicedStatePrimaryFieldsNotSubsetDimInWhat) {
             TimeUnitToBucketSizeInMillis(config.duration_metric(0).bucket()) * 1000000LL;
     auto processor = CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, cfgKey);
 
-    // This config is rejected because the dimension in what fields are not a superset of the sliced
-    // state primary fields.
-    ASSERT_EQ(processor->mMetricsManagers.size(), 0);
+    if (flags::partial_invalid_configs()) {
+        // The metric is invalid because the dimension in what fields are not a superset of the
+        // sliced state primary fields.
+        ASSERT_EQ(processor->mMetricsManagers.size(), 1);
+        const sp<MetricsManager> metricsManager = processor->mMetricsManagers.begin()->second;
+        EXPECT_EQ(metricsManager->getNumMetrics(), 0);
+        auto& invalidEntities = metricsManager->mInvalidEntities;
+        InvalidConfigReason reason =
+                invalidEntities[InvalidEntityKey{durationMetric->id(), INVALID_ENTITY_TYPE_METRIC}];
+        EXPECT_EQ(reason.reason, INVALID_CONFIG_REASON_METRIC_STATELINKS_NOT_SUBSET_DIM_IN_WHAT);
+        ASSERT_TRUE(reason.metricId.has_value());
+        EXPECT_EQ(reason.metricId.value(), durationMetric->id());
+    } else {
+        ASSERT_EQ(processor->mMetricsManagers.size(), 0);
+    }
+    StateManager::getInstance().clear();
 }
 
 TEST(DurationMetricE2eTest, TestWithSlicedStatePrimaryFieldsSubset) {
@@ -1550,6 +1569,7 @@ TEST(DurationMetricE2eTest, TestWithSlicedStatePrimaryFieldsSubset) {
     EXPECT_EQ(70 * NS_PER_SEC, data.bucket_info(0).duration_nanos());
     EXPECT_EQ(10 * NS_PER_SEC, data.bucket_info(0).start_bucket_elapsed_nanos());
     EXPECT_EQ(310 * NS_PER_SEC, data.bucket_info(0).end_bucket_elapsed_nanos());
+    StateManager::getInstance().clear();
 }
 
 TEST(DurationMetricE2eTest, TestUploadThreshold) {
@@ -1767,8 +1787,8 @@ TEST(DurationMetricE2eTest, TestDimensionalSampling) {
     int64_t cfgId = 98765;
     ConfigKey cfgKey(uid, cfgId);
 
-    sp<StatsLogProcessor> processor = CreateStatsLogProcessor(
-            configAddedTimeNs, configAddedTimeNs, config, cfgKey, nullptr, 0, new UidMap());
+    sp<StatsLogProcessor> processor =
+            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey);
 
     int uid1 = 1001;  // odd hash value
     int uid2 = 1002;  // even hash value

@@ -26,7 +26,7 @@ public:
     virtual ~ConfigMetadataProvider() {
     }
 
-    virtual bool useV2SoftMemoryCalculation() = 0;
+    virtual bool useV2SoftMemoryCalculation() const = 0;
 };
 
 }  // namespace statsd

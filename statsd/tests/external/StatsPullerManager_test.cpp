@@ -387,6 +387,24 @@ TEST_WITH_FLAGS(StatsPullerManagerTest, TestOnAlarmFiredNoPulls,
     EXPECT_EQ(StatsdStats::getInstance().mPullerAlarmStats.alarm_without_pulls_count, 1);
 }
 
+TEST(StatsPullerManagerTest, TestPlatformPullAtomExists) {
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(10000));
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(99999));
+}
+
+TEST(StatsPullerManagerTest, TestVendorPullAtomExists) {
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(150000));
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(159999));
+}
+
+TEST(StatsPullerManagerTest, TestGenericVendorPullAtomExists) {
+    sp<StatsPullerManager> pullerManager = createPullerManagerAndRegister();
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(350000));
+    EXPECT_TRUE(pullerManager->PullerForMatcherExists(399999));
+}
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

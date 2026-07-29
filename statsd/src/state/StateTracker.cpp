@@ -83,18 +83,13 @@ void StateTracker::unregisterListener(const wp<StateListener>& listener) {
     mListeners.erase(listener);
 }
 
-bool StateTracker::getStateValue(const HashableDimensionKey& queryKey, FieldValue* output) const {
-    output->mField = mField;
-
+FieldValue StateTracker::getStateValue(const HashableDimensionKey& queryKey) const {
     if (const auto it = mStateMap.find(queryKey); it != mStateMap.end()) {
-        output->mValue = it->second.state;
-        return true;
+        return FieldValue(mField, it->second.state);
     }
-
-    // Set the state value to kStateUnknown if query key is not found in state map.
-    output->mValue = kStateUnknown;
     VLOG("StateTracker did not find state value for query key %s", queryKey.toString().c_str());
-    return false;
+
+    return FieldValue(mField, kStateUnknown);
 }
 
 void StateTracker::handleReset(const int64_t eventTimeNs, const FieldValue& newState) {

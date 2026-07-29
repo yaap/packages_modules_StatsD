@@ -104,6 +104,53 @@ TEST(StatsLogProcessorTest, TestRateLimitByteSize) {
     p.flushIfNecessaryLocked(key, mockMetricsManager);
 }
 
+TEST(StatsLogProcessorTest, TestLogSources) {
+    sp<UidMap> m = new UidMap();
+    sp<StatsPullerManager> pullerManager = new StatsPullerManager();
+    sp<AlarmMonitor> anomalyAlarmMonitor;
+    sp<AlarmMonitor> periodicAlarmMonitor;
+    // Construct the processor with a no-op sendBroadcast function that does nothing.
+    StatsLogProcessor p(
+            m, pullerManager, anomalyAlarmMonitor, periodicAlarmMonitor, 0,
+            [](const ConfigKey& key) { return true; },
+            [](const int&, const vector<int64_t>&) { return true; },
+            [](const ConfigKey&, const string&, const vector<int64_t>&) {},
+            std::make_shared<LogEventFilter>());
+
+    StateManager::getInstance().clear();
+    sp<TestStateListener> listener = new TestStateListener();
+    int atomId = util::SCREEN_STATE_CHANGED;
+    StateManager::getInstance().registerListener(atomId, listener);
+
+    uint64_t timestampNs = 1000000;
+    // Log event from AID_ROOT.
+    std::unique_ptr<LogEvent> event = CreateScreenStateChangedEvent(
+            timestampNs, android::view::DisplayStateEnum::DISPLAY_STATE_ON, AID_ROOT);
+    p.OnLogEvent(event.get());
+    EXPECT_EQ(1, listener->updates.size());
+    EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_ON, listener->updates[0].mState);
+    listener->updates.clear();
+
+    // Log event from non-allowlisted UID.
+    event = CreateScreenStateChangedEvent(
+            timestampNs + 10, android::view::DisplayStateEnum::DISPLAY_STATE_OFF, 12345);
+    p.OnLogEvent(event.get());
+    EXPECT_EQ(0, listener->updates.size());
+
+    // Allowlist the UID.
+    m->updateApp(timestampNs + 20, "com.android.systemui", 12345, 1, "v1", "", {});
+    p.onUidMapReceived(timestampNs + 20);
+
+    // Log event from now-allowlisted UID.
+    event = CreateScreenStateChangedEvent(
+            timestampNs + 30, android::view::DisplayStateEnum::DISPLAY_STATE_OFF, 12345);
+    p.OnLogEvent(event.get());
+    EXPECT_EQ(1, listener->updates.size());
+    EXPECT_EQ(android::view::DisplayStateEnum::DISPLAY_STATE_OFF, listener->updates[0].mState);
+
+    StateManager::getInstance().unregisterListener(atomId, listener);
+}
+
 TEST(StatsLogProcessorTest, TestRateLimitBroadcast) {
     sp<UidMap> m = new UidMap();
     sp<StatsPullerManager> pullerManager = new StatsPullerManager();
@@ -467,8 +514,7 @@ TEST(StatsLogProcessorTest, InvalidConfigRemoved) {
     EXPECT_EQ(0, StatsdStats::getInstance().mIceBox.size());
 
     StatsdConfig invalidConfig = MakeConfig(true);
-    auto invalidCountMetric = invalidConfig.add_count_metric();
-    invalidCountMetric->set_what(0);
+    invalidConfig.add_default_pull_packages("invalid pull package");
     p.OnConfigUpdated(0, key, invalidConfig);
     EXPECT_EQ(0, p.mMetricsManagers.size());
     // The current configs should not contain the invalid config.
@@ -1867,7 +1913,7 @@ TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogHostUid) {
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     shared_ptr<LogEvent> logEvent = makeUidLogEvent(atomId, eventTimeNs, hostUid, field1, field2);
 
@@ -1892,7 +1938,7 @@ TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogIsolatedUid) {
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     shared_ptr<LogEvent> logEvent =
             makeUidLogEvent(atomId, eventTimeNs, isolatedUid, field1, field2);
@@ -1922,7 +1968,7 @@ TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogThreeIsolatedUids) {
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     shared_ptr<LogEvent> logEvent = makeExtraUidsLogEvent(atomId, eventTimeNs, isolatedUid, field1,
                                                           field2, {isolatedUid2, isolatedUid3});
@@ -1950,7 +1996,7 @@ TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogHostUidAttributionChain) 
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     shared_ptr<LogEvent> logEvent = makeAttributionLogEvent(atomId, eventTimeNs, {hostUid, 200},
                                                             {"tag1", "tag2"}, field1, field2);
@@ -1978,7 +2024,7 @@ TEST(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogIsolatedUidAttributionCha
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     shared_ptr<LogEvent> logEvent = makeAttributionLogEvent(atomId, eventTimeNs, {isolatedUid, 200},
                                                             {"tag1", "tag2"}, field1, field2);
@@ -2020,7 +2066,7 @@ TEST_GUARDED(StatsLogProcessorTest_mapIsolatedUidToHostUid, LogRepeatedUidField,
     ConfigKey cfgKey;
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, cfgKey, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, cfgKey, {.uidMap = mockUidMap});
 
     // Empty repeated uid field.
     shared_ptr<LogEvent> logEvent = makeRepeatedUidLogEvent(atomId, eventTimeNs, {});
@@ -2088,7 +2134,7 @@ TEST(StatsLogProcessorTest, TestDumpReportWithoutErasingDataDoesNotUpdateTimesta
 
     StatsdConfig config = MakeConfig(false);
     sp<StatsLogProcessor> processor =
-            CreateStatsLogProcessor(1, 1, config, key, nullptr, 0, mockUidMap);
+            CreateStatsLogProcessor(1, 1, config, key, {.uidMap = mockUidMap});
     vector<uint8_t> bytes;
 
     int64_t dumpTime1Ns = 1 * NS_PER_SEC;
@@ -2127,8 +2173,9 @@ TEST(StatsLogProcessorTest, TestDataCorruptedEnum) {
     StatsdConfig config = MakeConfig(true);
     sp<StatsLogProcessor> processor = CreateStatsLogProcessor(1, 1, config, cfgKey);
 
+    StatsdStats::getInstance().reset();
     StatsdStats::getInstance().noteEventQueueOverflow(/*oldestEventTimestampNs=*/0, /*atomId=*/100);
-    StatsdStats::getInstance().noteLogLost(/*wallClockTimeSec=*/0, /*count=*/1, /*lastError=*/0,
+    StatsdStats::getInstance().noteLogLost(/*wallClockTimeSec=*/0, /*count=*/1, /*lastError=*/-1,
                                            /*lastTag=*/0, /*uid=*/0, /*pid=*/0);
     StatsdStats::getInstance().noteSystemServerRestart(/*timeSec=*/1);
     vector<uint8_t> bytes;

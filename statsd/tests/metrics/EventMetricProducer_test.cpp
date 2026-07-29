@@ -719,6 +719,19 @@ TEST_F(EventMetricProducerTest, TestCorruptedDataReason_UnrecoverableLossOfCondi
     }
 }
 
+TEST_F(EventMetricProducerTest, TestEmptyMetricByteSize) {
+    int64_t bucketStartTimeNs = 10000000000;
+
+    EventMetric metric;
+    metric.set_id(1);
+    sp<MockConfigMetadataProvider> provider = makeMockConfigMetadataProvider(/*enabled=*/false);
+    EventMetricProducer eventProducer(kConfigKey, metric, 0 /*condition index*/,
+                                      {ConditionState::kUnknown}, nullptr, protoHash,
+                                      bucketStartTimeNs, provider);
+
+    EXPECT_EQ(eventProducer.byteSize(), 0);
+}
+
 }  // namespace statsd
 }  // namespace os
 }  // namespace android

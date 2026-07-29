@@ -16,6 +16,8 @@
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android/binder_interface_utils.h>
+#include <com_android_os_statsd_flags.h>
+#include <flag_macros.h>
 #include <gtest/gtest.h>
 
 #include <thread>
@@ -57,8 +59,8 @@ sp<StatsLogProcessor> CreateStatsLogProcessor(
     EXPECT_CALL(*logEventFilter, setAtomIds(CreateAtomIdSetFromConfig(config), _))
             .Times(1)
             .After(initCall);
-    return CreateStatsLogProcessor(timeBaseNs, currentTimeNs, config, key, nullptr, 0, new UidMap(),
-                                   logEventFilter);
+    return CreateStatsLogProcessor(timeBaseNs, currentTimeNs, config, key,
+                                   {.logEventFilter = logEventFilter});
 }
 
 }  // Anonymous namespace.
@@ -71,9 +73,15 @@ protected:
     void SetUp() override {
         mLogEventFilter = std::make_shared<MockLogEventFilter>();
     }
+
+    void TearDown() override {
+        StateManager::getInstance().clear();
+    }
 };
 
-TEST_F(ConfigUpdateE2eTest, TestEventMetric) {
+TEST_F_WITH_FLAGS(ConfigUpdateE2eTest, TestEventMetric,
+                  REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                      partial_invalid_configs))) {
     StatsdConfig config;
 
     AtomMatcher syncStartMatcher = CreateSyncStartAtomMatcher();
@@ -113,8 +121,11 @@ TEST_F(ConfigUpdateE2eTest, TestEventMetric) {
             "WakelockWhileScreenOn", wakelockAcquireMatcher.id(), screenOnPredicate.id());
     EventMetric eventRemove = createEventMetric("Syncs", syncStartMatcher.id(), nullopt);
 
+    EventMetric eventInvalid;
+
     *config.add_event_metric() = eventRemove;
     *config.add_event_metric() = eventPersist;
+    *config.add_event_metric() = eventInvalid;
     *config.add_event_metric() = eventChange;
 
     ConfigKey key(123, 987);
@@ -295,7 +306,9 @@ TEST_F(ConfigUpdateE2eTest, TestEventMetric) {
     EXPECT_EQ(data.atom().sync_state_changed().sync_name(), "sync3");
 }
 
-TEST_F(ConfigUpdateE2eTest, TestCountMetric) {
+TEST_F_WITH_FLAGS(ConfigUpdateE2eTest, TestCountMetric,
+                  REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                      partial_invalid_configs))) {
     StatsdConfig config;
 
     AtomMatcher syncStartMatcher = CreateSyncStartAtomMatcher();
@@ -415,6 +428,10 @@ TEST_F(ConfigUpdateE2eTest, TestCountMetric) {
     CountMetric countNew = createCountMetric("CountWlWhileScreenOn", wakelockAcquireMatcher.id(),
                                              screenOnPredicate.id(), {});
     *newConfig.add_count_metric() = countNew;
+    CountMetric countNewInvalid =
+            createCountMetric("CountInvalidPredicate", wakelockAcquireMatcher.id(),
+                              /*predicateId=*/0, {});
+    *newConfig.add_count_metric() = countNewInvalid;
     *newConfig.add_count_metric() = countPersist;
 
     int64_t updateTimeNs = bucketStartTimeNs + 60 * NS_PER_SEC;
@@ -548,7 +565,9 @@ TEST_F(ConfigUpdateE2eTest, TestCountMetric) {
     ValidateCountBucket(data.bucket_info(0), updateTimeNs, bucketStartTimeNs + bucketSizeNs, 2);
 }
 
-TEST_F(ConfigUpdateE2eTest, TestDurationMetric) {
+TEST_F_WITH_FLAGS(ConfigUpdateE2eTest, TestDurationMetric,
+                  REQUIRES_FLAGS_ENABLED(ACONFIG_FLAG(com::android::os::statsd::flags,
+                                                      partial_invalid_configs))) {
     StatsdConfig config;
 
     AtomMatcher syncStartMatcher = CreateSyncStartAtomMatcher();
@@ -623,6 +642,8 @@ TEST_F(ConfigUpdateE2eTest, TestDurationMetric) {
     *config.add_duration_metric() = durationRemove;
     *config.add_duration_metric() = durationSumPersist;
     *config.add_duration_metric() = durationChange;
+    DurationMetric durationInvalid;
+    *config.add_duration_metric() = durationInvalid;
 
     ConfigKey key(123, 987);
     uint64_t bucketStartTimeNs = 10000000000;  // 0:10
@@ -697,6 +718,9 @@ TEST_F(ConfigUpdateE2eTest, TestDurationMetric) {
             createDurationMetric("DurationSync", syncPredicate.id(), nullopt, {});
     *newConfig.add_duration_metric() = durationNew;
     *newConfig.add_duration_metric() = durationMaxPersist;
+    DurationMetric durationNewInvalid =
+            createDurationMetric("DurationNewInvalid", /*predicateId=*/0, nullopt, {});
+    *config.add_duration_metric() = durationNewInvalid;
     *newConfig.add_duration_metric() = durationSumPersist;
 
     // At update, only uid 1 is syncing & holding a wakelock, duration=33. Max is paused for uid3.
@@ -970,8 +994,9 @@ TEST_F(ConfigUpdateE2eTest, TestGaugeMetric) {
             .After(initCall);
     sp<StatsLogProcessor> processor =
             CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, key,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(),
-                                    util::SUBSYSTEM_SLEEP_STATE, new UidMap(), mLogEventFilter);
+                                    {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(),
+                                     .pullAtomId = util::SUBSYSTEM_SLEEP_STATE,
+                                     .logEventFilter = mLogEventFilter});
 
     int app1Uid = 123, app2Uid = 456;
 
@@ -1366,8 +1391,9 @@ TEST_F(ConfigUpdateE2eTest, TestValueMetric) {
     // Config creation triggers pull #1.
     sp<StatsLogProcessor> processor =
             CreateStatsLogProcessor(bucketStartTimeNs, bucketStartTimeNs, config, key,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(),
-                                    util::SUBSYSTEM_SLEEP_STATE, new UidMap(), mLogEventFilter);
+                                    {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(),
+                                     .pullAtomId = util::SUBSYSTEM_SLEEP_STATE,
+                                     .logEventFilter = mLogEventFilter});
 
     // Initialize log events before update.
     // ValuePushPersist and ValuePullPersist will skip the bucket due to condition unknown.
@@ -1402,7 +1428,7 @@ TEST_F(ConfigUpdateE2eTest, TestValueMetric) {
     *newConfig.add_predicate() = unpluggedPredicate;
     *newConfig.add_predicate() = screenOnPredicate;
 
-    *config.add_state() = screenState;
+    *newConfig.add_state() = screenState;
 
     valueChange.set_condition(screenOnPredicate.id());
     *newConfig.add_value_metric() = valueChange;

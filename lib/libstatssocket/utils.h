@@ -16,9 +16,8 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include <atomic>
+#include <cstdint>
 
 int64_t get_elapsed_realtime_ns();
 
@@ -39,5 +38,12 @@ public:
 
 private:
     const int64_t mTimeoutNanos;
-    std::atomic_int64_t mCooldownTimerFinishAtNanos;
+    std::atomic_int64_t mCooldownTimerFinishAtNanos = 0;
+};
+
+class RealTimeClock {
+public:
+    static int64_t getTimeNs() {
+        return get_elapsed_realtime_ns();
+    }
 };

@@ -18,14 +18,15 @@
 
 #include <aidl/android/os/BnStatsd.h>
 #include <gtest/gtest_prod.h>
-#include <stdio.h>
 
+#include <atomic>
 #include <unordered_map>
 
 #include "config/ConfigListener.h"
 #include "external/StatsPullerManager.h"
 #include "logd/LogEvent.h"
 #include "metrics/MetricsManager.h"
+#include "packages/LogSourceHandler.h"
 #include "packages/UidMap.h"
 #include "socket/AtomsInUseChangeListener.h"
 #include "src/statsd_config.pb.h"
@@ -215,6 +216,8 @@ private:
 
     sp<UidMap> mUidMap;  // Reference to the UidMap to lookup app name and version for each uid.
 
+    const sp<LogSourceHandler> mLogSourceHandler;
+
     sp<StatsPullerManager> mPullerManager;  // Reference to StatsPullerManager
 
     sp<AlarmMonitor> mAnomalyAlarmMonitor;
@@ -372,7 +375,7 @@ private:
     // The time for the next anomaly alarm for alerts.
     int64_t mNextAnomalyAlarmTime = 0;
 
-    bool mPrintAllLogs = false;
+    std::atomic_bool mPrintAllLogs = false;
 
     StatsdStats::QueueOverflowAtomsStatsMap mQueueOverflowAtomsStats;
 
@@ -438,6 +441,7 @@ private:
     FRIEND_TEST(RestrictedEventMetricE2eTest, TestEnforceDbGuardrails);
     FRIEND_TEST(RestrictedEventMetricE2eTest, TestEnforceDbGuardrailsDoesNotDeleteBeforeGuardrail);
     FRIEND_TEST(RestrictedEventMetricE2eTest, TestRestrictedMetricLoadsTtlFromDisk);
+    FRIEND_TEST(RestrictedEventMetricE2eTest, TestInvalidConfigUpdateRestrictedDelegate);
 
     FRIEND_TEST(AnomalyCountDetectionE2eTest, TestSlicedCountMetric_single_bucket);
     FRIEND_TEST(AnomalyCountDetectionE2eTest, TestSlicedCountMetric_multiple_buckets);

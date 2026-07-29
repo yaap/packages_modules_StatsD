@@ -113,7 +113,6 @@ static void parseFileName(char* name, FileName* output) {
     }
     // When index ends before hitting 3, file name is corrupted. We
     // intentionally put -1 at index 0 to indicate the error to caller.
-    // TODO(b/110563137): consider removing files with unexpected name format.
     if (index < 3) {
         result[0] = -1;
     }

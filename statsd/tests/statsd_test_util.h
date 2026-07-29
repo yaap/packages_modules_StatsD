@@ -125,6 +125,28 @@ public:
                 (override));
 };
 
+/**
+ * Test StateListener class for testing.
+ * Stores primary key and state pairs.
+ */
+class TestStateListener : public virtual StateListener {
+public:
+    struct Update {
+        HashableDimensionKey mKey;
+        int mState;
+    };
+
+    std::vector<Update> updates;
+
+    void onStateChanged(const int64_t eventTimeNs, const int32_t atomId,
+                        const HashableDimensionKey& primaryKey, const FieldValue& oldState,
+                        const FieldValue& newState) override {
+        updates.emplace_back(Update{primaryKey, newState.mValue.get<int32_t>()});
+    }
+};
+
+int getStateInt(const StateManager& mgr, int atomId, const HashableDimensionKey& queryKey);
+
 class StatsServiceConfigTest : public ::testing::Test {
 protected:
     std::shared_ptr<StatsService> service;
@@ -631,11 +653,22 @@ std::unique_ptr<LogEvent> createSocketLossInfoLogEvent(int32_t uid, int32_t loss
         __INTRODUCED_IN(__ANDROID_API_T__);
 
 // Create a statsd log event processor upon the start time in seconds, config and key.
+struct StatsLogProcessorOptions {
+    sp<StatsPullerManager> pullerManager = sp<StatsPullerManager>::make();
+    std::shared_ptr<IPullAtomCallback> puller = nullptr;
+    int32_t pullAtomId = 0;
+    sp<UidMap> uidMap = sp<UidMap>::make();
+    std::shared_ptr<LogEventFilter> logEventFilter = std::make_shared<LogEventFilter>();
+    sp<AlarmMonitor> anomalyAlarmMonitor = sp<AlarmMonitor>::make(
+            1, [](const std::shared_ptr<IStatsCompanionService>&, int64_t) {},
+            [](const std::shared_ptr<IStatsCompanionService>&) {});
+    sp<AlarmMonitor> periodicAlarmMonitor = sp<AlarmMonitor>::make(
+            1, [](const std::shared_ptr<IStatsCompanionService>&, int64_t) {},
+            [](const std::shared_ptr<IStatsCompanionService>&) {});
+};
 sp<StatsLogProcessor> CreateStatsLogProcessor(
         const int64_t timeBaseNs, int64_t currentTimeNs, const StatsdConfig& config,
-        const ConfigKey& key, const std::shared_ptr<IPullAtomCallback>& puller = nullptr,
-        const int32_t atomTag = 0 /*for puller only*/, const sp<UidMap> = new UidMap(),
-        const std::shared_ptr<LogEventFilter>& logEventFilter = std::make_shared<LogEventFilter>());
+        const ConfigKey& key, const StatsLogProcessorOptions& options = StatsLogProcessorOptions{});
 
 sp<NumericValueMetricProducer> createNumericValueMetricProducer(
         sp<MockStatsPullerManager>& pullerManager, const ValueMetric& metric, const int atomId,
@@ -936,7 +969,7 @@ StatsdConfig buildGoodConfig(int configId, int alertId);
 
 class MockConfigMetadataProvider : public ConfigMetadataProvider {
 public:
-    MOCK_METHOD(bool, useV2SoftMemoryCalculation, (), (override));
+    MOCK_METHOD(bool, useV2SoftMemoryCalculation, (), (const override));
 };
 
 sp<MockConfigMetadataProvider> makeMockConfigMetadataProvider(bool enabled);

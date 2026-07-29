@@ -122,13 +122,6 @@ DurationMetricProducer::DurationMetricProducer(
         ALOGE("Position ANY in dimension_in_what not supported.");
     }
 
-    // Dimensions in what must be subset of internal dimensions
-    if (!subsetDimensions(mDimensionsInWhat, mInternalDimensions)) {
-        ALOGE("Dimensions in what must be a subset of the internal dimensions");
-        // TODO: Add invalidConfigReason
-        mValid = false;
-    }
-
     mShouldUseNestedDimensions = ShouldUseNestedDimensions(metric.dimensions_in_what());
 
     if (metric.links().size() > 0) {
@@ -137,11 +130,6 @@ DurationMetricProducer::DurationMetricProducer(
             mc.conditionId = link.condition();
             translateFieldMatcher(link.fields_in_what(), &mc.metricFields);
             translateFieldMatcher(link.fields_in_condition(), &mc.conditionFields);
-            if (!subsetDimensions(mc.metricFields, mInternalDimensions)) {
-                ALOGE(("Condition links must be a subset of the internal dimensions"));
-                // TODO: Add invalidConfigReason
-                mValid = false;
-            }
             mMetric2ConditionLinks.push_back(mc);
         }
         mConditionSliced = true;
@@ -153,11 +141,6 @@ DurationMetricProducer::DurationMetricProducer(
         ms.stateAtomId = stateLink.state_atom_id();
         translateFieldMatcher(stateLink.fields_in_what(), &ms.metricFields);
         translateFieldMatcher(stateLink.fields_in_state(), &ms.stateFields);
-        if (!subsetDimensions(ms.metricFields, mInternalDimensions)) {
-            ALOGE(("State links must be a subset of the dimensions in what  internal dimensions"));
-            // TODO: Add invalidConfigReason
-            mValid = false;
-        }
         mMetric2StateLinks.push_back(ms);
     }
 
@@ -183,7 +166,7 @@ DurationMetricProducer::~DurationMetricProducer() {
     VLOG("~DurationMetric() called");
 }
 
-optional<InvalidConfigReason> DurationMetricProducer::onConfigUpdatedLocked(
+void DurationMetricProducer::onConfigUpdatedLocked(
         const StatsdConfig& config, const int configIndex, const int metricIndex,
         const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
         const unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -192,81 +175,49 @@ optional<InvalidConfigReason> DurationMetricProducer::onConfigUpdatedLocked(
         const vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& conditionTrackerMap, const sp<ConditionWizard>& wizard,
         const unordered_map<int64_t, int>& metricToActivationMap,
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
         unordered_map<int, vector<int>>& activationAtomTrackerToMetricMap,
         unordered_map<int, vector<int>>& deactivationAtomTrackerToMetricMap,
         vector<int>& metricsWithActivation) {
-    optional<InvalidConfigReason> invalidConfigReason = MetricProducer::onConfigUpdatedLocked(
+    MetricProducer::onConfigUpdatedLocked(
             config, configIndex, metricIndex, allAtomMatchingTrackers, oldAtomMatchingTrackerMap,
             newAtomMatchingTrackerMap, matcherWizard, allConditionTrackers, conditionTrackerMap,
-            wizard, metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
-            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
-            metricsWithActivation);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+            wizard, metricToActivationMap, allConditionsMap, trackerToMetricMap,
+            conditionToMetricMap, activationAtomTrackerToMetricMap,
+            deactivationAtomTrackerToMetricMap, metricsWithActivation);
 
     const DurationMetric& metric = config.duration_metric(configIndex);
-    const auto& what_it = conditionTrackerMap.find(metric.what());
-    if (what_it == conditionTrackerMap.end()) {
-        ALOGE("DurationMetric's \"what\" is not present in the config");
-        return createInvalidConfigReasonWithPredicate(
-                INVALID_CONFIG_REASON_DURATION_METRIC_WHAT_NOT_FOUND, mMetricId, metric.what());
-    }
-
-    const Predicate& durationWhat = config.predicate(what_it->second);
-    if (durationWhat.contents_case() != Predicate::ContentsCase::kSimplePredicate) {
-        ALOGE("DurationMetric's \"what\" must be a simple condition");
-        return createInvalidConfigReasonWithPredicate(
-                INVALID_CONFIG_REASON_DURATION_METRIC_WHAT_NOT_SIMPLE, mMetricId, metric.what());
-    }
-
+    const Predicate& durationWhat = allConditionsMap.at(metric.what()).predicate;
     const SimplePredicate& simplePredicate = durationWhat.simple_predicate();
 
     // Update indices: mStartIndex, mStopIndex, mStopAllIndex, mConditionIndex and MetricsManager
     // maps.
-    invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-            simplePredicate.start(), mMetricId, metricIndex, metric.has_dimensions_in_what(),
-            allAtomMatchingTrackers, newAtomMatchingTrackerMap, trackerToMetricMap, mStartIndex);
-    if (invalidConfigReason.has_value()) {
-        ALOGE("Duration metrics must specify a valid start event matcher");
-        return invalidConfigReason;
-    }
+    handleMetricWithAtomMatchingTrackers(simplePredicate.start(), metricIndex,
+                                         newAtomMatchingTrackerMap, trackerToMetricMap,
+                                         mStartIndex);
 
     if (simplePredicate.has_stop()) {
-        invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-                simplePredicate.stop(), mMetricId, metricIndex, metric.has_dimensions_in_what(),
-                allAtomMatchingTrackers, newAtomMatchingTrackerMap, trackerToMetricMap, mStopIndex);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithAtomMatchingTrackers(simplePredicate.stop(), metricIndex,
+                                             newAtomMatchingTrackerMap, trackerToMetricMap,
+                                             mStopIndex);
     }
 
     if (simplePredicate.has_stop_all()) {
-        invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-                simplePredicate.stop_all(), mMetricId, metricIndex, metric.has_dimensions_in_what(),
-                allAtomMatchingTrackers, newAtomMatchingTrackerMap, trackerToMetricMap,
-                mStopAllIndex);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithAtomMatchingTrackers(simplePredicate.stop_all(), metricIndex,
+                                             newAtomMatchingTrackerMap, trackerToMetricMap,
+                                             mStopAllIndex);
     }
 
     if (metric.has_condition()) {
-        invalidConfigReason = handleMetricWithConditions(
-                metric.condition(), mMetricId, metricIndex, conditionTrackerMap, metric.links(),
-                allConditionTrackers, mConditionTrackerIndex, conditionToMetricMap);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithConditions(metric.condition(), metricIndex, conditionTrackerMap,
+                                   mConditionTrackerIndex, conditionToMetricMap);
     }
 
     for (const auto& it : mCurrentSlicedDurationTrackerMap) {
         it.second->onConfigUpdated(wizard, mConditionTrackerIndex);
     }
-
-    return nullopt;
 }
 
 void DurationMetricProducer::initTrueDimensions(const int whatIndex, const int64_t startTimeNs) {
@@ -290,13 +241,6 @@ sp<AnomalyTracker> DurationMetricProducer::addAnomalyTracker(
         const Alert& alert, const sp<AlarmMonitor>& anomalyAlarmMonitor,
         const UpdateStatus& updateStatus, const int64_t updateTimeNs) {
     std::lock_guard lock(mMutex);
-    if (mAggregationType == DurationMetric_AggregationType_SUM) {
-        if (alert.trigger_if_sum_gt() > alert.num_buckets() * mBucketSizeNs) {
-            ALOGW("invalid alert for SUM: threshold (%f) > possible recordable value (%d x %lld)",
-                  alert.trigger_if_sum_gt(), alert.num_buckets(), (long long)mBucketSizeNs);
-            return nullptr;
-        }
-    }
     sp<AnomalyTracker> anomalyTracker =
             new DurationAnomalyTracker(alert, mConfigKey, anomalyAlarmMonitor);
     // The update status is either new or replaced.
@@ -804,11 +748,11 @@ void DurationMetricProducer::handleMatchedLogEventValuesLocked(const size_t matc
         FieldValue value;
         if (statePrimaryKeys.find(atomId) != statePrimaryKeys.end()) {
             // found a primary key for this state, query using the key
-            queryStateValue(atomId, statePrimaryKeys[atomId], &value);
+            value = queryStateValue(atomId, statePrimaryKeys[atomId]);
         } else {
             // if no MetricStateLinks exist for this state atom,
             // query using the default dimension key (empty HashableDimensionKey)
-            queryStateValue(atomId, DEFAULT_DIMENSION_KEY, &value);
+            value = queryStateValue(atomId, DEFAULT_DIMENSION_KEY);
         }
         mapStateValue(atomId, &value);
         stateValuesKey.addValue(value);

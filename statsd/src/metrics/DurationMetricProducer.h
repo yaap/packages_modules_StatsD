@@ -117,8 +117,8 @@ private:
 
     void flushCurrentBucketLocked(int64_t eventTimeNs, int64_t nextBucketStartTimeNs) override;
 
-    std::optional<InvalidConfigReason> onConfigUpdatedLocked(
-            const StatsdConfig& config, int configIndex, int metricIndex,
+    void onConfigUpdatedLocked(
+            const StatsdConfig& config, int configIndex, const int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
             const std::unordered_map<int64_t, int>& newAtomMatchingTrackerMap,
@@ -127,6 +127,7 @@ private:
             const std::unordered_map<int64_t, int>& conditionTrackerMap,
             const sp<ConditionWizard>& wizard,
             const std::unordered_map<int64_t, int>& metricToActivationMap,
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
             std::unordered_map<int, std::vector<int>>& trackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
             std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
@@ -198,8 +199,13 @@ private:
     FRIEND_TEST(DurationMetricProducerTest_PartialBucket, TestMaxDuration);
     FRIEND_TEST(DurationMetricProducerTest_PartialBucket, TestMaxDurationWithSplitInNextBucket);
 
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitDurationMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitAlertsHasInvalidAlerts);
+
     FRIEND_TEST(ConfigUpdateTest, TestUpdateDurationMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateDurationMetricsHasInvalidMetrics);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateAlerts);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateAlertsHasInvalidAlert);
 
     FRIEND_TEST(MetricsManagerUtilDimLimitTest, TestDimLimit);
 

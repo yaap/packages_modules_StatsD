@@ -22,8 +22,6 @@ import android.cts.statsd.metric.MetricsUtils;
 import android.cts.statsdatom.lib.ConfigUtils;
 import android.cts.statsdatom.lib.DeviceUtils;
 import android.cts.statsdatom.lib.ReportUtils;
-import android.platform.test.flag.junit.CheckFlagsRule;
-import android.platform.test.flag.junit.host.HostFlagsValueProvider;
 
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
 import com.android.os.AtomsProto.Atom;
@@ -39,9 +37,6 @@ import org.junit.Before;
 import org.junit.Rule;
 
 public class MetadataTestCase extends BaseHostJUnit4Test implements IBuildReceiver {
-    @Rule
-    public final CheckFlagsRule mCheckFlagsRule =
-            HostFlagsValueProvider.createCheckFlagsRule(this::getDevice);
 
     public static final String DUMP_METADATA_CMD = "cmd stats print-stats";
 

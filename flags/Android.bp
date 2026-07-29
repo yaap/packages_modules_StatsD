@@ -26,7 +26,6 @@ aconfig_declarations {
     container: "com.android.os.statsd",
     package: "com.android.os.statsd.flags",
     srcs: [
-        "libstatspull_flags.aconfig",
         "libstatssocket_flags.aconfig",
         "statsd_flags.aconfig",
         "stats_manager_flags.aconfig",

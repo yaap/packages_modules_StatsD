@@ -42,9 +42,7 @@ import java.lang.annotation.RetentionPolicy;
  * StatsLog provides an API for developers to send events to statsd. The events can be used to
  * define custom metrics inside statsd.
  */
-// TODO(b/375040589) Can't use ravenwood annotations on public mainline APIs?
-// for now we use the policy text file instead.
-//@android.ravenwood.annotation.RavenwoodKeepWholeClass
+@android.ravenwood.annotation.RavenwoodKeepPartialClass
 public final class StatsLog {
 
     // Load JNI library

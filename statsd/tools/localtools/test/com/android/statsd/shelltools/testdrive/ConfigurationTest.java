@@ -19,7 +19,6 @@ package com.android.statsd.shelltools.testdrive;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.android.internal.os.StatsdConfigProto;
@@ -419,7 +418,7 @@ public class ConfigurationTest {
 
         StatsdConfigProto.AtomMatcher unionMatcher = findAndRemoveAtomMatcherById(atomMatchers,
                 eventMetric.getWhat());
-        assertNotNull(unionMatcher.getCombination());
+        assertTrue(unionMatcher.hasCombination());
         assertEquals(2, unionMatcher.getCombination().getMatcherCount());
 
         Integer[] actualAtoms = new Integer[]{

@@ -499,7 +499,7 @@ message StatsdStatsReport {
         optional int32 matcher_count = 7;
         optional int32 alert_count = 8;
         optional bool is_valid = 9;
-        optional InvalidConfigReason invalid_config_reason = 24;
+        repeated InvalidConfigReason invalid_config_reason = 24;
         repeated int32 broadcast_sent_time_sec = 10;
         repeated int32 data_drop_time_sec = 11;
         repeated int64 data_drop_bytes = 21;

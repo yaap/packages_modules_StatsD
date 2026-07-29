@@ -30,22 +30,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
-// stats_event.h socket types. Keep in sync.
-/* ERRORS */
-#define ERROR_NO_TIMESTAMP 0x1
-#define ERROR_NO_ATOM_ID 0x2
-#define ERROR_OVERFLOW 0x4
-#define ERROR_ATTRIBUTION_CHAIN_TOO_LONG 0x8
-#define ERROR_TOO_MANY_KEY_VALUE_PAIRS 0x10
-#define ERROR_ANNOTATION_DOES_NOT_FOLLOW_FIELD 0x20
-#define ERROR_INVALID_ANNOTATION_ID 0x40
-#define ERROR_ANNOTATION_ID_TOO_LARGE 0x80
-#define ERROR_TOO_MANY_ANNOTATIONS 0x100
-#define ERROR_TOO_MANY_FIELDS 0x200
-#define ERROR_INVALID_VALUE_TYPE 0x400
-#define ERROR_STRING_NOT_NULL_TERMINATED 0x800
-#define ERROR_ATOM_ID_INVALID_POSITION 0x2000
-#define ERROR_LIST_TOO_LONG 0x4000
+#define ERROR_PARSING_INVALID 0x8000
 
 /* TYPE IDS */
 #define INT32_TYPE 0x00
@@ -250,7 +235,7 @@ public:
     }
 
     bool isValid() const {
-        return mValid;
+        return mErrorMask == 0;
     }
 
     /**
@@ -309,7 +294,7 @@ private:
     const uint8_t* mBuf;
     uint32_t mRemainingLen; // number of valid bytes left in the buffer being parsed
 
-    bool mValid = true; // stores whether the event we received from the socket is valid
+    int32_t mErrorMask = 0;  // stores bitmask of encoding & parsing errors
 
     bool mParsedHeaderOnly = false;  // stores whether the only header was parsed skipping the body
 
@@ -319,13 +304,13 @@ private:
      *        - move mBuf past the value that was just read
      *        - decrement mRemainingLen by size of T
      *    Else
-     *        - set mValid to false
+     *        - set mErrorMask to ERROR_PARSING_INVALID
      */
     template <class T>
     T readNextValue() {
         T value;
         if (mRemainingLen < sizeof(T)) {
-            mValid = false;
+            mErrorMask |= ERROR_PARSING_INVALID;
             value = 0; // all primitive types can successfully cast 0
         } else {
             // When alignof(T) == 1, hopefully the compiler can optimize away

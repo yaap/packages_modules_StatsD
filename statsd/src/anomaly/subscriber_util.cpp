@@ -26,6 +26,7 @@
 #include "external/Uprobestats.h"
 #include "subscriber/IncidentdReporter.h"
 #include "subscriber/SubscriberReporter.h"
+#include "utils/api_tracing.h"
 
 namespace android {
 namespace os {
@@ -44,6 +45,7 @@ void triggerSubscribers(const int64_t ruleId, const int64_t metricId,
                         const MetricDimensionKey& dimensionKey, double metricValue,
                         const ConfigKey& configKey,
                         const std::vector<Subscription>& subscriptions) {
+    ATRACE_CALL();
     VLOG("informSubscribers called.");
     if (subscriptions.empty()) {
         VLOG("No Subscriptions were associated.");
@@ -69,10 +71,8 @@ void triggerSubscribers(const int64_t ruleId, const int64_t metricId,
                 }
                 break;
             case Subscription::SubscriberInformationCase::kPerfettoDetails:
-                if (!CollectPerfettoTraceAndUploadToDropbox(subscription.perfetto_details(),
-                                                            subscription.id(), ruleId, configKey)) {
-                    ALOGW("Failed to generate perfetto traces.");
-                }
+                CollectPerfettoTraceAndUploadToDropbox(subscription.perfetto_details(),
+                                                       subscription.id(), ruleId, configKey);
                 break;
             case Subscription::SubscriberInformationCase::kUprobestatsDetails:
                 if (!StartUprobeStats(subscription.uprobestats_details())) {

@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#define STATSD_DEBUG false  // STOPSHIP if true
+#include "Log.h"
+
 #include "logd/logevent_util.h"
 
 namespace android {
@@ -27,6 +30,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     // SocketLossInfo atom data
     if (logEventValues.size() < 7) {
         // atom content is invalid
+        VLOG("toSocketLossInfo: wrong size");
         return std::nullopt;
     }
 
@@ -38,6 +42,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
         result.firstLossTsNanos = logEventValues[1].mValue.get<int64_t>();
     } else {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid firstLossTsNanos field");
         return std::nullopt;
     }
 
@@ -46,6 +51,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
         result.lastLossTsNanos = logEventValues[2].mValue.get<int64_t>();
     } else {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid lastLossTsNanos field");
         return std::nullopt;
     }
 
@@ -54,6 +60,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
         result.overflowCounter = logEventValues[3].mValue.get<int32_t>();
     } else {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid overflowCounter field");
         return std::nullopt;
     }
 
@@ -77,6 +84,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     }
     if (result.errors.size() != expectedEntriesCount) {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid errors field");
         return std::nullopt;
     }
 
@@ -87,6 +95,7 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     }
     if (result.atomIds.size() != expectedEntriesCount) {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid atomIds field");
         return std::nullopt;
     }
 
@@ -97,11 +106,13 @@ std::optional<SocketLossInfo> toSocketLossInfo(const LogEvent& event) {
     }
     if (result.counts.size() != expectedEntriesCount) {
         // atom content is invalid
+        VLOG("toSocketLossInfo: invalid counts field");
         return std::nullopt;
     }
 
     if (valuesIt != logEventValues.end()) {
         // atom content is invalid, some extra values are present
+        VLOG("toSocketLossInfo: extra values are present");
         return std::nullopt;
     }
 

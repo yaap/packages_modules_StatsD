@@ -675,6 +675,25 @@ bool checkPermissionForIds(const char* permission, pid_t pid, uid_t uid) {
     return success;
 }
 
+struct AtomIdRange {
+    int start;
+    int end;
+};
+
+constexpr AtomIdRange PLATFORM_PULLED_ATOMS_RANGE = {10000, 99999};
+constexpr AtomIdRange VENDOR_PULLED_ATOMS_RANGE = {150000, 199999};
+constexpr AtomIdRange GENERIC_VENDOR_PULLED_ATOMS_RANGE = {350000, 399999};
+
+static bool isAtomIdInRange(int atomId, const AtomIdRange& range) {
+    return atomId >= range.start && atomId <= range.end;
+}
+
+bool isPulledAtom(int atomId) {
+    return isAtomIdInRange(atomId, PLATFORM_PULLED_ATOMS_RANGE) ||
+           isAtomIdInRange(atomId, VENDOR_PULLED_ATOMS_RANGE) ||
+           isAtomIdInRange(atomId, GENERIC_VENDOR_PULLED_ATOMS_RANGE);
+}
+
 void mapIsolatedUidsToHostUidInLogEvent(const sp<UidMap>& uidMap, LogEvent& event) {
     uint8_t remainingUidCount = event.getNumUidFields();
     vector<FieldValue>* fieldValues = event.getMutableValues();

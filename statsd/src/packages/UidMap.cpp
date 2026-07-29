@@ -89,8 +89,31 @@ bool omitUid(int32_t uid, const string& packageName, const UidMapOptions& option
     if (options.omitSystemUids && uid >= 0 && uid % AID_USER_OFFSET < AID_APP_START) {
         return true;
     }
-    // If omitUnusedUids is true, omit the uid unless it is in the used set.
-    return options.omitUnusedUids && !options.usedUids.contains(uid);
+
+    // If omitUnusedUids is false, then we should not omit other uids.
+    if (!options.omitUnusedUids) {
+        return false;
+    }
+
+    // If the uid is used, then we should not omit it.
+    if (options.usedUids.contains(uid)) {
+        return false;
+    }
+
+    // If the uid is an app uid, then we should check if the sdk sandbox or pcc component uid is
+    // used. If so, then we should not omit the app uid.
+    if (uid >= 0) {
+        const int appId = uid % AID_USER_OFFSET;
+        if (appId >= AID_APP_START && appId <= AID_APP_END) {
+            const int32_t sdkSandboxUid = uid + (AID_SDK_SANDBOX_PROCESS_START - AID_APP_START);
+            const int32_t pccComponentUid = uid + (AID_PCC_COMPONENT_PROCESS_START - AID_APP_START);
+            if (options.usedUids.contains(sdkSandboxUid) ||
+                options.usedUids.contains(pccComponentUid)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -339,17 +362,14 @@ size_t UidMap::getBytesUsed() const {
 }
 
 void UidMap::writeUidMapSnapshot(int64_t timestamp, const UidMapOptions& options,
-                                 const std::set<int32_t>& interestingUids,
                                  map<string, int>* installerIndices, std::set<string>* str_set,
                                  ProtoOutputStream* proto) const {
     std::lock_guard lock(mMutex);
 
-    writeUidMapSnapshotLocked(timestamp, options, interestingUids, installerIndices, str_set,
-                              proto);
+    writeUidMapSnapshotLocked(timestamp, options, installerIndices, str_set, proto);
 }
 
 void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOptions& options,
-                                       const std::set<int32_t>& interestingUids,
                                        map<string, int>* installerIndices,
                                        std::set<string>* str_set, ProtoOutputStream* proto) const {
     int curInstallerIndex = 0;
@@ -357,8 +377,7 @@ void UidMap::writeUidMapSnapshotLocked(const int64_t timestamp, const UidMapOpti
     proto->write(FIELD_TYPE_INT64 | FIELD_ID_SNAPSHOT_TIMESTAMP, (long long)timestamp);
     for (const auto& [keyPair, appData] : mMap) {
         const auto& [uid, packageName] = keyPair;
-        if (omitUid(uid, packageName, options) ||
-            (!interestingUids.empty() && interestingUids.find(uid) == interestingUids.end())) {
+        if (omitUid(uid, packageName, options)) {
             continue;
         }
         uint64_t token = proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED |
@@ -480,9 +499,7 @@ void UidMap::appendUidMap(const int64_t timestamp, const ConfigKey& key,
     // Write snapshot from current uid map state.
     uint64_t snapshotsToken =
             proto->start(FIELD_TYPE_MESSAGE | FIELD_COUNT_REPEATED | FIELD_ID_SNAPSHOTS);
-    writeUidMapSnapshotLocked(timestamp, options,
-                              std::set<int32_t>() /*empty uid set means including every uid*/,
-                              &installerIndices, str_set, proto);
+    writeUidMapSnapshotLocked(timestamp, options, &installerIndices, str_set, proto);
     proto->end(snapshotsToken);
 
     vector<string> installers(installerIndices.size(), "");
@@ -567,107 +584,115 @@ set<int32_t> UidMap::getAppUid(const string& package) const {
 // Note not all the following AIDs are used as uids. Some are used only for gids.
 // It's ok to leave them in the map, but we won't ever see them in the log's uid field.
 // App's uid starts from 10000, and will not overlap with the following AIDs.
-const std::map<string, uint32_t> UidMap::sAidToUidMapping = {{"AID_ROOT", 0},
-                                                             {"AID_SYSTEM", 1000},
-                                                             {"AID_RADIO", 1001},
-                                                             {"AID_BLUETOOTH", 1002},
-                                                             {"AID_GRAPHICS", 1003},
-                                                             {"AID_INPUT", 1004},
-                                                             {"AID_AUDIO", 1005},
-                                                             {"AID_CAMERA", 1006},
-                                                             {"AID_LOG", 1007},
-                                                             {"AID_COMPASS", 1008},
-                                                             {"AID_MOUNT", 1009},
-                                                             {"AID_WIFI", 1010},
-                                                             {"AID_ADB", 1011},
-                                                             {"AID_INSTALL", 1012},
-                                                             {"AID_MEDIA", 1013},
-                                                             {"AID_DHCP", 1014},
-                                                             {"AID_SDCARD_RW", 1015},
-                                                             {"AID_VPN", 1016},
-                                                             {"AID_KEYSTORE", 1017},
-                                                             {"AID_USB", 1018},
-                                                             {"AID_DRM", 1019},
-                                                             {"AID_MDNSR", 1020},
-                                                             {"AID_GPS", 1021},
-                                                             // {"AID_UNUSED1", 1022},
-                                                             {"AID_MEDIA_RW", 1023},
-                                                             {"AID_MTP", 1024},
-                                                             // {"AID_UNUSED2", 1025},
-                                                             {"AID_DRMRPC", 1026},
-                                                             {"AID_NFC", 1027},
-                                                             {"AID_SDCARD_R", 1028},
-                                                             {"AID_CLAT", 1029},
-                                                             {"AID_LOOP_RADIO", 1030},
-                                                             {"AID_MEDIA_DRM", 1031},
-                                                             {"AID_PACKAGE_INFO", 1032},
-                                                             {"AID_SDCARD_PICS", 1033},
-                                                             {"AID_SDCARD_AV", 1034},
-                                                             {"AID_SDCARD_ALL", 1035},
-                                                             {"AID_LOGD", 1036},
-                                                             {"AID_SHARED_RELRO", 1037},
-                                                             {"AID_DBUS", 1038},
-                                                             {"AID_TLSDATE", 1039},
-                                                             {"AID_MEDIA_EX", 1040},
-                                                             {"AID_AUDIOSERVER", 1041},
-                                                             {"AID_METRICS_COLL", 1042},
-                                                             {"AID_METRICSD", 1043},
-                                                             {"AID_WEBSERV", 1044},
-                                                             {"AID_DEBUGGERD", 1045},
-                                                             {"AID_MEDIA_CODEC", 1046},
-                                                             {"AID_CAMERASERVER", 1047},
-                                                             {"AID_FIREWALL", 1048},
-                                                             {"AID_TRUNKS", 1049},
-                                                             {"AID_NVRAM", 1050},
-                                                             {"AID_DNS", 1051},
-                                                             {"AID_DNS_TETHER", 1052},
-                                                             {"AID_WEBVIEW_ZYGOTE", 1053},
-                                                             {"AID_VEHICLE_NETWORK", 1054},
-                                                             {"AID_MEDIA_AUDIO", 1055},
-                                                             {"AID_MEDIA_VIDEO", 1056},
-                                                             {"AID_MEDIA_IMAGE", 1057},
-                                                             {"AID_TOMBSTONED", 1058},
-                                                             {"AID_MEDIA_OBB", 1059},
-                                                             {"AID_ESE", 1060},
-                                                             {"AID_OTA_UPDATE", 1061},
-                                                             {"AID_AUTOMOTIVE_EVS", 1062},
-                                                             {"AID_LOWPAN", 1063},
-                                                             {"AID_HSM", 1064},
-                                                             {"AID_RESERVED_DISK", 1065},
-                                                             {"AID_STATSD", 1066},
-                                                             {"AID_INCIDENTD", 1067},
-                                                             {"AID_SECURE_ELEMENT", 1068},
-                                                             {"AID_LMKD", 1069},
-                                                             {"AID_LLKD", 1070},
-                                                             {"AID_IORAPD", 1071},
-                                                             {"AID_GPU_SERVICE", 1072},
-                                                             {"AID_NETWORK_STACK", 1073},
-                                                             {"AID_GSID", 1074},
-                                                             {"AID_FSVERITY_CERT", 1075},
-                                                             {"AID_CREDSTORE", 1076},
-                                                             {"AID_EXTERNAL_STORAGE", 1077},
-                                                             {"AID_EXT_DATA_RW", 1078},
-                                                             {"AID_EXT_OBB_RW", 1079},
-                                                             {"AID_CONTEXT_HUB", 1080},
-                                                             {"AID_VIRTUALIZATIONSERVICE", 1081},
-                                                             {"AID_ARTD", 1082},
-                                                             {"AID_UWB", 1083},
-                                                             {"AID_THREAD_NETWORK", 1084},
-                                                             {"AID_DICED", 1085},
-                                                             {"AID_DMESGD", 1086},
-                                                             {"AID_JC_WEAVER", 1087},
-                                                             {"AID_JC_STRONGBOX", 1088},
-                                                             {"AID_JC_IDENTITYCRED", 1089},
-                                                             {"AID_SDK_SANDBOX", 1090},
-                                                             {"AID_SECURITY_LOG_WRITER", 1091},
-                                                             {"AID_PRNG_SEEDER", 1092},
-                                                             {"AID_UPROBESTATS", 1093},
-                                                             {"AID_CROS_EC", 1094},
-                                                             {"AID_MMD", 1095},
-                                                             {"AID_SHELL", 2000},
-                                                             {"AID_CACHE", 2001},
-                                                             {"AID_DIAG", 2002},
-                                                             {"AID_NOBODY", 9999}};
+const std::map<string, uint32_t> UidMap::sAidToUidMapping = {
+        {"AID_ROOT", AID_ROOT},
+        {"AID_SYSTEM", AID_SYSTEM},
+        {"AID_RADIO", AID_RADIO},
+        {"AID_BLUETOOTH", AID_BLUETOOTH},
+        {"AID_GRAPHICS", AID_GRAPHICS},
+        {"AID_INPUT", AID_INPUT},
+        {"AID_AUDIO", AID_AUDIO},
+        {"AID_CAMERA", AID_CAMERA},
+        {"AID_LOG", AID_LOG},
+        {"AID_COMPASS", AID_COMPASS},
+        {"AID_MOUNT", AID_MOUNT},
+        {"AID_WIFI", AID_WIFI},
+        {"AID_ADB", AID_ADB},
+        {"AID_INSTALL", AID_INSTALL},
+        {"AID_MEDIA", AID_MEDIA},
+        {"AID_DHCP", AID_DHCP},
+        {"AID_SDCARD_RW", AID_SDCARD_RW},
+        {"AID_VPN", AID_VPN},
+        {"AID_KEYSTORE", AID_KEYSTORE},
+        {"AID_USB", AID_USB},
+        {"AID_DRM", AID_DRM},
+        {"AID_MDNSR", AID_MDNSR},
+        {"AID_GPS", AID_GPS},
+        // {"AID_UNUSED1", 1022},
+        {"AID_MEDIA_RW", AID_MEDIA_RW},
+        {"AID_MTP", AID_MTP},
+        // {"AID_UNUSED2", 1025},
+        {"AID_DRMRPC", AID_DRMRPC},
+        {"AID_NFC", AID_NFC},
+        {"AID_SDCARD_R", AID_SDCARD_R},
+        {"AID_CLAT", AID_CLAT},
+        {"AID_LOOP_RADIO", AID_LOOP_RADIO},
+        {"AID_MEDIA_DRM", AID_MEDIA_DRM},
+        {"AID_PACKAGE_INFO", AID_PACKAGE_INFO},
+        {"AID_SDCARD_PICS", AID_SDCARD_PICS},
+        {"AID_SDCARD_AV", AID_SDCARD_AV},
+        {"AID_SDCARD_ALL", AID_SDCARD_ALL},
+        {"AID_LOGD", AID_LOGD},
+        {"AID_SHARED_RELRO", AID_SHARED_RELRO},
+        {"AID_DBUS", AID_DBUS},
+        {"AID_TLSDATE", AID_TLSDATE},
+        {"AID_MEDIA_EX", AID_MEDIA_EX},
+        {"AID_AUDIOSERVER", AID_AUDIOSERVER},
+        {"AID_METRICS_COLL", AID_METRICS_COLL},
+        {"AID_METRICSD", AID_METRICSD},
+        {"AID_WEBSERV", AID_WEBSERV},
+        {"AID_DEBUGGERD", AID_DEBUGGERD},
+        {"AID_MEDIA_CODEC", AID_MEDIA_CODEC},
+        {"AID_CAMERASERVER", AID_CAMERASERVER},
+        {"AID_FIREWALL", AID_FIREWALL},
+        {"AID_TRUNKS", AID_TRUNKS},
+        {"AID_NVRAM", AID_NVRAM},
+        {"AID_DNS", AID_DNS},
+        {"AID_DNS_TETHER", AID_DNS_TETHER},
+        {"AID_WEBVIEW_ZYGOTE", AID_WEBVIEW_ZYGOTE},
+        {"AID_VEHICLE_NETWORK", AID_VEHICLE_NETWORK},
+        {"AID_MEDIA_AUDIO", AID_MEDIA_AUDIO},
+        {"AID_MEDIA_VIDEO", AID_MEDIA_VIDEO},
+        {"AID_MEDIA_IMAGE", AID_MEDIA_IMAGE},
+        {"AID_TOMBSTONED", AID_TOMBSTONED},
+        {"AID_MEDIA_OBB", AID_MEDIA_OBB},
+        {"AID_ESE", AID_ESE},
+        {"AID_OTA_UPDATE", AID_OTA_UPDATE},
+        {"AID_AUTOMOTIVE_EVS", AID_AUTOMOTIVE_EVS},
+        {"AID_LOWPAN", AID_LOWPAN},
+        {"AID_HSM", AID_HSM},
+        {"AID_RESERVED_DISK", AID_RESERVED_DISK},
+        {"AID_STATSD", AID_STATSD},
+        {"AID_INCIDENTD", AID_INCIDENTD},
+        {"AID_SECURE_ELEMENT", AID_SECURE_ELEMENT},
+        {"AID_LMKD", AID_LMKD},
+        {"AID_LLKD", AID_LLKD},
+        {"AID_IORAPD", AID_IORAPD},
+        {"AID_GPU_SERVICE", AID_GPU_SERVICE},
+        {"AID_NETWORK_STACK", AID_NETWORK_STACK},
+        {"AID_GSID", AID_GSID},
+        {"AID_FSVERITY_CERT", AID_FSVERITY_CERT},
+        {"AID_CREDSTORE", AID_CREDSTORE},
+        {"AID_EXTERNAL_STORAGE", AID_EXTERNAL_STORAGE},
+        {"AID_EXT_DATA_RW", AID_EXT_DATA_RW},
+        {"AID_EXT_OBB_RW", AID_EXT_OBB_RW},
+        {"AID_CONTEXT_HUB", AID_CONTEXT_HUB},
+        {"AID_VIRTUALIZATIONSERVICE", AID_VIRTUALIZATIONSERVICE},
+        {"AID_ARTD", AID_ARTD},
+        {"AID_UWB", AID_UWB},
+        {"AID_THREAD_NETWORK", AID_THREAD_NETWORK},
+        {"AID_DICED", AID_DICED},
+        {"AID_DMESGD", AID_DMESGD},
+        {"AID_JC_WEAVER", AID_JC_WEAVER},
+        {"AID_JC_STRONGBOX", AID_JC_STRONGBOX},
+        {"AID_JC_IDENTITYCRED", AID_JC_IDENTITYCRED},
+        {"AID_SDK_SANDBOX", AID_SDK_SANDBOX},
+        {"AID_SECURITY_LOG_WRITER", AID_SECURITY_LOG_WRITER},
+        {"AID_PRNG_SEEDER", AID_PRNG_SEEDER},
+        {"AID_UPROBESTATS", AID_UPROBESTATS},
+        {"AID_CROS_EC", AID_CROS_EC},
+        {"AID_MMD", AID_MMD},
+        {"AID_UPDATE_ENGINE_LOG", AID_UPDATE_ENGINE_LOG},
+        {"AID_AP_FIRMWARE", AID_AP_FIRMWARE},
+        {"AID_PMGD", AID_PMGD},
+        {"AID_SDV_SD_AGENT", AID_SDV_SD_AGENT},
+        {"AID_SDV_DT_AGENT", AID_SDV_DT_AGENT},
+        {"AID_SDV_RPC_AGENT", AID_SDV_RPC_AGENT},
+        {"AID_SDV_INIT_OPEN_DICE", AID_SDV_INIT_OPEN_DICE},
+        {"AID_SHELL", AID_SHELL},
+        {"AID_CACHE", AID_CACHE},
+        {"AID_DIAG", AID_DIAG},
+        {"AID_NOBODY", AID_NOBODY}};
 
 }  // namespace statsd
 }  // namespace os

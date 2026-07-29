@@ -126,7 +126,10 @@ private:
 
     FRIEND_TEST(KllMetricProducerTest_PartialBucket, TestPushedEventsMultipleBuckets);
 
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitKllMetricsHasInvalidMetrics);
+
     FRIEND_TEST(ConfigUpdateTest, TestUpdateKllMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateKllMetricsHasInvalidMetrics);
 
     FRIEND_TEST(MetricsManagerUtilDimLimitTest, TestDimLimit);
 

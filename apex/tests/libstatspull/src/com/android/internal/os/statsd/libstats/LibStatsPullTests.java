@@ -34,6 +34,7 @@ import com.android.internal.os.StatsdConfigProto.SimpleAtomMatcher;
 import com.android.internal.os.StatsdConfigProto.StatsdConfig;
 import com.android.internal.os.StatsdConfigProto.TimeUnit;
 import com.android.internal.os.statsd.protos.TestAtoms;
+import com.android.internal.os.statsdutils.StatsConfigUtils;
 import com.android.os.AtomsProto.Atom;
 
 import org.junit.After;
@@ -53,7 +54,7 @@ public class LibStatsPullTests {
     private static final int SHORT_SLEEP_MILLIS = 250;
     private static final int LONG_SLEEP_MILLIS = 1_000;
     private Context mContext;
-    private static final int PULL_ATOM_TAG = 150030;
+    private static final int PULL_ATOM_TAG = 150_030;
     private static final int APP_BREADCRUMB_LABEL = 3;
     private static int sPullReturnValue;
     private static long sConfigId;
@@ -274,12 +275,13 @@ public class LibStatsPullTests {
         assertThat(data.size()).isEqualTo(0);
     }
 
-    private void createAndAddConfigToStatsd(StatsManager statsManager) throws Exception {
+    private static void createAndAddConfigToStatsd(StatsManager statsManager) throws Exception {
         sConfigId = System.currentTimeMillis();
         long triggerMatcherId = sConfigId + 10;
         long pullerMatcherId = sConfigId + 11;
         long metricId = sConfigId + 100;
-        StatsdConfig config = StatsConfigUtils.getSimpleTestConfig(sConfigId)
+        StatsdConfig config = StatsConfigUtils.getSimpleTestConfig(sConfigId,
+                LibStatsPullTests.class.getPackageName())
                 .addAtomMatcher(
                         StatsConfigUtils.getAppBreadcrumbMatcher(triggerMatcherId,
                                 APP_BREADCRUMB_LABEL))

@@ -218,7 +218,10 @@ protected:
     FRIEND_TEST(AnomalyDurationDetectionE2eTest, TestDurationMetric_SUM_multiple_buckets);
     FRIEND_TEST(AnomalyDurationDetectionE2eTest, TestDurationMetric_SUM_long_refractory_period);
 
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitAlertsHasInvalidAlerts);
+
     FRIEND_TEST(ConfigUpdateTest, TestUpdateAlerts);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateAlertsHasInvalidAlert);
 };
 
 }  // namespace statsd

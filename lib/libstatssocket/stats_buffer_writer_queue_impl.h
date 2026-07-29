@@ -25,15 +25,18 @@
 #include <queue>
 #include <thread>
 
+#include "stats_event_type.h"
+
 class BufferWriterQueue {
 public:
     constexpr static int kDelayOnFailedWriteMs = 5;
     constexpr static int kQueueMaxSizeLimit = 4800;  // 2X max_dgram_qlen
+    constexpr static int kQueueRetryCount = 10;
 
     BufferWriterQueue();
     virtual ~BufferWriterQueue();
 
-    bool write(const uint8_t* buffer, size_t size, uint32_t atomId);
+    bool write(const uint8_t* buffer, size_t size, AStatsEventAtomId atomId);
 
     size_t getQueueSize() const;
 
@@ -41,11 +44,11 @@ public:
 
     struct Cmd {
         uint8_t* buffer = NULL;
-        int atomId = 0;
+        AStatsEventAtomId atomId = 0;
         int size = 0;
     };
 
-    virtual bool handleCommand(const Cmd& cmd) const;
+    virtual bool handleCommand(const Cmd& cmd, bool doNoteDrop) const;
 
 private:
     std::condition_variable mCondition;
@@ -55,7 +58,7 @@ private:
     std::thread mWorkThread;
     std::atomic_bool mWorkerThreadStarted = false;
 
-    static Cmd createWriteBufferCmd(const uint8_t* buffer, size_t size, uint32_t atomId);
+    static Cmd createWriteBufferCmd(const uint8_t* buffer, size_t size, AStatsEventAtomId atomId);
 
     void startWorkerThread();
 

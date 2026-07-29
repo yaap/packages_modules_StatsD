@@ -22,6 +22,7 @@
 #include <string>
 
 #include "src/statsd_config.pb.h"  // Alert
+#include "utils/api_tracing.h"
 
 namespace android {
 namespace os {
@@ -55,6 +56,7 @@ namespace flags = com::android::os::statsd::flags;
 }  // namespace
 
 bool StartUprobeStats(const UprobestatsDetails& config) {
+    ATRACE_CALL();
     if (!flags::trigger_uprobestats()) {
         return false;
     }

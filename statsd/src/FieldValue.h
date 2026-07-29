@@ -92,8 +92,11 @@ public:
         mField = getEncodedField(pos, depth, true);
     }
 
-    Field(const Field& from) : mTag(from.getTag()), mField(from.getField()) {
-    }
+    Field(const Field& from) = default;
+    Field(Field&&) = default;
+    Field& operator=(const Field&) = default;
+    Field& operator=(Field&&) = default;
+    ~Field() = default;
 
     Field(int32_t tag, int32_t field) : mTag(tag), mField(field){};
 
@@ -310,10 +313,15 @@ public:
 
     constexpr Value(const Value& other) = default;
 
+    Value(Value&& other) noexcept = default;
+
+    ~Value() = default;
+
     auto operator<=>(const Value& that) const = default;
 
     Value& operator+=(const Value& that);
     Value& operator=(const Value& that) = default;
+    Value& operator=(Value&& other) noexcept = default;
 
 private:
     std::variant<std::monostate, int32_t, int64_t, float, double, std::string, std::vector<uint8_t>>

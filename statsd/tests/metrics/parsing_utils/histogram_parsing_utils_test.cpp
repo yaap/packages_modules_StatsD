@@ -48,7 +48,10 @@ TEST_F(HistogramParsingUtilsTest, TestMissingHistogramBinConfigId) {
     StatsdConfig config = createExplicitHistogramStatsdConfig(/* bins */ {5});
     config.mutable_value_metric(0)->mutable_histogram_bin_configs()->Mutable(0)->clear_id();
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_BIN_CONFIG_ID,
                                   config.value_metric(0).id()));
 }
@@ -57,7 +60,10 @@ TEST_F(HistogramParsingUtilsTest, TestMissingHistogramBinConfigBinningStrategy) 
     StatsdConfig config = createHistogramStatsdConfig();
     config.mutable_value_metric(0)->add_histogram_bin_configs()->set_id(1);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_UNKNOWN_BINNING_STRATEGY,
                                   config.value_metric(0).id()));
 }
@@ -70,8 +76,11 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMissingMin) {
             ->mutable_generated_bins()
             ->clear_min();
 
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
     EXPECT_EQ(
-            initConfig(config),
+            invalidEntities[(
+                    InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
             InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_GENERATED_BINS_ARGS,
                                 config.value_metric(0).id()));
 }
@@ -84,8 +93,11 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMissingMax) {
             ->mutable_generated_bins()
             ->clear_max();
 
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
     EXPECT_EQ(
-            initConfig(config),
+            invalidEntities[(
+                    InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
             InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_GENERATED_BINS_ARGS,
                                 config.value_metric(0).id()));
 }
@@ -98,8 +110,11 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMissingCount) {
             ->mutable_generated_bins()
             ->clear_count();
 
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
     EXPECT_EQ(
-            initConfig(config),
+            invalidEntities[(
+                    InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
             InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_GENERATED_BINS_ARGS,
                                 config.value_metric(0).id()));
 }
@@ -110,8 +125,11 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMissingStrategy) {
             createGeneratedBinConfig(/* id */ 1, /* min */ 1, /* max */ 10, /* count */ 5,
                                      HistogramBinConfig::GeneratedBins::UNKNOWN);
 
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
     EXPECT_EQ(
-            initConfig(config),
+            invalidEntities[(
+                    InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
             InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_GENERATED_BINS_ARGS,
                                 config.value_metric(0).id()));
 
@@ -121,8 +139,11 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMissingStrategy) {
             ->clear_strategy();
 
     clearData();
+    invalidEntities = initConfig(config);
+
     EXPECT_EQ(
-            initConfig(config),
+            invalidEntities[(
+                    InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
             InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_MISSING_GENERATED_BINS_ARGS,
                                 config.value_metric(0).id()));
 }
@@ -131,7 +152,10 @@ TEST_F(HistogramParsingUtilsTest, TestGeneratedBinsMinNotLessThanMax) {
     StatsdConfig config =
             createGeneratedHistogramStatsdConfig(/* min */ 10, /* max */ 10, /* count */ 5, LINEAR);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(
                       INVALID_CONFIG_REASON_VALUE_METRIC_HIST_GENERATED_BINS_INVALID_MIN_MAX,
                       config.value_metric(0).id()));
@@ -141,7 +165,10 @@ TEST_F(HistogramParsingUtilsTest, TestExponentialBinsMinNotLessThanMax) {
     StatsdConfig config = createGeneratedHistogramStatsdConfig(/* min */ 10, /* max */ 10,
                                                                /* count */ 5, EXPONENTIAL);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(
                       INVALID_CONFIG_REASON_VALUE_METRIC_HIST_GENERATED_BINS_INVALID_MIN_MAX,
                       config.value_metric(0).id()));
@@ -151,7 +178,10 @@ TEST_F(HistogramParsingUtilsTest, TestExponentialBinsZeroMin) {
     StatsdConfig config = createGeneratedHistogramStatsdConfig(/* min */ 0, /* max */ 10,
                                                                /* count */ 5, EXPONENTIAL);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(
                       INVALID_CONFIG_REASON_VALUE_METRIC_HIST_GENERATED_BINS_INVALID_MIN_MAX,
                       config.value_metric(0).id()));
@@ -161,7 +191,7 @@ TEST_F(HistogramParsingUtilsTest, TestTooFewGeneratedBins) {
     StatsdConfig config =
             createGeneratedHistogramStatsdConfig(/* min */ 10, /* max */ 50, /* count */ 2, LINEAR);
 
-    EXPECT_EQ(initConfig(config), nullopt);
+    EXPECT_TRUE(initConfig(config).empty());
 
     config.mutable_value_metric(0)
             ->mutable_histogram_bin_configs(0)
@@ -169,7 +199,11 @@ TEST_F(HistogramParsingUtilsTest, TestTooFewGeneratedBins) {
             ->set_count(1);
 
     clearData();
-    EXPECT_EQ(initConfig(config),
+
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_TOO_FEW_BINS,
                                   config.value_metric(0).id()));
 }
@@ -178,7 +212,7 @@ TEST_F(HistogramParsingUtilsTest, TestTooManyGeneratedBins) {
     StatsdConfig config = createGeneratedHistogramStatsdConfig(/* min */ 10, /* max */ 50,
                                                                /* count */ 100, LINEAR);
 
-    EXPECT_EQ(initConfig(config), nullopt);
+    EXPECT_TRUE(initConfig(config).empty());
 
     config.mutable_value_metric(0)
             ->mutable_histogram_bin_configs(0)
@@ -186,7 +220,11 @@ TEST_F(HistogramParsingUtilsTest, TestTooManyGeneratedBins) {
             ->set_count(101);
 
     clearData();
-    EXPECT_EQ(initConfig(config),
+
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_TOO_MANY_BINS,
                                   config.value_metric(0).id()));
 }
@@ -194,7 +232,10 @@ TEST_F(HistogramParsingUtilsTest, TestTooManyGeneratedBins) {
 TEST_F(HistogramParsingUtilsTest, TestTooFewExplicitBins) {
     StatsdConfig config = createExplicitHistogramStatsdConfig(/* bins */ {1});
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_TOO_FEW_BINS,
                                   config.value_metric(0).id()));
 
@@ -204,7 +245,7 @@ TEST_F(HistogramParsingUtilsTest, TestTooFewExplicitBins) {
             ->add_bin(2);
 
     clearData();
-    EXPECT_EQ(initConfig(config), nullopt);
+    EXPECT_TRUE(initConfig(config).empty());
 }
 
 TEST_F(HistogramParsingUtilsTest, TestTooManyExplicitBins) {
@@ -213,7 +254,7 @@ TEST_F(HistogramParsingUtilsTest, TestTooManyExplicitBins) {
     std::iota(std::begin(bins), std::end(bins), 1);
     StatsdConfig config = createExplicitHistogramStatsdConfig(bins);
 
-    EXPECT_EQ(initConfig(config), nullopt);
+    EXPECT_TRUE(initConfig(config).empty());
 
     config.mutable_value_metric(0)
             ->mutable_histogram_bin_configs(0)
@@ -221,7 +262,11 @@ TEST_F(HistogramParsingUtilsTest, TestTooManyExplicitBins) {
             ->add_bin(101);
 
     clearData();
-    EXPECT_EQ(initConfig(config),
+
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(INVALID_CONFIG_REASON_VALUE_METRIC_HIST_TOO_MANY_BINS,
                                   config.value_metric(0).id()));
 }
@@ -237,7 +282,10 @@ TEST_F(HistogramParsingUtilsTest, TestExplicitBinsDuplicateValues) {
             ->mutable_explicit_bins()
             ->add_bin(50);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(
                       INVALID_CONFIG_REASON_VALUE_METRIC_HIST_EXPLICIT_BINS_NOT_STRICTLY_ORDERED,
                       config.value_metric(0).id()));
@@ -253,7 +301,10 @@ TEST_F(HistogramParsingUtilsTest, TestExplicitBinsUnsortedValues) {
 
     StatsdConfig config = createExplicitHistogramStatsdConfig(bins);
 
-    EXPECT_EQ(initConfig(config),
+    unordered_map<InvalidEntityKey, InvalidConfigReason> invalidEntities = initConfig(config);
+
+    EXPECT_EQ(invalidEntities[(
+                      InvalidEntityKey{config.value_metric(0).id(), INVALID_ENTITY_TYPE_METRIC})],
               InvalidConfigReason(
                       INVALID_CONFIG_REASON_VALUE_METRIC_HIST_EXPLICIT_BINS_NOT_STRICTLY_ORDERED,
                       config.value_metric(0).id()));

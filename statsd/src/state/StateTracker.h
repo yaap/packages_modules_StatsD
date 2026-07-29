@@ -20,6 +20,7 @@
 #include <set>
 #include <unordered_map>
 
+#include "FieldValue.h"
 #include "HashableDimensionKey.h"
 #include "logd/LogEvent.h"
 #include "state/StateListener.h"
@@ -52,7 +53,7 @@ public:
     //
     // If the key isn't mapped to a state or the key size doesn't match the
     // number of primary fields, the output value is set to kStateUnknown.
-    bool getStateValue(const HashableDimensionKey& queryKey, FieldValue* output) const;
+    FieldValue getStateValue(const HashableDimensionKey& queryKey) const;
 
     inline int getListenersCount() const {
         return mListeners.size();

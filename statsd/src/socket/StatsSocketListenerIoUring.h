@@ -51,7 +51,7 @@ private:
 
     std::unique_ptr<IOUringSocketHandler> mIoUringSocketHandler;
 
-    static const int MAX_BUFFERS = 64;
+    static const int MAX_BUFFERS = 32;
 
     std::unique_ptr<BaseStatsSocketListener> gSocketListener = nullptr;
 

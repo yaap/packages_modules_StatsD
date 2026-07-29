@@ -64,7 +64,6 @@ MetricProducer::MetricProducer(
     : mMetricId(metricId),
       mProtoHash(protoHash),
       mConfigKey(key),
-      mValid(true),
       mTimeBaseNs(timeBaseNs),
       mCurrentBucketStartTimeNs(timeBaseNs),
       mCurrentBucketNum(0),
@@ -89,7 +88,7 @@ MetricProducer::MetricProducer(
       mConfigMetadataProvider(configMetadataProvider) {
 }
 
-optional<InvalidConfigReason> MetricProducer::onConfigUpdatedLocked(
+void MetricProducer::onConfigUpdatedLocked(
         const StatsdConfig& config, const int configIndex, const int metricIndex,
         const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
         const unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -98,6 +97,7 @@ optional<InvalidConfigReason> MetricProducer::onConfigUpdatedLocked(
         const vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& conditionTrackerMap, const sp<ConditionWizard>& wizard,
         const unordered_map<int64_t, int>& metricToActivationMap,
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
         unordered_map<int, vector<int>>& activationAtomTrackerToMetricMap,
@@ -108,18 +108,14 @@ optional<InvalidConfigReason> MetricProducer::onConfigUpdatedLocked(
 
     unordered_map<int, shared_ptr<Activation>> newEventActivationMap;
     unordered_map<int, vector<shared_ptr<Activation>>> newEventDeactivationMap;
-    optional<InvalidConfigReason> invalidConfigReason = handleMetricActivationOnConfigUpdate(
-            config, mMetricId, metricIndex, metricToActivationMap, oldAtomMatchingTrackerMap,
-            newAtomMatchingTrackerMap, mEventActivationMap, activationAtomTrackerToMetricMap,
-            deactivationAtomTrackerToMetricMap, metricsWithActivation, newEventActivationMap,
-            newEventDeactivationMap);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+    handleMetricActivationOnConfigUpdate(config, mMetricId, metricIndex, metricToActivationMap,
+                                         oldAtomMatchingTrackerMap, newAtomMatchingTrackerMap,
+                                         mEventActivationMap, activationAtomTrackerToMetricMap,
+                                         deactivationAtomTrackerToMetricMap, metricsWithActivation,
+                                         newEventActivationMap, newEventDeactivationMap);
     mEventActivationMap = newEventActivationMap;
     mEventDeactivationMap = newEventDeactivationMap;
     mAnomalyTrackers.clear();
-    return nullopt;
 }
 
 void MetricProducer::onMatchedLogEventLocked(const size_t matcherIndex, const LogEvent& event) {
@@ -176,11 +172,11 @@ void MetricProducer::onMatchedLogEventLocked(const size_t matcherIndex, const Lo
         FieldValue value;
         if (statePrimaryKeys.find(atomId) != statePrimaryKeys.end()) {
             // found a primary key for this state, query using the key
-            queryStateValue(atomId, statePrimaryKeys[atomId], &value);
+            value = queryStateValue(atomId, statePrimaryKeys[atomId]);
         } else {
             // if no MetricStateLinks exist for this state atom,
             // query using the default dimension key (empty HashableDimensionKey)
-            queryStateValue(atomId, DEFAULT_DIMENSION_KEY, &value);
+            value = queryStateValue(atomId, DEFAULT_DIMENSION_KEY);
         }
         mapStateValue(atomId, &value);
         stateValuesKey.addValue(value);
@@ -359,12 +355,8 @@ void MetricProducer::writeActiveMetricToProtoOutputStream(
     }
 }
 
-void MetricProducer::queryStateValue(int32_t atomId, const HashableDimensionKey& queryKey,
-                                     FieldValue* value) {
-    if (!StateManager::getInstance().getStateValue(atomId, queryKey, value)) {
-        value->mValue = Value(StateTracker::kStateUnknown);
-        value->mField.setTag(atomId);
-    }
+FieldValue MetricProducer::queryStateValue(int32_t atomId, const HashableDimensionKey& queryKey) {
+    return StateManager::getInstance().getStateValue(atomId, queryKey);
 }
 
 void MetricProducer::mapStateValue(int32_t atomId, FieldValue* value) {

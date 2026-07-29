@@ -70,7 +70,9 @@ import com.android.os.credentials.CredentialsExtensionAtoms;
 import com.android.os.sdksandbox.SdksandboxExtensionAtoms;
 import com.android.os.apex.ApexExtensionAtoms;
 import com.android.os.photopicker.PhotopickerExtensionAtoms;
-import com.android.os.uprobestats.UprobestatsExtensionAtoms;
+import com.android.uprobestats.UprobestatsExtensionAtoms;
+import com.android.os.display.DisplayExtensionAtoms;
+import com.android.os.wear.powermanager.PowermanagerExtensionAtoms;
 
 import com.google.protobuf.ExtensionRegistry;
 
@@ -156,5 +158,7 @@ public class ExtensionAtomsRegistry {
         AccessibilityExtensionAtoms.registerAllExtensions(extensionRegistry);
         BroadcastsExtensionAtoms.registerAllExtensions(extensionRegistry);
         ZramExtensionAtoms.registerAllExtensions(extensionRegistry);
+        DisplayExtensionAtoms.registerAllExtensions(extensionRegistry);
+        PowermanagerExtensionAtoms.registerAllExtensions(extensionRegistry);
     }
 }

@@ -155,8 +155,8 @@ public:
     // This metric and all of its dependencies are guaranteed to be preserved across the update.
     // This function also updates several maps used by metricsManager.
     // This function clears all anomaly trackers. All anomaly trackers need to be added again.
-    std::optional<InvalidConfigReason> onConfigUpdated(
-            const StatsdConfig& config, int configIndex, int metricIndex,
+    void onConfigUpdated(
+            const StatsdConfig& config, int configIndex, const int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
             const std::unordered_map<int64_t, int>& newAtomMatchingTrackerMap,
@@ -165,18 +165,19 @@ public:
             const std::unordered_map<int64_t, int>& conditionTrackerMap,
             const sp<ConditionWizard>& wizard,
             const std::unordered_map<int64_t, int>& metricToActivationMap,
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
             std::unordered_map<int, std::vector<int>>& trackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
             std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& deactivationAtomTrackerToMetricMap,
             std::vector<int>& metricsWithActivation) {
         std::lock_guard lock(mMutex);
-        return onConfigUpdatedLocked(config, configIndex, metricIndex, allAtomMatchingTrackers,
-                                     oldAtomMatchingTrackerMap, newAtomMatchingTrackerMap,
-                                     matcherWizard, allConditionTrackers, conditionTrackerMap,
-                                     wizard, metricToActivationMap, trackerToMetricMap,
-                                     conditionToMetricMap, activationAtomTrackerToMetricMap,
-                                     deactivationAtomTrackerToMetricMap, metricsWithActivation);
+        onConfigUpdatedLocked(config, configIndex, metricIndex, allAtomMatchingTrackers,
+                              oldAtomMatchingTrackerMap, newAtomMatchingTrackerMap, matcherWizard,
+                              allConditionTrackers, conditionTrackerMap, wizard,
+                              metricToActivationMap, allConditionsMap, trackerToMetricMap,
+                              conditionToMetricMap, activationAtomTrackerToMetricMap,
+                              deactivationAtomTrackerToMetricMap, metricsWithActivation);
     };
 
     /**
@@ -258,8 +259,8 @@ public:
                            str_set, usedUids, protoOutput);
     }
 
-    virtual std::optional<InvalidConfigReason> onConfigUpdatedLocked(
-            const StatsdConfig& config, int configIndex, int metricIndex,
+    virtual void onConfigUpdatedLocked(
+            const StatsdConfig& config, int configIndex, const int metricIndex,
             const std::vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
             const std::unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
             const std::unordered_map<int64_t, int>& newAtomMatchingTrackerMap,
@@ -268,6 +269,7 @@ public:
             const std::unordered_map<int64_t, int>& conditionTrackerMap,
             const sp<ConditionWizard>& wizard,
             const std::unordered_map<int64_t, int>& metricToActivationMap,
+            const std::unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
             std::unordered_map<int, std::vector<int>>& trackerToMetricMap,
             std::unordered_map<int, std::vector<int>>& conditionToMetricMap,
             std::unordered_map<int, std::vector<int>>& activationAtomTrackerToMetricMap,
@@ -354,6 +356,10 @@ public:
         return mProtoHash;
     }
 
+    const inline std::unordered_map<int, std::shared_ptr<Activation>>& getEventActivationMap() {
+        return mEventActivationMap;
+    }
+
     virtual MetricType getMetricType() const = 0;
 
     // For test only.
@@ -364,10 +370,6 @@ public:
     inline const std::vector<int> getSlicedStateAtoms() {
         std::lock_guard lock(mMutex);
         return mSlicedStateAtoms;
-    }
-
-    inline bool isValid() const {
-        return mValid;
     }
 
     /* Adds an AnomalyTracker and returns it. */
@@ -502,8 +504,8 @@ protected:
     }
 
     // Query StateManager for original state value using the queryKey.
-    // The field and value are output.
-    void queryStateValue(int32_t atomId, const HashableDimensionKey& queryKey, FieldValue* value);
+    // Returns FieldValue with kStateUnknown if StateTracker doesn't exist or queryKey is not found.
+    FieldValue queryStateValue(int32_t atomId, const HashableDimensionKey& queryKey);
 
     // If a state map exists for the given atom, replace the original state
     // value with the group id mapped to the value.
@@ -529,8 +531,6 @@ protected:
     const uint64_t mProtoHash;
 
     const ConfigKey mConfigKey;
-
-    bool mValid;
 
     // The time when this metric producer was first created. The end time for the current bucket
     // can be computed from this based on mCurrentBucketNum.
@@ -680,6 +680,12 @@ protected:
     FRIEND_TEST(MetricsManagerUtilTest, TestInitialConditions);
     FRIEND_TEST(MetricsManagerUtilTest, TestSampledMetrics);
     FRIEND_TEST(MetricsManagerUtilTest, TestUidFields);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitCountMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitGaugeMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitDurationMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitEventMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitValueMetricsHasInvalidMetrics);
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitKllMetricsHasInvalidMetrics);
 
     FRIEND_TEST(ConfigUpdateTest, TestUpdateMetricActivations);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateCountMetrics);
@@ -688,6 +694,11 @@ protected:
     FRIEND_TEST(ConfigUpdateTest, TestUpdateDurationMetrics);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateMetricsMultipleTypes);
     FRIEND_TEST(ConfigUpdateTest, TestUpdateAlerts);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateEventMetricHasInvalidMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateCountMetricsHasInvalidMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateGaugeMetricsHasInvalidMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateDurationMetricsHasInvalidMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateAlertsHasInvalidAlert);
 
     FRIEND_TEST(EventMetricProducerTest, TestCorruptedDataReason_OnDumpReport);
     FRIEND_TEST(EventMetricProducerTest, TestCorruptedDataReason_OnDropData);

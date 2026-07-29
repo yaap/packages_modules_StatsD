@@ -20,11 +20,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/cdefs.h>
+#include <sys/user.h>
 
-__BEGIN_DECLS
+#include "stats_event_type.h"
 
-bool write_buffer_to_statsd_queue(const uint8_t* buffer, size_t size, uint32_t atomId);
+bool write_buffer_to_statsd_queue(const uint8_t* buffer, size_t size, AStatsEventAtomId atomId);
 
-bool should_write_via_queue(uint32_t atomId);
-
-__END_DECLS
+bool should_write_via_queue(uid_t uid, AStatsEventAtomId atomId);

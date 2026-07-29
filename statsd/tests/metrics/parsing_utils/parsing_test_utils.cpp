@@ -33,6 +33,7 @@ namespace android {
 namespace os {
 namespace statsd {
 
+using std::unordered_map;
 using std::vector;
 
 InitConfigTest::InitConfigTest() : uidMap(new UidMap()), pullerManager(new StatsPullerManager()) {
@@ -57,11 +58,12 @@ void InitConfigTest::clearData() {
     metricsWithActivation.clear();
     stateProtoHashes.clear();
     noReportMetricIds.clear();
+    invalidEntities.clear();
 }
 
-std::optional<InvalidConfigReason> InitConfigTest::initConfig(const StatsdConfig& config) {
-    // initStatsdConfig returns nullopt if config is valid
-    return initStatsdConfig(
+unordered_map<InvalidEntityKey, InvalidConfigReason> InitConfigTest::initConfig(
+        const StatsdConfig& config) {
+    invalidEntities = initStatsdConfig(
             kConfigKey, config, uidMap, pullerManager, anomalyAlarmMonitor, periodicAlarmMonitor,
             timeBaseSec, timeBaseSec, configMetadataProvider, allTagIdsToMatchersMap,
             allAtomMatchingTrackers, atomMatchingTrackerMap, allConditionTrackers,
@@ -69,6 +71,7 @@ std::optional<InvalidConfigReason> InitConfigTest::initConfig(const StatsdConfig
             allAlarmTrackers, conditionToMetricMap, trackerToMetricMap, trackerToConditionMap,
             activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap, alertTrackerMap,
             metricsWithActivation, stateProtoHashes, noReportMetricIds);
+    return invalidEntities;
 }
 
 vector<int> filterMatcherIndexesById(const vector<sp<AtomMatchingTracker>>& atomMatchingTrackers,
@@ -88,6 +91,10 @@ vector<int> filterMatcherIndexesById(const vector<sp<AtomMatchingTracker>>& atom
 
 void InitConfigTest::SetUp() {
     clearData();
+    StateManager::getInstance().clear();
+}
+
+void InitConfigTest::TearDown() {
     StateManager::getInstance().clear();
 }
 

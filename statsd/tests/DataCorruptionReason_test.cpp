@@ -505,6 +505,7 @@ TEST_GUARDED(DataCorruptionTest, TestStateLostPropagation, __ANDROID_API_T__) {
     ASSERT_EQ(metricsReport.metrics_size(), 1);
     const auto& statsLogReport = metricsReport.metrics(0);
     EXPECT_THAT(statsLogReport.data_corrupted_reason(), ElementsAre(DATA_CORRUPTED_SOCKET_LOSS));
+    StateManager::getInstance().clear();
 }
 
 TEST(DataCorruptionTest, TestStateLostFromQueueOverflowPropagation) {
@@ -556,6 +557,7 @@ TEST(DataCorruptionTest, TestStateLostFromQueueOverflowPropagation) {
     const auto& statsLogReport = metricsReport.metrics(0);
     EXPECT_THAT(statsLogReport.data_corrupted_reason(),
                 ElementsAre(DATA_CORRUPTED_EVENT_QUEUE_OVERFLOW));
+    StateManager::getInstance().clear();
 }
 
 }  // namespace statsd

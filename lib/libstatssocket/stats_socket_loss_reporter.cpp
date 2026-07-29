@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include <stats_event.h>
-#include <stats_socket_loss_reporter.h>
+#include "stats_socket_loss_reporter.h"
+
 #include <unistd.h>
 
 #include <atomic>
@@ -23,7 +23,37 @@
 #include <utility>
 #include <vector>
 
+#include "stats_annotations.h"
+#include "stats_buffer_writer_impl.h"
+#include "stats_event.h"
+#include "stats_event_type.h"
 #include "stats_statsdsocketlog.h"
+
+namespace {
+
+int stats_write(int32_t uid, int64_t firstTsNanos, int64_t lastTsNanos, int32_t overflowCounter,
+                const std::vector<int32_t>& errors, const std::vector<int32_t>& tags,
+                const std::vector<int32_t>& counts) {
+    AStatsEvent* event = AStatsEvent_obtain();
+    AStatsEvent_setAtomId(event, android::os::statsdsocket::STATS_SOCKET_LOSS_REPORTED);
+    AStatsEvent_writeInt32(event, uid);
+    AStatsEvent_addBoolAnnotation(event, ASTATSLOG_ANNOTATION_ID_IS_UID, true);
+    AStatsEvent_writeInt64(event, firstTsNanos);
+    AStatsEvent_writeInt64(event, lastTsNanos);
+    AStatsEvent_writeInt32(event, overflowCounter);
+    AStatsEvent_writeInt32Array(event, errors.data(), errors.size());
+    AStatsEvent_writeInt32Array(event, tags.data(), tags.size());
+    AStatsEvent_writeInt32Array(event, counts.data(), counts.size());
+
+    // writing explicitly to specify doNoteDrop = false to exclude re-entrance possibility
+    AStatsEvent_build(event);
+    const int ret = write_buffer_to_statsd_impl(event->buf, event->numBytesWritten, event->atomId,
+                                                /*doNoteDrop=*/false);
+
+    AStatsEvent_release(event);
+    return ret;
+}
+}  // namespace
 
 StatsSocketLossReporter::StatsSocketLossReporter()
     : mUid(getuid()), mCooldownTimer(kCoolDownTimerDurationNanos) {
@@ -38,11 +68,11 @@ StatsSocketLossReporter::~StatsSocketLossReporter() {
 }
 
 StatsSocketLossReporter& StatsSocketLossReporter::getInstance() {
-    static StatsSocketLossReporter instance;
-    return instance;
+    static StatsSocketLossReporter* instance = new StatsSocketLossReporter();
+    return *instance;
 }
 
-void StatsSocketLossReporter::noteDrop(int32_t error, int32_t atomId) {
+void StatsSocketLossReporter::noteDrop(int32_t error, AStatsEventAtomId atomId) {
     using namespace android::os::statsdsocket;
 
     const int64_t currentRealtimeTsNanos = get_elapsed_realtime_ns();
@@ -59,7 +89,6 @@ void StatsSocketLossReporter::noteDrop(int32_t error, int32_t atomId) {
         // avoid self counting due to write to socket might fail during dumpAtomsLossStats()
         // also due to mutex is not re-entrant and is already locked by dumpAtomsLossStats() API,
         // return to avoid deadlock
-        // alternative is to consider std::recursive_mutex
         return;
     }
 
@@ -83,8 +112,7 @@ void StatsSocketLossReporter::dumpAtomsLossStats(bool forceDump) {
 
     const int64_t currentRealtimeTsNanos = get_elapsed_realtime_ns();
 
-    if (!forceDump && !mCooldownTimer.isExpired(currentRealtimeTsNanos) &&
-        mLossInfo.size() < kMaxAtomTagsCount) {
+    if (!forceDump && !mCooldownTimer.isExpired(currentRealtimeTsNanos)) {
         // Early termination to avoid socket flooding with more STATS_SOCKET_LOSS_REPORTED atoms,
         // which have high probability of write failures, the cooldown timer approach is applied:
         // - start cooldown timer for kCoolDownTimerDurationNanos for every dump request
@@ -102,9 +130,9 @@ void StatsSocketLossReporter::dumpAtomsLossStats(bool forceDump) {
     }
 
     // populate temp vectors to be written into the socket
-    std::vector<int> errors(mLossInfo.size());
-    std::vector<int> tags(mLossInfo.size());
-    std::vector<int> counts(mLossInfo.size());
+    std::vector<int32_t> errors(mLossInfo.size());
+    std::vector<int32_t> tags(mLossInfo.size());
+    std::vector<int32_t> counts(mLossInfo.size());
 
     auto lossInfoIt = mLossInfo.begin();
     for (size_t i = 0; i < mLossInfo.size(); i++, lossInfoIt++) {
@@ -116,8 +144,8 @@ void StatsSocketLossReporter::dumpAtomsLossStats(bool forceDump) {
 
     if (__builtin_available(android __ANDROID_API_T__, *)) {
         // below call might lead to socket loss event - intention is to avoid self counting
-        const int ret = stats_write(STATS_SOCKET_LOSS_REPORTED, mUid, mFirstTsNanos, mLastTsNanos,
-                                    mOverflowCounter, errors, tags, counts);
+        const int ret = stats_write(mUid, mFirstTsNanos, mLastTsNanos, mOverflowCounter, errors,
+                                    tags, counts);
         if (ret > 0) {
             // Clear internal accumulated data. Otherwise, in case of failure we preserve all socket
             // loss information between dumps. When above write failed - the socket loss stats are

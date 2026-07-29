@@ -1,4 +1,5 @@
-// Signature format: 2.0
+// Signature format: 6.0
+// - style=java
 package android.app {
 
   public class StatsCursor extends android.database.AbstractCursor {
@@ -22,7 +23,7 @@ package android.app {
     method @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public long[] getRegisteredExperimentIds() throws android.app.StatsManager.StatsUnavailableException;
     method @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public byte[] getReports(long) throws android.app.StatsManager.StatsUnavailableException;
     method @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public byte[] getStatsMetadata() throws android.app.StatsManager.StatsUnavailableException;
-    method @RequiresPermission(android.Manifest.permission.READ_RESTRICTED_STATS) public void query(long, @NonNull String, @NonNull android.app.StatsQuery, @NonNull java.util.concurrent.Executor, @NonNull android.os.OutcomeReceiver<android.app.StatsCursor,android.app.StatsManager.StatsQueryException>) throws android.app.StatsManager.StatsUnavailableException;
+    method @RequiresPermission(android.Manifest.permission.READ_RESTRICTED_STATS) public void query(long, @NonNull String, @NonNull android.app.StatsQuery, @NonNull java.util.concurrent.Executor, @NonNull android.os.OutcomeReceiver<android.app.StatsCursor, android.app.StatsManager.StatsQueryException>) throws android.app.StatsManager.StatsUnavailableException;
     method @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public void removeConfig(long) throws android.app.StatsManager.StatsUnavailableException;
     method @Deprecated @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public boolean removeConfiguration(long);
     method @NonNull @RequiresPermission(allOf={android.Manifest.permission.DUMP, android.Manifest.permission.PACKAGE_USAGE_STATS}) public long[] setActiveConfigsChangedOperation(@Nullable android.app.PendingIntent) throws android.app.StatsManager.StatsUnavailableException;
@@ -137,7 +138,7 @@ package android.util {
     method @NonNull public android.util.StatsEvent.Builder writeFloatArray(@NonNull float[]);
     method @NonNull public android.util.StatsEvent.Builder writeInt(int);
     method @NonNull public android.util.StatsEvent.Builder writeIntArray(@NonNull int[]);
-    method @NonNull public android.util.StatsEvent.Builder writeKeyValuePairs(@Nullable android.util.SparseIntArray, @Nullable android.util.SparseLongArray, @Nullable android.util.SparseArray<java.lang.String>, @Nullable android.util.SparseArray<java.lang.Float>);
+    method @NonNull public android.util.StatsEvent.Builder writeKeyValuePairs(@Nullable android.util.SparseIntArray, @Nullable android.util.SparseLongArray, @Nullable android.util.SparseArray<String>, @Nullable android.util.SparseArray<Float>);
     method @NonNull public android.util.StatsEvent.Builder writeLong(long);
     method @NonNull public android.util.StatsEvent.Builder writeLongArray(@NonNull long[]);
     method @NonNull public android.util.StatsEvent.Builder writeString(@NonNull String);

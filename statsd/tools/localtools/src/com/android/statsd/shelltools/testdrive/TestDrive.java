@@ -108,6 +108,7 @@ public class TestDrive {
             "com.google.android.photopicker",
             "AID_MMD",
             "com.google.android.desktop.identity.login",
+            "com.google.android.wearable.sysui",
     };
     private static final String[] DEFAULT_PULL_SOURCES = {
             "AID_KEYSTORE", "AID_RADIO", "AID_SYSTEM",

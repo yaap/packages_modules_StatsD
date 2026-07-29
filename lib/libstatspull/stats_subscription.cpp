@@ -25,11 +25,12 @@
 #include <map>
 #include <vector>
 
-using Status = ::ndk::ScopedAStatus;
 using aidl::android::os::BnStatsSubscriptionCallback;
 using aidl::android::os::IStatsd;
 using aidl::android::os::StatsSubscriptionCallbackReason;
+using android::sp;
 using ::ndk::SharedRefBase;
+using Status = ::ndk::ScopedAStatus;
 
 class Subscription;
 
@@ -87,8 +88,7 @@ private:
 // forward declare so it can be referenced in StatsProvider constructor.
 static void onStatsBinderRestart();
 
-static std::shared_ptr<StatsProvider> statsProvider =
-        std::make_shared<StatsProvider>(onStatsBinderRestart);
+static sp<StatsProvider> statsProvider = sp<StatsProvider>::make(onStatsBinderRestart);
 
 static void onStatsBinderRestart() {
     const std::shared_ptr<IStatsd> statsService = statsProvider->getStatsService();

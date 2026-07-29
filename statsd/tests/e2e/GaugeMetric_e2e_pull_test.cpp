@@ -74,9 +74,9 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEvents) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -217,9 +217,9 @@ TEST(GaugeMetricE2ePulledTest, TestFirstNSamplesPulledNoTrigger) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -337,9 +337,9 @@ TEST(GaugeMetricE2ePulledTest, TestConditionChangeToTrueSamplePulledEvents) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -435,9 +435,9 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEvent_LateAlarm) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -546,9 +546,9 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEventsWithActivation) {
     StatsdStats::getInstance().reset();
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -726,9 +726,9 @@ TEST(GaugeMetricE2ePulledTest, TestFirstNSamplesPulledNoTriggerWithActivation) {
     StatsdStats::getInstance().reset();
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     processor->mPullerManager->ForceClearPullerCache();
 
@@ -875,9 +875,9 @@ TEST(GaugeMetricE2ePulledTest, TestRandomSamplePulledEventsNoCondition) {
         TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor = CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                             SharedRefBase::make<FakeSubsystemSleepCallback>(),
-                                             ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     ASSERT_EQ(processor->mMetricsManagers.size(), 1u);
     EXPECT_TRUE(processor->mMetricsManagers.begin()->second->isConfigValid());
     processor->mPullerManager->ForceClearPullerCache();
@@ -974,9 +974,9 @@ TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithTriggerEvent) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
 
     std::vector<std::unique_ptr<LogEvent>> events;
     // First bucket events.
@@ -1094,9 +1094,9 @@ TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithBucketBoundaryA
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
 
     // Pulling alarm arrives on time and resets the sequential pulling alarm.
     for (int i = 1; i < 31; i++) {
@@ -1294,9 +1294,9 @@ TEST(GaugeMetricE2ePulledTest, TestGaugeMetricPullProbabilityWithCondition) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(configAddedTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            configAddedTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
 
     std::vector<std::unique_ptr<LogEvent>> events;
     // First bucket events.
@@ -1384,9 +1384,9 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStates) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     processor->mPullerManager->ForceClearPullerCache();
 
     // When creating the config, the gauge metric producer should register the alarm at the
@@ -1483,6 +1483,7 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStates) {
                              /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
                              /*eventTimesNs=*/
                              {(int64_t)(configAddedTimeNs + bucketSizeNs + 1)});
+    StateManager::getInstance().clear();
 }
 
 TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithTriggerAndCondition) {
@@ -1508,9 +1509,9 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithTriggerAndCondition) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     processor->mPullerManager->ForceClearPullerCache();
 
     std::vector<std::unique_ptr<LogEvent>> events;
@@ -1592,6 +1593,7 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithTriggerAndCondition) {
                              /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
                              /*eventTimesNs=*/
                              {(int64_t)(configAddedTimeNs + bucketSizeNs + 50)});
+    StateManager::getInstance().clear();
 }
 
 TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithMapAndTrigger) {
@@ -1613,9 +1615,9 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithMapAndTrigger) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
     processor->mPullerManager->ForceClearPullerCache();
 
     std::vector<std::unique_ptr<LogEvent>> events;
@@ -1709,6 +1711,7 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithMapAndTrigger) {
             /*endTimeNs=*/configAddedTimeNs + bucketSizeNs,
             /*eventTimesNs=*/
             {(int64_t)(configAddedTimeNs + 160), (int64_t)(configAddedTimeNs + 210)});
+    StateManager::getInstance().clear();
 }
 
 TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithPrimaryFieldsAndTrigger) {
@@ -1751,8 +1754,8 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithPrimaryFieldsAndTrigger) {
 
     ConfigKey cfgKey;
     auto processor = CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                             SharedRefBase::make<FakeCpuTimeCallback>(),
-                                             util::CPU_TIME_PER_UID);
+                                             {.puller = SharedRefBase::make<FakeCpuTimeCallback>(),
+                                              .pullAtomId = util::CPU_TIME_PER_UID});
     processor->mPullerManager->ForceClearPullerCache();
 
     std::vector<std::unique_ptr<LogEvent>> events;
@@ -1892,6 +1895,7 @@ TEST(GaugeMetricE2ePulledTest, TestSliceByStatesWithPrimaryFieldsAndTrigger) {
                              /*endTimeNs=*/configAddedTimeNs + 2 * bucketSizeNs,
                              /*eventTimesNs=*/
                              {(int64_t)(configAddedTimeNs + bucketSizeNs + 220)});
+    StateManager::getInstance().clear();
 }
 
 TEST(GaugeMetricE2ePulledTest, TestFieldFilterOmit) {
@@ -1908,9 +1912,9 @@ TEST(GaugeMetricE2ePulledTest, TestFieldFilterOmit) {
     int64_t bucketSizeNs = TimeUnitToBucketSizeInMillis(config.gauge_metric(0).bucket()) * 1000000;
 
     ConfigKey cfgKey;
-    auto processor =
-            CreateStatsLogProcessor(baseTimeNs, configAddedTimeNs, config, cfgKey,
-                                    SharedRefBase::make<FakeSubsystemSleepCallback>(), ATOM_TAG);
+    auto processor = CreateStatsLogProcessor(
+            baseTimeNs, configAddedTimeNs, config, cfgKey,
+            {.puller = SharedRefBase::make<FakeSubsystemSleepCallback>(), .pullAtomId = ATOM_TAG});
 
     processor->informPullAlarmFired(baseTimeNs + bucketSizeNs * 2 + 1);
 

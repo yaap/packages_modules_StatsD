@@ -29,6 +29,7 @@
 #include "logd/LogEvent.h"
 #include "matchers/AtomMatchingTracker.h"
 #include "metrics/MetricProducer.h"
+#include "packages/LogSourceHandler.h"
 #include "packages/UidMap.h"
 #include "src/statsd_config.pb.h"
 #include "src/statsd_metadata.pb.h"
@@ -79,7 +80,7 @@ public:
 
     std::vector<int32_t> getPullAtomUids(int32_t atomId) override;
 
-    bool useV2SoftMemoryCalculation() override;
+    bool useV2SoftMemoryCalculation() const override;
 
     bool shouldWriteToDisk() const {
         return mNoReportMetricIds.size() != mAllMetricProducers.size();
@@ -213,24 +214,14 @@ private:
     int64_t mLastReportTimeNs;
     int64_t mLastReportWallClockNs;
 
-    std::optional<InvalidConfigReason> mInvalidConfigReason;
+    std::unordered_map<InvalidEntityKey, InvalidConfigReason> mInvalidEntities;
 
     sp<StatsPullerManager> mPullerManager;
 
-    // The uid log sources from StatsdConfig.
-    std::vector<int32_t> mAllowedUid;
+    sp<LogSourceHandler> mLogSourceHandler;
 
-    // The pkg log sources from StatsdConfig.
-    std::vector<std::string> mAllowedPkg;
-
-    // The combined uid sources (after translating pkg name to uid).
-    // Logs from uids that are not in the list will be ignored to avoid spamming.
-    std::set<int32_t> mAllowedLogSources;
-
-    // To guard access to mAllowedLogSources
-    mutable std::mutex mAllowedLogSourcesMutex;
-
-    std::set<int32_t> mWhitelistedAtomIds;
+    // To guard access to mCombinedPullAtomUids
+    mutable std::mutex mCombinedPullAtomUidsMutex;
 
     // We can pull any atom from these uids.
     std::set<int32_t> mDefaultPullUids;
@@ -327,17 +318,13 @@ private:
     std::vector<int> mMetricIndexesWithActivation;
 
     inline bool checkLogCredentials(const LogEvent& event) const {
-        return checkLogCredentials(event.GetUid(), event.GetTagId());
+        return mLogSourceHandler->checkLogCredentials(event.GetUid(), event.GetTagId());
     }
-
-    bool checkLogCredentials(int32_t uid, int32_t atomId) const;
-
-    void initAllowedLogSources();
 
     void initPullAtomSources();
 
     // Only called on config creation/update to initialize log sources from the config.
-    // Calls initAllowedLogSources and initPullAtomSources. Sets up mInvalidConfigReason on
+    // Sets up mLogSourceHandler and calls initPullAtomSources. Sets up mInvalidConfigReason on
     // error.
     void createAllLogSourcesFromConfig(const StatsdConfig& config);
 
@@ -397,6 +384,36 @@ private:
     // The memory limit in bytes for triggering get data.
     size_t mTriggerGetDataBytes;
 
+    // Caches for onLogEvent. Used to avoid re-initializing vectors on every onLogEvent call.
+    struct LogEventFilterCache {
+        std::vector<MatchingState> matcherCache;
+        std::vector<std::shared_ptr<LogEvent>> matcherTransformations;
+        std::vector<uint8_t> conditionToBeEvaluated;
+        std::vector<std::shared_ptr<LogEvent>> conditionToTransformedLogEvents;
+        std::vector<ConditionState> conditionCache;
+        std::vector<uint8_t> changedCache;
+
+        void init(size_t matcherCount, size_t conditionCount) {
+            matcherCache.assign(matcherCount, MatchingState::kNotComputed);
+            matcherTransformations.assign(matcherCount, nullptr);
+            conditionToBeEvaluated.assign(conditionCount, false);
+            conditionToTransformedLogEvents.assign(conditionCount, nullptr);
+            conditionCache.assign(conditionCount, ConditionState::kNotEvaluated);
+            changedCache.assign(conditionCount, false);
+        }
+
+        void reset() {
+            std::fill(matcherCache.begin(), matcherCache.end(), MatchingState::kNotComputed);
+            std::fill(matcherTransformations.begin(), matcherTransformations.end(), nullptr);
+            std::fill(conditionToBeEvaluated.begin(), conditionToBeEvaluated.end(), false);
+            std::fill(conditionToTransformedLogEvents.begin(),
+                      conditionToTransformedLogEvents.end(), nullptr);
+            std::fill(conditionCache.begin(), conditionCache.end(), ConditionState::kNotEvaluated);
+            std::fill(changedCache.begin(), changedCache.end(), false);
+        }
+    };
+    LogEventFilterCache mLogEventCache;
+
     // Dropped atoms stats due to queue overflow observed up to latest dumpReport request
     // this map is not cleared during onDumpReport to preserve tracking information and avoid
     // repeated metric notification about past queue overflow lost event
@@ -439,12 +456,15 @@ private:
     FRIEND_TEST(MetricActivationE2eTest, TestCountMetricWithTwoMetricsTwoDeactivations);
 
     FRIEND_TEST(MetricsManagerTest, TestLogSources);
-    FRIEND_TEST(MetricsManagerTest, TestCheckLogCredentialsWhitelistedAtom);
+    FRIEND_TEST(MetricsManagerTest, TestCheckLogCredentialsAllowlistedAtom);
     FRIEND_TEST(MetricsManagerTest, TestLogSourcesOnConfigUpdate);
+    FRIEND_TEST(MetricsManagerTest, TestAllowlistedAtomStateTracker);
+    FRIEND_TEST(MetricsManagerTest, TestInvalidEntitiesClearedOnConfigUpdate);
     FRIEND_TEST(MetricsManagerTest_SPlus, TestRestrictedMetricsConfig);
     FRIEND_TEST(MetricsManagerTest_SPlus, TestRestrictedMetricsConfigUpdate);
     FRIEND_TEST(MetricsManagerUtilTest, TestSampledMetrics);
     FRIEND_TEST(MetricsManagerUtilTest, TestUidFields);
+    FRIEND_TEST(MetricsManagerUtilTest, TestCreateDurationProducerDimensionsInWhatInvalid);
 
     FRIEND_TEST(StatsLogProcessorTest, TestActiveConfigMetricDiskWriteRead);
     FRIEND_TEST(StatsLogProcessorTest, TestActivationOnBoot);
@@ -470,6 +490,7 @@ private:
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedStateMapped);
     FRIEND_TEST(DurationMetricE2eTest, TestWithSlicedStatePrimaryFieldsSubset);
     FRIEND_TEST(DurationMetricE2eTest, TestUploadThreshold);
+    FRIEND_TEST(DurationMetricE2eTest, TestSlicedStatePrimaryFieldsNotSubsetDimInWhat);
 
     FRIEND_TEST(EventMetricE2eTest, TestSlicedState);
 
@@ -482,6 +503,11 @@ private:
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithSlicedState_WithIncorrectDimensions);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithMultipleAggTypes);
     FRIEND_TEST(ValueMetricE2eTest, TestInitWithDefaultAggType);
+    FRIEND_TEST(ValueMetricE2eTest, TestInitWithValueFieldPositionALL);
+
+    FRIEND_TEST(KllMetricE2eTest, TestInitWithKllFieldPositionALL);
+
+    FRIEND_TEST(RestrictedEventMetricE2eTest, TestInvalidConfigUpdateRestrictedDelegate);
 
     FRIEND_TEST(DataCorruptionQueueOverflowTest, TestNotifyOnlyInterestedMetrics);
     FRIEND_TEST(DataCorruptionQueueOverflowTest, TestNotifyInterestedMetricsWithNewLoss);

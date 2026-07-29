@@ -75,7 +75,6 @@ PullErrorCode StatsPuller::Pull(const int64_t eventTimeNs,
     }
     const int64_t pullElapsedDurationNs = getElapsedRealtimeNs() - elapsedTimeNs;
     const int64_t pullSystemUptimeDurationMillis = getSystemUptimeMillis() - systemUptimeMillis;
-    StatsdStats::getInstance().notePullTime(mTagId, pullElapsedDurationNs);
     const bool pullTimeOut = pullElapsedDurationNs > mPullTimeoutNs;
     if (pullTimeOut) {
         // Something went wrong. Discard the data.
@@ -86,6 +85,8 @@ PullErrorCode StatsPuller::Pull(const int64_t eventTimeNs,
         ALOGW("Pull for atom %d exceeds timeout %lld nano seconds.", mTagId,
               (long long)pullElapsedDurationNs);
         return PULL_FAIL;
+    } else {
+        StatsdStats::getInstance().notePullTime(mTagId, pullElapsedDurationNs);
     }
 
     if (mCachedData.size() > 0) {

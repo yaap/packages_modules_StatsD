@@ -12,19 +12,21 @@ flag {
 }
 
 flag {
+  name: "partial_invalid_configs"
+  namespace: "statsd"
+  description: "Whether to enable partially invalid config"
+  bug: "435264546"
+  metadata {
+    purpose: PURPOSE_BUGFIX
+  }
+}
+
+flag {
   name: "trigger_uprobestats"
   namespace: "statsd"
   description: "Whether to call AUprobestatsClient_startUprobestats."
   bug: "296108553"
   is_fixed_read_only: true
-}
-
-flag {
-    name: "use_iouring"
-    namespace: "statsd"
-    description: "Enables iouring implementation of the statsd"
-    bug: "380509817"
-    is_fixed_read_only: true
 }
 
 flag {
@@ -42,3 +44,23 @@ flag {
   bug: "408060408"
 }
 
+flag {
+    name: "use_iouring_socket_listener"
+    namespace: "statsd"
+    description: "Enables iouring implementation of the statsd"
+    bug: "297114355"
+}
+
+flag {
+    name: "trigger_perfetto"
+    namespace: "statsd"
+    description: "Trigger perfetto when queue overflow happens"
+    bug: "462461710"
+}
+
+flag {
+    name: "use_wait_for"
+    namespace: "statsd"
+    description: "Use wait with timeout to check event queue"
+    bug: "462461710"
+}

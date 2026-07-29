@@ -62,23 +62,16 @@ public:
     // and removes the tracker if it no longer has any listeners.
     void unregisterListener(const int32_t atomId, const wp<StateListener>& listener);
 
-    // Returns true if the StateTracker exists and queries for the
-    // original state value mapped to the given query key. The state value is
-    // stored and output in a FieldValue class.
-    // Returns false if the StateTracker doesn't exist.
-    bool getStateValue(int32_t atomId, const HashableDimensionKey& queryKey,
-                       FieldValue* output) const;
-
-    // Updates mAllowedLogSources with the latest uids for the packages that are allowed to log.
-    void updateLogSources(const sp<UidMap>& uidMap);
-
-    void notifyAppChanged(const std::string& apk, const sp<UidMap>& uidMap);
+    // Returns FieldValue with state value mapped to the given query key if queryKey is found.
+    // Otherwise if queryKey is not found or StateTracker doesn't exist, FieldValue with
+    // kStateUnknonwn is returned.
+    FieldValue getStateValue(const int32_t atomId, const HashableDimensionKey& key) const;
 
     /**
      * @brief Update State Tracker depending on #lostAtomId that it was lost due to #reason
      * @return true if State Tracker was notified
      */
-    bool onLogEventLost(int32_t lostAtomId, DataCorruptedReason reason);
+    bool notifyStateTrackersAboutLostAtom(int32_t lostAtomId, DataCorruptedReason reason);
 
     inline int getStateTrackersCount() const {
         return mStateTrackers.size();
@@ -96,19 +89,12 @@ public:
 
 private:
     // Notifies the correct StateTracker of lost event.
-    void handleSocketLossInfo(const SocketLossInfo& socketLossInfo);
+    void onLogEventLost(const SocketLossInfo& socketLossInfo);
 
     mutable std::mutex mMutex;
 
     // Maps state atom ids to StateTrackers
     std::unordered_map<int32_t, sp<StateTracker>> mStateTrackers;
-
-    // The package names that can log state events.
-    const std::set<std::string> mAllowedPkg;
-
-    // The combined uid sources (after translating pkg name to uid).
-    // State events from uids that are not in the list will be ignored to avoid state pollution.
-    std::set<int32_t> mAllowedLogSources;
 };
 
 }  // namespace statsd

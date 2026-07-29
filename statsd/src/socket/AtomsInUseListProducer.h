@@ -34,7 +34,7 @@ public:
     ~AtomsInUseListProducer();
 
     // updates external file with new list and bumps up the system property version
-    bool setAtomsIds(const std::vector<int32_t>& atomIds);
+    void setAtomsIds(const std::vector<int32_t>& atomIds);
 
     // removes the file & removes system property version, this will allow clients
     // to log any atom

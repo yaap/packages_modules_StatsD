@@ -153,7 +153,6 @@ TEST(KllQuantileSerializationTest, EmptyQuantilesProto) {
 
     EXPECT_EQ(aggregator_state.type(), zetasketch::android::KLL_QUANTILES);
     ASSERT_TRUE(aggregator_state.HasExtension(kll_quantiles_state));
-    aggregator_state.GetExtension(kll_quantiles_state);
 
     const KllQuantilesStateProto& quantiles_state =
             aggregator_state.GetExtension(kll_quantiles_state);

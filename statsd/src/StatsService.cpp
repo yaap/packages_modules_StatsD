@@ -170,6 +170,7 @@ StatsService::StatsService(const sp<UidMap>& uidMap, shared_ptr<LogEventQueue> q
       mAtomsInUseChangeDispatcher(std::make_shared<AtomsInUseChangeDispatcher>()),
       mLogEventFilter(logEventFilter),
       mSocketLogEventControl(std::make_shared<SocketLogEventControl>()) {
+    ATRACE_CALL();
     mAtomsInUseChangeDispatcher->addListener(mLogEventFilter);
     mAtomsInUseChangeDispatcher->addListener(mSocketLogEventControl);
     mPullerManager = new StatsPullerManager();
@@ -303,6 +304,7 @@ void StatsService::init_build_type_callback(void* cookie, const char* /*name*/, 
  * TODO: Come up with a more robust method of enacting <serviceutils/PriorityDumper.h>.
  */
 status_t StatsService::dump(int fd, const char** args, uint32_t numArgs) {
+    ATRACE_CALL();
     if (!checkPermission(kPermissionDump)) {
         return PERMISSION_DENIED;
     }
@@ -374,6 +376,7 @@ void StatsService::dumpIncidentSection(int out) {
  */
 status_t StatsService::handleShellCommand(int in, int out, int err, const char** argv,
                                           uint32_t argc) {
+    ATRACE_CALL();
     uid_t uid = AIBinder_getCallingUid();
     if (uid != AID_ROOT && uid != AID_SHELL) {
         return PERMISSION_DENIED;
@@ -433,6 +436,10 @@ status_t StatsService::handleShellCommand(int in, int out, int err, const char**
 
         if (!utf8Args[0].compare(String8("print-logs"))) {
             return cmd_print_logs(out, utf8Args);
+        }
+
+        if (!utf8Args[0].compare(String8("logging-control"))) {
+            return cmd_logging_control(out, utf8Args);
         }
 
         if (!utf8Args[0].compare(String8("send-active-configs"))) {
@@ -573,6 +580,10 @@ void StatsService::print_cmd_help(int out) {
     dprintf(out, "usage: adb shell cmd stats print-logs\n");
     dprintf(out, "  Requires root privileges.\n");
     dprintf(out, "  Can be disabled by calling adb shell cmd stats print-logs 0\n");
+    dprintf(out, "\n");
+    dprintf(out, "usage: adb shell cmd stats logging-control\n");
+    dprintf(out, "  Can be disabled by calling adb shell cmd stats logging-control 0\n");
+    dprintf(out, "\n");
 }
 
 status_t StatsService::cmd_trigger_broadcast(int out, Vector<String8>& args) {
@@ -964,15 +975,28 @@ status_t StatsService::cmd_print_logs(int /*out*/, const Vector<String8>& args) 
 
     VLOG("StatsService::cmd_print_logs with pid %i, uid %i", AIBinder_getCallingPid(),
          AIBinder_getCallingUid());
-    bool enabled = true;
-    if (args.size() >= 2) {
-        enabled = atoi(args[1].c_str()) != 0;
+    if (args.size() == 1) {
+        mPrintAllLogs = true;
+    } else if (args.size() == 2) {
+        mPrintAllLogs = atoi(args[1].c_str()) != 0;
     }
-    mProcessor->setPrintLogs(enabled);
+    mProcessor->setPrintLogs(mPrintAllLogs);
     // Turning on print logs turns off pushed event filtering to enforce
     // complete log event buffer parsing
-    mLogEventFilter->setFilteringEnabled(!enabled);
-    mSocketLogEventControl->setControlEnabled(!enabled);
+    mLogEventFilter->setFilteringEnabled(!mPrintAllLogs);
+    mSocketLogEventControl->setControlEnabled(!mPrintAllLogs);
+    return NO_ERROR;
+}
+
+status_t StatsService::cmd_logging_control(int /*out*/, const Vector<String8>& args) {
+    VLOG("StatsService::cmd_logging_control with pid %i, uid %i", AIBinder_getCallingPid(),
+         AIBinder_getCallingUid());
+    if (args.size() == 2) {
+        mLoggingControlDisabled = atoi(args[1].c_str()) == 0;
+    }
+
+    // Turning on logging control enables pushed event filtering.
+    mSocketLogEventControl->setControlEnabled(!mLoggingControlDisabled);
     return NO_ERROR;
 }
 
@@ -1095,6 +1119,7 @@ Status StatsService::informDeviceShutdown() {
 }
 
 void StatsService::sayHiToStatsCompanion() {
+    ATRACE_CALL();
     shared_ptr<IStatsCompanionService> statsCompanion =
             getStatsCompanionService(/*blocking=*/false);
     if (statsCompanion != nullptr) {
@@ -1141,6 +1166,7 @@ void StatsService::onStatsdInitCompleted(int initEventDelaySecs) {
     // This function is called from a dedicated thread without holding locks, so sleeping is ok.
     // See MultiConditionTrigger::markComplete() executorThread for details
     // For more details see http://b/277958338
+    VLOG("StatsService::onStatsdInitCompleted() waiting for %d seconds", initEventDelaySecs);
 
     unique_lock<mutex> lk(mStatsdInitCompletedHandlerTerminationFlagMutex);
     if (mStatsdInitCompletedHandlerTerminationFlag.wait_for(
@@ -1150,9 +1176,16 @@ void StatsService::onStatsdInitCompleted(int initEventDelaySecs) {
         return;
     }
 
+    VLOG("StatsService::onStatsdInitCompleted()");
+
     mProcessor->onStatsdInitCompleted(getElapsedRealtimeNs());
     // to not stress I/O subsystem reasonable to postpone atom ids file creation and avoid
     // high volume read file requests from many apps which will log their first atom
+    // Bypass if mPrintAllLogs was enabled explicitly or the logging control was
+    // disabled explicitly already
+    if (mPrintAllLogs || mLoggingControlDisabled) {
+        return;
+    }
     mSocketLogEventControl->setControlEnabled(true);
 }
 

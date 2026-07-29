@@ -46,31 +46,29 @@ bool testGuaranteedUnusedAtomsNotInUse(const LogEventFilter& filter) {
     return !atLeastOneInUse;
 }
 
-class LogEventFilterTest : public ::testing::Test {
-public:
-    void SetUp() override {
-        filter.setFilteringEnabled(true);
-    }
-    LogEventFilter filter;
-};
-
 }  // namespace
 
-TEST_F(LogEventFilterTest, TestEmptyFilter) {
+TEST(LogEventFilterTest, TestEmptyFilter) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
     const auto sampleIds = generateAtomIds(1, kAtomIdsCount);
     for (const auto& atomId : sampleIds) {
         EXPECT_FALSE(filter.isAtomInUse(atomId));
     }
 }
 
-TEST_F(LogEventFilterTest, TestRemoveNonExistingEmptyFilter) {
+TEST(LogEventFilterTest, TestRemoveNonExistingEmptyFilter) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     EXPECT_FALSE(filter.isAtomInUse(1));
     LogEventFilter::AtomIdSet emptyAtomIdsSet;
     filter.setAtomIds(std::move(emptyAtomIdsSet), reinterpret_cast<LogEventFilter::ConsumerId>(0));
     EXPECT_FALSE(filter.isAtomInUse(1));
 }
 
-TEST_F(LogEventFilterTest, TestEmptyFilterDisabled) {
+TEST(LogEventFilterTest, TestEmptyFilterDisabled) {
+    LogEventFilter filter;
     filter.setFilteringEnabled(false);
     const auto sampleIds = generateAtomIds(1, kAtomIdsCount);
     for (const auto& atomId : sampleIds) {
@@ -78,7 +76,10 @@ TEST_F(LogEventFilterTest, TestEmptyFilterDisabled) {
     }
 }
 
-TEST_F(LogEventFilterTest, TestNonEmptyFilterFullOverlap) {
+TEST(LogEventFilterTest, TestNonEmptyFilterFullOverlap) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     auto filterIds = generateAtomIds(1, kAtomIdsCount);
     filter.setAtomIds(std::move(filterIds), reinterpret_cast<LogEventFilter::ConsumerId>(0));
 
@@ -91,7 +92,10 @@ TEST_F(LogEventFilterTest, TestNonEmptyFilterFullOverlap) {
     EXPECT_EQ(kAtomIdsCount, filter.mLocalTagIds.size());
 }
 
-TEST_F(LogEventFilterTest, TestNonEmptyFilterPartialOverlap) {
+TEST(LogEventFilterTest, TestNonEmptyFilterPartialOverlap) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     auto filterIds = generateAtomIds(1, kAtomIdsCount);
     filter.setAtomIds(std::move(filterIds), reinterpret_cast<LogEventFilter::ConsumerId>(0));
     // extra 100 atom ids should be filtered out
@@ -102,7 +106,10 @@ TEST_F(LogEventFilterTest, TestNonEmptyFilterPartialOverlap) {
     }
 }
 
-TEST_F(LogEventFilterTest, TestNonEmptyFilterDisabledPartialOverlap) {
+TEST(LogEventFilterTest, TestNonEmptyFilterDisabledPartialOverlap) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     auto filterIds = generateAtomIds(1, kAtomIdsCount);
     filter.setAtomIds(std::move(filterIds), reinterpret_cast<LogEventFilter::ConsumerId>(0));
     filter.setFilteringEnabled(false);
@@ -113,7 +120,10 @@ TEST_F(LogEventFilterTest, TestNonEmptyFilterDisabledPartialOverlap) {
     }
 }
 
-TEST_F(LogEventFilterTest, TestMultipleConsumerOverlapIdsRemoved) {
+TEST(LogEventFilterTest, TestMultipleConsumerOverlapIdsRemoved) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     auto filterIds1 = generateAtomIds(1, kAtomIdsCount);
     // half of filterIds1 atom ids overlaps with filterIds2
     auto filterIds2 = generateAtomIds(kAtomIdsCount / 2, kAtomIdsCount * 2);
@@ -140,7 +150,10 @@ TEST_F(LogEventFilterTest, TestMultipleConsumerOverlapIdsRemoved) {
     EXPECT_TRUE(testGuaranteedUnusedAtomsNotInUse(filter));
 }
 
-TEST_F(LogEventFilterTest, TestMultipleConsumerEmptyFilter) {
+TEST(LogEventFilterTest, TestMultipleConsumerEmptyFilter) {
+    LogEventFilter filter;
+    filter.setFilteringEnabled(true);
+
     auto filterIds1 = generateAtomIds(1, kAtomIdsCount);
     auto filterIds2 = generateAtomIds(kAtomIdsCount + 1, kAtomIdsCount * 2);
     filter.setAtomIds(std::move(filterIds1), reinterpret_cast<LogEventFilter::ConsumerId>(0));

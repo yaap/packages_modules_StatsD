@@ -47,8 +47,8 @@ protected:
     void createProcessor(const StatsdConfig& config,
                          const shared_ptr<IPullAtomCallback>& puller = nullptr,
                          int32_t pullAtomId = 0) {
-        processor = CreateStatsLogProcessor(baseTimeNs, bucketStartTimeNs, config, cfgKey, puller,
-                                            pullAtomId);
+        processor = CreateStatsLogProcessor(baseTimeNs, bucketStartTimeNs, config, cfgKey,
+                                            {.puller = puller, .pullAtomId = pullAtomId});
     }
 
     optional<ConfigMetricsReportList> getReports(int64_t dumpTimeNs) {

@@ -16,14 +16,24 @@
 
 package com.android.server.cts.device.statsd;
 
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import com.android.os.statsd.flags.Flags;
+
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
+
+import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.File;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 public class DirectoryTests {
+
+    @Rule
+    public CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     @Test
     public void testStatsActiveMetricDirectoryExists() {
@@ -61,6 +71,7 @@ public class DirectoryTests {
     }
 
     @Test
+    @RequiresFlagsEnabled(Flags.FLAG_LOGGING_CONTROL_ENABLED)
     public void testStatsAtomsInUseDirectoryExists() {
         final File f = new File("/data/misc/stats-atoms/");
         assertTrue(f.exists());

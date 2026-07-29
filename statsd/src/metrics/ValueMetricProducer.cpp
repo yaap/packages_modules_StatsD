@@ -183,8 +183,7 @@ void ValueMetricProducer<AggregatedValue, DimExtras>::notifyAppUpgradeInternalLo
 }
 
 template <typename AggregatedValue, typename DimExtras>
-optional<InvalidConfigReason>
-ValueMetricProducer<AggregatedValue, DimExtras>::onConfigUpdatedLocked(
+void ValueMetricProducer<AggregatedValue, DimExtras>::onConfigUpdatedLocked(
         const StatsdConfig& config, const int configIndex, const int metricIndex,
         const vector<sp<AtomMatchingTracker>>& allAtomMatchingTrackers,
         const unordered_map<int64_t, int>& oldAtomMatchingTrackerMap,
@@ -193,42 +192,29 @@ ValueMetricProducer<AggregatedValue, DimExtras>::onConfigUpdatedLocked(
         const vector<sp<ConditionTracker>>& allConditionTrackers,
         const unordered_map<int64_t, int>& conditionTrackerMap, const sp<ConditionWizard>& wizard,
         const unordered_map<int64_t, int>& metricToActivationMap,
+        const unordered_map<int64_t, ConditionProtoAndTracker>& allConditionsMap,
         unordered_map<int, vector<int>>& trackerToMetricMap,
         unordered_map<int, vector<int>>& conditionToMetricMap,
         unordered_map<int, vector<int>>& activationAtomTrackerToMetricMap,
         unordered_map<int, vector<int>>& deactivationAtomTrackerToMetricMap,
         vector<int>& metricsWithActivation) {
-    optional<InvalidConfigReason> invalidConfigReason = MetricProducer::onConfigUpdatedLocked(
+    MetricProducer::onConfigUpdatedLocked(
             config, configIndex, metricIndex, allAtomMatchingTrackers, oldAtomMatchingTrackerMap,
             newAtomMatchingTrackerMap, matcherWizard, allConditionTrackers, conditionTrackerMap,
-            wizard, metricToActivationMap, trackerToMetricMap, conditionToMetricMap,
-            activationAtomTrackerToMetricMap, deactivationAtomTrackerToMetricMap,
-            metricsWithActivation);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+            wizard, metricToActivationMap, allConditionsMap, trackerToMetricMap,
+            conditionToMetricMap, activationAtomTrackerToMetricMap,
+            deactivationAtomTrackerToMetricMap, metricsWithActivation);
     // Update appropriate indices: mWhatMatcherIndex, mConditionIndex and MetricsManager maps.
     const int64_t atomMatcherId = getWhatAtomMatcherIdForMetric(config, configIndex);
-    invalidConfigReason = handleMetricWithAtomMatchingTrackers(
-            atomMatcherId, mMetricId, metricIndex, /*enforceOneAtom=*/false,
-            allAtomMatchingTrackers, newAtomMatchingTrackerMap, trackerToMetricMap,
-            mWhatMatcherIndex);
-    if (invalidConfigReason.has_value()) {
-        return invalidConfigReason;
-    }
+    handleMetricWithAtomMatchingTrackers(atomMatcherId, metricIndex, newAtomMatchingTrackerMap,
+                                         trackerToMetricMap, mWhatMatcherIndex);
     const optional<int64_t>& conditionIdOpt = getConditionIdForMetric(config, configIndex);
-    const ConditionLinks& conditionLinks = getConditionLinksForMetric(config, configIndex);
     if (conditionIdOpt.has_value()) {
-        invalidConfigReason = handleMetricWithConditions(
-                conditionIdOpt.value(), mMetricId, metricIndex, conditionTrackerMap, conditionLinks,
-                allConditionTrackers, mConditionTrackerIndex, conditionToMetricMap);
-        if (invalidConfigReason.has_value()) {
-            return invalidConfigReason;
-        }
+        handleMetricWithConditions(conditionIdOpt.value(), metricIndex, conditionTrackerMap,
+                                   mConditionTrackerIndex, conditionToMetricMap);
     }
     sp<EventMatcherWizard> tmpEventWizard = mEventMatcherWizard;
     mEventMatcherWizard = matcherWizard;
-    return nullopt;
 }
 
 template <typename AggregatedValue, typename DimExtras>

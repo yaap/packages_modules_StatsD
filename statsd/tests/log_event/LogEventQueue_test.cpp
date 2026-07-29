@@ -115,6 +115,57 @@ TEST(LogEventQueue_test, TestSlowConsumer) {
     writer.join();
 }
 
+TEST(LogEventQueue_test, TestOverflowAndRecovery) {
+    // This test verifies the queue's behavior during and after an overflow event.
+    // It ensures that the queue correctly identifies the start of an overflow,
+    // handles subsequent overflowed events, and then correctly recovers
+    // once space becomes available. This exercises the code paths that trigger
+    // atrace events for overflow start and end.
+    LogEventQueue queue(10);  // Use a small queue for easier testing.
+    int64_t eventTimeNs = 100;
+
+    // 1. Fill the queue to its limit.
+    for (int i = 0; i < 10; i++) {
+        auto result = queue.push(makeLogEvent(eventTimeNs + i * 1000));
+        EXPECT_TRUE(result.success);
+        EXPECT_EQ(i + 1, result.size);
+    }
+
+    // 2. Push one more item to trigger the start of an overflow.
+    // This is where ATRACE_BEGIN("Statsd::QueueOverflow") should be called.
+    auto result = queue.push(makeLogEvent(eventTimeNs + 10 * 1000));
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(10, result.size);
+    EXPECT_EQ(eventTimeNs, result.oldestTimestampNs);  // oldest is the first event
+
+    // 3. Push a few more items to simulate a continued overflow.
+    // The overflow lost count should be incrementing here.
+    for (int i = 11; i < 15; i++) {
+        result = queue.push(makeLogEvent(eventTimeNs + i * 1000));
+        EXPECT_FALSE(result.success);
+        EXPECT_EQ(10, result.size);
+    }
+
+    // 4. Pop an item from the queue to make space.
+    auto event = queue.waitPop();
+    EXPECT_TRUE(event != nullptr);
+    EXPECT_EQ(eventTimeNs, event->GetElapsedTimestampNs());
+
+    // 5. Push another item. This should now succeed and end the overflow.
+    // This is where ATRACE_END() and ATRACE_INT(...) should be called.
+    result = queue.push(makeLogEvent(eventTimeNs + 15 * 1000));
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(10, result.size);
+
+    // 6. Push one more item. This should also succeed and should not trigger
+    // any new overflow-related trace events.
+    event = queue.waitPop();  // Make space first.
+    EXPECT_TRUE(event != nullptr);
+    result = queue.push(makeLogEvent(eventTimeNs + 16 * 1000));
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(10, result.size);
+}
+
 TEST(LogEventQueue_test, TestQueueMaxSize) {
     StatsdStats::getInstance().reset();
 

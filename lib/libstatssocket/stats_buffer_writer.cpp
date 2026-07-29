@@ -16,11 +16,16 @@
 
 #include "stats_buffer_writer.h"
 
+#include <StatsdLoggingControl.h>
+#include <StatsdSocketLoggingErrorCodes.h>
 #include <com_android_os_statsd_flags.h>
 #include <errno.h>
+#include <private/android_filesystem_config.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include <unistd.h>
 
+#include "atoms_in_use_provider.h"
 #include "logging_rate_limiter.h"
 #include "stats_buffer_writer_impl.h"
 #include "stats_buffer_writer_queue.h"
@@ -42,7 +47,7 @@ static int (*__write_to_statsd)(struct iovec* vec, size_t nr) = __write_to_stats
  * @param error To distinguish source of error, the errno code values must be negative,
  *              while the libstatssocket internal error codes are positive
  */
-void note_log_drop(int error, int atomId) {
+void note_log_drop(int error, AStatsEventAtomId atomId) {
     statsdLoggerWrite.noteDrop(error, atomId);
 }
 
@@ -59,7 +64,24 @@ int stats_log_is_closed() {
     return statsdLoggerWrite.isClosed && (*statsdLoggerWrite.isClosed)();
 }
 
-bool can_log_atom(uint32_t atomId) {
+AtomsInUseProvider<RealTimeClock>& get_atoms_in_use_provider() {
+    using namespace android::os::statsd;
+    static constexpr int64_t kCacheUpdateCooldownNanos = 10'000'000'000LL;  // 10 s
+    static AtomsInUseProvider<RealTimeClock>* provider = new AtomsInUseProvider<RealTimeClock>(
+            kAtomIdsFileName, kAtomIdsVersionName, kCacheUpdateCooldownNanos);
+    return *provider;
+}
+
+bool is_atom_in_use(uid_t appUid, AStatsEventAtomId atomId) {
+    // hard-coded exclude all system server atoms from logging control
+    if (appUid == AID_SYSTEM) {
+        return true;
+    }
+
+    return get_atoms_in_use_provider().isAtomInUse(static_cast<int32_t>(atomId));
+}
+
+bool can_log_atom(AStatsEventAtomId atomId) {
     // Below values should be justified with experiments, as of now idea is to
     // allow to fill 10% of socket buffer at max (max_dgram_qlen == 2400) within 100ms.
     // This allows to fill entire buffer within a second.
@@ -67,16 +89,24 @@ bool can_log_atom(uint32_t atomId) {
     constexpr int32_t kLogFrequencyThreshold = 240;
     constexpr int32_t kLoggingFrequencyWindowMs = 100;
 
-    static LoggingRateLimiter<RealTimeClock> rateLimiter(kLogFrequencyThreshold,
-                                                         kLoggingFrequencyWindowMs);
-    return rateLimiter.canLogAtom(atomId);
+    static LoggingRateLimiter<RealTimeClock>* rateLimiter = new LoggingRateLimiter<RealTimeClock>(
+            kLogFrequencyThreshold, kLoggingFrequencyWindowMs);
+    return rateLimiter->canLogAtom(atomId);
 }
 
-int write_buffer_to_statsd(void* buffer, size_t size, uint32_t atomId) {
-    constexpr int kQueueOverflowErrorCode = 1;
-    constexpr int kLoggingRateLimitExceededErrorCode = 2;
+int write_buffer_to_statsd(void* buffer, size_t size, AStatsEventAtomId atomId) {
+    using namespace android::os::statsd;
 
-    if (should_write_via_queue(atomId)) {
+    const uid_t appUid = getuid();
+
+    if (__builtin_available(android LOGGING_CONTROL_API_VERSION, *)) {
+        if (flags::logging_control_enabled() && !is_atom_in_use(appUid, atomId)) {
+            StatsSocketLossReporter::getInstance().noteDrop(kAtomNotInUseErrorCode, atomId);
+            return 0;
+        }
+    }
+
+    if (should_write_via_queue(appUid, atomId)) {
         const bool ret =
                 write_buffer_to_statsd_queue(static_cast<const uint8_t*>(buffer), size, atomId);
         if (!ret) {
@@ -86,7 +116,7 @@ int write_buffer_to_statsd(void* buffer, size_t size, uint32_t atomId) {
         return ret;
     }
 
-    if (flags::logging_rate_limit_enabled() && !can_log_atom(atomId)) {
+    if (!can_log_atom(atomId)) {
         StatsSocketLossReporter::getInstance().noteDrop(kLoggingRateLimitExceededErrorCode, atomId);
         return 0;
     }
@@ -94,7 +124,8 @@ int write_buffer_to_statsd(void* buffer, size_t size, uint32_t atomId) {
     return write_buffer_to_statsd_impl(buffer, size, atomId, /*doNoteDrop*/ true);
 }
 
-int write_buffer_to_statsd_impl(void* buffer, size_t size, uint32_t atomId, bool doNoteDrop) {
+int write_buffer_to_statsd_impl(void* buffer, size_t size, AStatsEventAtomId atomId,
+                                bool doNoteDrop) {
     int ret = 1;
 
     struct iovec vecs[2];

@@ -16,15 +16,17 @@
 #define STATSD_DEBUG false
 #include "Log.h"
 
-#include "FieldValue.h"
 #include "IncidentdReporter.h"
-#include "packages/UidMap.h"
-#include "stats_log_util.h"
 
 #include <android/util/ProtoOutputStream.h>
 #include <incident/incident_report.h>
 
+#include <thread>
 #include <vector>
+
+#include "FieldValue.h"
+#include "packages/UidMap.h"
+#include "stats_log_util.h"
 
 namespace android {
 namespace os {
@@ -61,8 +63,7 @@ void getProtoData(const int64_t& rule_id, int64_t metricId, const MetricDimensio
     ProtoOutputStream headerProto;
     headerProto.write(FIELD_TYPE_INT64 | FIELD_ID_ALERT_ID, (long long)rule_id);
     headerProto.write(FIELD_TYPE_STRING | FIELD_ID_REASON, reason);
-    uint64_t token =
-            headerProto.start(FIELD_TYPE_MESSAGE | FIELD_ID_CONFIG_KEY);
+    uint64_t token = headerProto.start(FIELD_TYPE_MESSAGE | FIELD_ID_CONFIG_KEY);
     headerProto.write(FIELD_TYPE_INT32 | FIELD_ID_CONFIG_KEY_UID, configKey.GetUid());
     headerProto.write(FIELD_TYPE_INT64 | FIELD_ID_CONFIG_KEY_ID, (long long)configKey.GetId());
     headerProto.end(token);
@@ -108,8 +109,9 @@ void getProtoData(const int64_t& rule_id, int64_t metricId, const MetricDimensio
         UidMap::getInstance()->writeUidMapSnapshot(
                 getElapsedRealtimeNs(),
                 {true, true,
-                 /*truncatedCertificateHashSize*/ 0, /*omitSystemUids*/ false},
-                uids, nullptr /*installerIndices*/, nullptr /*string set*/, &headerProto);
+                 /*truncatedCertificateHashSize*/ 0, /*omitSystemUids*/ false,
+                 /*omitUnusedUids*/ true, uids},
+                nullptr /*installerIndices*/, nullptr /*string set*/, &headerProto);
         headerProto.end(token);
     }
 
@@ -136,38 +138,44 @@ bool GenerateIncidentReport(const IncidentdDetails& config, int64_t rule_id, int
         return false;
     }
 
-    AIncidentReportArgs* args = AIncidentReportArgs_init();
-
     vector<uint8_t> protoData;
     getProtoData(rule_id, metricId, dimensionKey, metricValue, configKey,
                  config.alert_description(), &protoData);
-    AIncidentReportArgs_addHeader(args, protoData.data(), protoData.size());
 
-    for (int i = 0; i < config.section_size(); i++) {
-        AIncidentReportArgs_addSection(args, config.section(i));
-    }
+    std::thread([config, protoData = std::move(protoData)]() {
+        AIncidentReportArgs* args = AIncidentReportArgs_init();
 
-    uint8_t dest;
-    switch (config.dest()) {
-        case IncidentdDetails_Destination_AUTOMATIC:
-            dest = INCIDENT_REPORT_PRIVACY_POLICY_AUTOMATIC;
-            break;
-        case IncidentdDetails_Destination_EXPLICIT:
-            dest = INCIDENT_REPORT_PRIVACY_POLICY_EXPLICIT;
-            break;
-        default:
-            dest = INCIDENT_REPORT_PRIVACY_POLICY_AUTOMATIC;
-    }
-    AIncidentReportArgs_setPrivacyPolicy(args, dest);
+        AIncidentReportArgs_addHeader(args, protoData.data(), protoData.size());
 
-    AIncidentReportArgs_setReceiverPackage(args, config.receiver_pkg().c_str());
+        for (int i = 0; i < config.section_size(); i++) {
+            AIncidentReportArgs_addSection(args, config.section(i));
+        }
 
-    AIncidentReportArgs_setReceiverClass(args, config.receiver_cls().c_str());
+        uint8_t dest;
+        switch (config.dest()) {
+            case IncidentdDetails_Destination_AUTOMATIC:
+                dest = INCIDENT_REPORT_PRIVACY_POLICY_AUTOMATIC;
+                break;
+            case IncidentdDetails_Destination_EXPLICIT:
+                dest = INCIDENT_REPORT_PRIVACY_POLICY_EXPLICIT;
+                break;
+            default:
+                dest = INCIDENT_REPORT_PRIVACY_POLICY_AUTOMATIC;
+        }
+        AIncidentReportArgs_setPrivacyPolicy(args, dest);
 
-    int err = AIncidentReportArgs_takeReport(args);
-    AIncidentReportArgs_delete(args);
+        AIncidentReportArgs_setReceiverPackage(args, config.receiver_pkg().c_str());
 
-    return err == NO_ERROR;
+        AIncidentReportArgs_setReceiverClass(args, config.receiver_cls().c_str());
+
+        int err = AIncidentReportArgs_takeReport(args);
+        AIncidentReportArgs_delete(args);
+        if (err != NO_ERROR) {
+            ALOGE("AIncidentReportArgs_takeReport failed with error %d", err);
+        }
+    }).detach();
+
+    return true;
 }
 
 }  // namespace statsd

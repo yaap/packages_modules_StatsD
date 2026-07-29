@@ -53,6 +53,52 @@ uint8_t getNumAnnotations(uint8_t typeInfo) {
     return (typeInfo >> 4) & 0x0F;  // num annotations in upper 4 bytes
 }
 
+// stats_event.h socket types. Keep in sync.
+/* ERRORS */
+#define ERROR_NO_TIMESTAMP 0x1
+#define ERROR_NO_ATOM_ID 0x2
+#define ERROR_OVERFLOW 0x4
+#define ERROR_ATTRIBUTION_CHAIN_TOO_LONG 0x8
+#define ERROR_TOO_MANY_KEY_VALUE_PAIRS 0x10
+#define ERROR_ANNOTATION_DOES_NOT_FOLLOW_FIELD 0x20
+#define ERROR_INVALID_ANNOTATION_ID 0x40
+#define ERROR_ANNOTATION_ID_TOO_LARGE 0x80
+#define ERROR_TOO_MANY_ANNOTATIONS 0x100
+#define ERROR_TOO_MANY_FIELDS 0x200
+#define ERROR_INVALID_VALUE_TYPE 0x400
+#define ERROR_STRING_NOT_NULL_TERMINATED 0x800
+#define ERROR_ATOM_ID_INVALID_POSITION 0x2000
+#define ERROR_LIST_TOO_LONG 0x4000
+
+string errorMaskToString(int32_t errorBitMask) {
+    static const char* errors[] = {
+            "ERROR_NO_TIMESTAMP",                      // 0x1
+            "ERROR_NO_ATOM_ID",                        // 0x2
+            "ERROR_OVERFLOW",                          // 0x4
+            "ERROR_ATTRIBUTION_CHAIN_TOO_LONG",        // 0x8
+            "ERROR_TOO_MANY_KEY_VALUE_PAIRS",          // 0x10
+            "ERROR_ANNOTATION_DOES_NOT_FOLLOW_FIELD",  // 0x20
+            "ERROR_INVALID_ANNOTATION_ID",             // 0x40
+            "ERROR_ANNOTATION_ID_TOO_LARGE",           // 0x80
+            "ERROR_TOO_MANY_ANNOTATIONS",              // 0x100
+            "ERROR_TOO_MANY_FIELDS",                   // 0x200
+            "ERROR_INVALID_VALUE_TYPE",                // 0x400
+            "ERROR_STRING_NOT_NULL_TERMINATED",        // 0x800
+            "ERROR_ATOM_ID_INVALID_POSITION",          // 0x2000
+            "ERROR_LIST_TOO_LONG",                     // 0x4000
+            "ERROR_PARSING_INVALID",                   // 0x8000
+    };
+    static const int bitToCheck = sizeof(errors) / sizeof(errors[0]);
+
+    string result;
+    for (int i = 0; i < bitToCheck; i++) {
+        if (errorBitMask & (1 << i)) {
+            result += StringPrintf("%s ", errors[i]);
+        }
+    }
+    return result;
+}
+
 #if STATSD_DEBUG == true
 class ScopedLogEventValidation {
 public:
@@ -77,36 +123,15 @@ private:
 #define LOG_EVENT_VALIDATION_DEBUG(...) \
     if (STATSD_DEBUG) LOG_EVENT_VALIDATION(__VA_ARGS__);
 
-void printErrorCode(int32_t errorBitMask) {
-    static const char* errors[] = {
-            "ERROR_NO_TIMESTAMP",                      // 0x1
-            "ERROR_NO_ATOM_ID",                        // 0x2
-            "ERROR_OVERFLOW",                          // 0x4
-            "ERROR_ATTRIBUTION_CHAIN_TOO_LONG",        // 0x8
-            "ERROR_TOO_MANY_KEY_VALUE_PAIRS",          // 0x10
-            "ERROR_ANNOTATION_DOES_NOT_FOLLOW_FIELD",  // 0x20
-            "ERROR_INVALID_ANNOTATION_ID",             // 0x40
-            "ERROR_ANNOTATION_ID_TOO_LARGE",           // 0x80
-            "ERROR_TOO_MANY_ANNOTATIONS",              // 0x100
-            "ERROR_TOO_MANY_FIELDS",                   // 0x200
-            "ERROR_INVALID_VALUE_TYPE",                // 0x400
-            "ERROR_STRING_NOT_NULL_TERMINATED",        // 0x800
-            "ERROR_ATOM_ID_INVALID_POSITION",          // 0x2000
-            "ERROR_LIST_TOO_LONG",                     // 0x4000
-    };
-    static const int bitToCheck = sizeof(errors) / sizeof(errors[0]);
-    for (int i = 0; i < bitToCheck; i++) {
-        if (errorBitmask & (1 << i)) {
-            VLOG("Atom %d encoding error: %s", GetTagId(), errors[i]);
-        }
-    }
+void printErrorCode(int32_t tagId, int32_t errorBitMask) {
+    VLOG("Atom %d encoding error: %s", tagId, errorMaskToString(errorBitMask).c_str());
 }
 
 #else
 
 #define LOG_EVENT_VALIDATION_DEBUG(...)
 
-void printErrorCode(int32_t /*errorBitMask*/) {
+void printErrorCode(int32_t /*tagId*/, int32_t /*errorBitMask*/) {
 }
 
 #endif  // STATSD_DEBUG == true
@@ -179,7 +204,7 @@ void LogEvent::parseString(int32_t* pos, int32_t depth, bool* last, uint8_t numA
     LOG_EVENT_VALIDATION_DEBUG();
     int32_t numBytes = readNextValue<int32_t>();
     if ((uint32_t)numBytes > mRemainingLen) {
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -207,7 +232,7 @@ void LogEvent::parseByteArray(int32_t* pos, int32_t depth, bool* last, uint8_t n
     LOG_EVENT_VALIDATION_DEBUG();
     int32_t numBytes = readNextValue<int32_t>();
     if ((uint32_t)numBytes > mRemainingLen) {
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -251,7 +276,7 @@ void LogEvent::parseKeyValuePairs(int32_t* pos, int32_t depth, bool* last, uint8
                 parseFloat(pos, /*depth=*/2, last, /*numAnnotations=*/0);
                 break;
             default:
-                mValid = false;
+                mErrorMask |= ERROR_PARSING_INVALID;
         }
     }
 
@@ -269,7 +294,7 @@ void LogEvent::parseAttributionChain(int32_t* pos, int32_t depth, bool* last,
 
     if (numNodes > INT8_MAX) {
         VLOG("%s failed for %d : numNodes > INT8_MAX", __FUNCTION__, GetTagId());
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
     }
 
     for (pos[1] = 1; pos[1] <= numNodes; pos[1]++) {
@@ -292,10 +317,10 @@ void LogEvent::parseAttributionChain(int32_t* pos, int32_t depth, bool* last,
     } else {
         firstUidInChainIndex = std::nullopt;
         VLOG("%s failed for %d : numNodes == 0", __FUNCTION__, GetTagId());
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
     }
 
-    if (mValid) {
+    if (isValid()) {
         parseAnnotations(numAnnotations, /*numElements*/ std::nullopt, firstUidInChainIndex);
     }
 
@@ -310,7 +335,7 @@ void LogEvent::parseArray(int32_t* pos, int32_t depth, bool* last, uint8_t numAn
     const uint8_t typeId = getTypeId(typeInfo);
 
     if (numElements > INT8_MAX) {
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
     }
 
     for (pos[1] = 1; pos[1] <= numElements; pos[1]++) {
@@ -337,7 +362,7 @@ void LogEvent::parseArray(int32_t* pos, int32_t depth, bool* last, uint8_t numAn
                 break;
             default:
                 VLOG("%s failed for %d", __FUNCTION__, GetTagId());
-                mValid = false;
+                mErrorMask |= ERROR_PARSING_INVALID;
                 break;
         }
     }
@@ -369,7 +394,7 @@ void LogEvent::parseIsUidAnnotation(uint8_t annotationType, std::optional<uint8_
     // Allowed types: INT, repeated INT
     if (mValues.empty() || numElements > mValues.size() || !checkPreviousValueType(INT) ||
         annotationType != BOOL_TYPE) {
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -387,7 +412,7 @@ void LogEvent::parseTruncateTimestampAnnotation(uint8_t annotationType) {
     LOG_EVENT_VALIDATION_DEBUG();
     if (!mValues.empty() || annotationType != BOOL_TYPE) {
         VLOG("Atom ID %d error while parseTruncateTimestampAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -401,7 +426,7 @@ void LogEvent::parsePrimaryFieldAnnotation(uint8_t annotationType,
     // Allowed types: all types except for attribution chains and repeated fields.
     if (mValues.empty() || annotationType != BOOL_TYPE || firstUidInChainIndex || numElements) {
         VLOG("Atom ID %d error while parsePrimaryFieldAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -415,13 +440,13 @@ void LogEvent::parsePrimaryFieldFirstUidAnnotation(uint8_t annotationType,
     // Allowed types: attribution chains
     if (mValues.empty() || annotationType != BOOL_TYPE || !firstUidInChainIndex) {
         VLOG("Atom ID %d error while parsePrimaryFieldFirstUidAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
     if (mValues.size() < firstUidInChainIndex.value() + 1) {  // AttributionChain is empty.
         VLOG("Atom ID %d error while parsePrimaryFieldFirstUidAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         android_errorWriteLog(0x534e4554, "174485572");
         return;
     }
@@ -437,7 +462,7 @@ void LogEvent::parseExclusiveStateAnnotation(uint8_t annotationType,
     if (mValues.empty() || annotationType != BOOL_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
         VLOG("Atom ID %d error while parseExclusiveStateAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -453,7 +478,7 @@ void LogEvent::parseTriggerStateResetAnnotation(uint8_t annotationType,
     if (mValues.empty() || annotationType != INT32_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
         VLOG("Atom ID %d error while parseTriggerStateResetAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -467,7 +492,7 @@ void LogEvent::parseStateNestedAnnotation(uint8_t annotationType,
     if (mValues.empty() || annotationType != BOOL_TYPE || !checkPreviousValueType(INT) ||
         numElements) {
         VLOG("Atom ID %d error while parseStateNestedAnnotation()", mTagId);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
 
@@ -480,7 +505,7 @@ void LogEvent::parseRestrictionCategoryAnnotation(uint8_t annotationType) {
     // Allowed types: INT, field value should be empty since this is atom-level annotation.
     if (!mValues.empty() || annotationType != INT32_TYPE) {
         VLOG("%s failed for %d", __FUNCTION__, GetTagId());
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
     int value = readNextValue<int32_t>();
@@ -492,7 +517,7 @@ void LogEvent::parseRestrictionCategoryAnnotation(uint8_t annotationType) {
         case ASTATSLOG_RESTRICTION_CATEGORY_FRAUD_AND_ABUSE:
             break;
         default:
-            mValid = false;
+            mErrorMask |= ERROR_PARSING_INVALID;
             return;
     }
     mRestrictionCategory = static_cast<StatsdRestrictionCategory>(value);
@@ -503,7 +528,7 @@ void LogEvent::parseFieldRestrictionAnnotation(uint8_t annotationType) {
     LOG_EVENT_VALIDATION_DEBUG();
     // Allowed types: BOOL
     if (mValues.empty() || annotationType != BOOL_TYPE) {
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         return;
     }
     // Read the value so that the rest of the event is correctly parsed
@@ -548,7 +573,7 @@ void LogEvent::parseAnnotations(uint8_t numAnnotations, std::optional<uint8_t> n
                 if (isAtLeastU()) {
                     parseRestrictionCategoryAnnotation(annotationType);
                 } else {
-                    mValid = false;
+                    mErrorMask |= ERROR_PARSING_INVALID;
                 }
                 break;
             // Currently field restrictions are ignored, so we parse but do not store them.
@@ -564,13 +589,13 @@ void LogEvent::parseAnnotations(uint8_t numAnnotations, std::optional<uint8_t> n
                 if (isAtLeastU()) {
                     parseFieldRestrictionAnnotation(annotationType);
                 } else {
-                    mValid = false;
+                    mErrorMask |= ERROR_PARSING_INVALID;
                 }
                 break;
             default:
                 VLOG("Atom ID %d error while parseAnnotations() - wrong annotationId(%d)", mTagId,
                      annotationId);
-                mValid = false;
+                mErrorMask |= ERROR_PARSING_INVALID;
                 return;
         }
     }
@@ -588,7 +613,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
     uint8_t typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != OBJECT_TYPE) {
         VLOG("Atom header parsing error - not an OBJECT_TYPE");
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         mBuf = nullptr;
         return bodyInfo;
     }
@@ -596,7 +621,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
     uint8_t numElements = readNextValue<uint8_t>();
     if (numElements < 2 || numElements > INT8_MAX) {
         VLOG("Atom header parsing error - invalid numElements (%d)", numElements);
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         mBuf = nullptr;
         return bodyInfo;
     }
@@ -604,7 +629,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
     typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != INT64_TYPE) {
         VLOG("Atom header parsing error - invalid typeInfo - expected int64 timestamp");
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         mBuf = nullptr;
         return bodyInfo;
     }
@@ -614,7 +639,7 @@ LogEvent::BodyBufferInfo LogEvent::parseHeader(const uint8_t* buf, size_t len) {
     typeInfo = readNextValue<uint8_t>();
     if (getTypeId(typeInfo) != INT32_TYPE) {
         VLOG("Atom header parsing error - invalid typeInfo - expected int32 tagid");
-        mValid = false;
+        mErrorMask |= ERROR_PARSING_INVALID;
         mBuf = nullptr;
         return bodyInfo;
     }
@@ -646,7 +671,7 @@ bool LogEvent::parseBody(const BodyBufferInfo& bodyInfo) {
     // of vector buffer reallocations.
     mValues.reserve(bodyInfo.numElements);
 
-    for (pos[0] = 1; pos[0] <= bodyInfo.numElements && mValid; pos[0]++) {
+    for (pos[0] = 1; pos[0] <= bodyInfo.numElements && isValid(); pos[0]++) {
         last[0] = (pos[0] == bodyInfo.numElements);
 
         uint8_t typeInfo = readNextValue<uint8_t>();
@@ -682,20 +707,22 @@ bool LogEvent::parseBody(const BodyBufferInfo& bodyInfo) {
                 break;
             case ERROR_TYPE: {
                 const int32_t errorBitmask = readNextValue<int32_t>();
-                mValid = false;
-                printErrorCode(errorBitmask);
+                mErrorMask |= errorBitmask;
+                printErrorCode(mTagId, errorBitmask);
                 break;
             }
             default:
                 VLOG("%s failed for %d : unknown typeId", __FUNCTION__, GetTagId());
-                mValid = false;
+                mErrorMask |= ERROR_PARSING_INVALID;
                 break;
         }
     }
 
-    if (mRemainingLen != 0) mValid = false;
+    if (mRemainingLen != 0) {
+        mErrorMask |= ERROR_PARSING_INVALID;
+    }
     mBuf = nullptr;
-    return mValid;
+    return isValid();
 }
 
 // This parsing logic is tied to the encoding scheme used in StatsEvent.java and
@@ -708,7 +735,7 @@ bool LogEvent::parseBuffer(const uint8_t* buf, size_t len) {
     mParsedHeaderOnly = false;
 
     // early termination if header is invalid
-    if (!mValid) {
+    if (!isValid()) {
         mBuf = nullptr;
         return false;
     }
@@ -843,6 +870,11 @@ std::vector<uint8_t> LogEvent::GetStorage(size_t key, status_t* err) const {
 
 string LogEvent::ToString() const {
     string result;
+
+    if (!isValid()) {
+        result = StringPrintf("Atom invalid: [%s] ", errorMaskToString(mErrorMask).c_str());
+    }
+
     result += StringPrintf("{ uid(%d) %lld %lld (%d)", mLogUid, (long long)mLogdTimestampNs,
                            (long long)mElapsedTimestampNs, mTagId);
     string annotations;

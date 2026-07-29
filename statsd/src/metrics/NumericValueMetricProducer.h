@@ -312,7 +312,10 @@ private:
 
     FRIEND_TEST(NumericValueMetricProducerTest, TestSubsetDimensions);
 
+    FRIEND_TEST(MetricsManagerUtilTest, TestInitValueMetricsHasInvalidMetrics);
+
     FRIEND_TEST(ConfigUpdateTest, TestUpdateValueMetrics);
+    FRIEND_TEST(ConfigUpdateTest, TestUpdateValueMetricsHasInvalidMetrics);
 
     FRIEND_TEST(MetricsManagerUtilDimLimitTest, TestDimLimit);
 
